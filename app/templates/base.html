@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Autostack</title>
+  <meta name="description" content="Autostack – Smart inventory management for your business.">
+  <meta name="theme-color" content="#22C55E">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Autostack">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icons/icon-152.png?v=3">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png?v=3">
+  <link rel="shortcut icon" href="/static/icons/icon-96.png?v=3">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root { --nav:#1E293B; --nav2:#334155; --blue:#3B82F6; --gold:#F59E0B; }
+    html, body { height:100%; overflow:hidden; }
+    body { background:#F1F5F9; font-family:'Segoe UI',Arial,sans-serif; }
+    body.modal-open { padding-right:0 !important; }
+    .navbar { background:var(--nav) !important; position:fixed; top:0; left:0; right:0; z-index:1030; }
+    .navbar-brand { font-weight:700; color:#fff !important; font-size:1.1rem; }
+    .nav-link { color:#94A3B8 !important; font-size:.9rem; }
+    .nav-link:hover, .nav-link.active { color:#fff !important; }
+    .nav-link.active { border-bottom:2px solid var(--blue); }
+    .sidebar { position:fixed; left:0; top:56px; width:200px; height:calc(100vh - 56px); background:var(--nav); padding-top:1rem; overflow-y:auto; z-index:200; }
+    .sidebar .nav-link { padding:.6rem 1.2rem; border-radius:6px; margin:.1rem .5rem; }
+    .sidebar .nav-link:hover { background:var(--nav2); }
+    .sidebar .nav-link.active { background:var(--blue); color:#fff !important; }
+    .main-content { margin-left:200px; margin-top:56px; height:calc(100vh - 56px); overflow:auto; padding:1.5rem; }
+    .card { border:none; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+    .card-header { background:var(--nav); color:#fff; border-radius:10px 10px 0 0 !important; font-weight:600; }
+    .stat-card { background:#fff; border-radius:10px; padding:1.2rem 1.5rem; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+    .stat-val  { font-size:1.8rem; font-weight:700; }
+    .stat-lbl  { font-size:.78rem; color:#64748B; }
+    .btn-primary   { background:var(--blue); border-color:var(--blue); }
+    .btn-primary:hover { background:#2563EB; border-color:#2563EB; }
+    .table thead th { background:#F8FAFC; font-size:.82rem; color:#64748B; text-transform:uppercase; letter-spacing:.05em; border-bottom:2px solid #E2E8F0; }
+    .table tbody tr:hover { background:#F8FAFC; }
+    .badge-out  { background:#FEF2F2; color:#991B1B; border:1px solid #FECACA; }
+    .badge-low  { background:#FEFCE8; color:#92400E; border:1px solid #FDE68A; }
+    .badge-ok   { background:#F0FDF4; color:#065F46; border:1px solid #A7F3D0; }
+    .impersonate-bar { background:#F59E0B; color:#1E293B; font-size:.85rem; padding:.4rem 1rem; font-weight:600; }
+    .page-title { font-size:1.1rem; font-weight:700; color:var(--nav); margin-bottom:1.2rem; }
+    .flash-container { position:fixed; top:70px; right:1rem; z-index:9999; min-width:280px; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark px-3">
+  <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('dashboard.index') }}">
+    <img src="/static/icons/icon-96.png?v=3" alt="Autostack" style="width:28px;height:28px;border-radius:6px;">
+    <span><span style="color:#fff;font-weight:800;">Auto</span><span style="color:#22C55E;font-weight:800;">stack</span></span>
+  </a>
+  <div class="ms-auto d-flex align-items-center gap-3">
+    {% if current_user.is_authenticated %}
+      <span class="text-muted small">{{ current_user.business_name }}</span>
+      {% if current_user.is_admin %}
+        <a href="{{ url_for('admin.index') }}" class="btn btn-sm btn-outline-warning">Admin Panel</a>
+      {% endif %}
+      <a href="{{ url_for('notifications.send_alert') }}" id="alertBtn"
+         class="btn btn-sm" style="background:#334155;color:#fff;"
+         onclick="sendAlert(event)">
+        <i class="bi bi-bell"></i> Send Alert
+      </a>
+      <button id="pwa-install-btn" class="btn btn-sm d-none"
+              style="background:#e63946;color:#fff;border:none;"
+              title="Install app on this device">
+        <i class="bi bi-download me-1"></i>Install App
+      </button>
+      <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-danger">Logout</a>
+    {% endif %}
+  </div>
+</nav>
+
+<!-- Impersonation bar -->
+{% if session.get('impersonate_id') %}
+<div class="impersonate-bar d-flex align-items-center gap-3">
+  <i class="bi bi-eye"></i> Viewing as: <strong>{{ current_user.business_name }}</strong>
+  <a href="{{ url_for('admin.stop_impersonate') }}" class="btn btn-sm btn-dark ms-2">← Back to Admin</a>
+</div>
+{% endif %}
+
+<!-- Flash messages -->
+<div class="flash-container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ 'danger' if cat=='danger' else ('success' if cat=='success' else 'info') }} alert-dismissible fade show shadow" role="alert">
+        {{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+</div>
+
+<div class="d-flex">
+  <!-- Sidebar -->
+  <div class="sidebar d-none d-lg-block" style="width:200px;flex-shrink:0;">
+    <ul class="nav flex-column">
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint=='dashboard.index' %}active{% endif %}" href="{{ url_for('dashboard.index') }}">
+          <i class="bi bi-speedometer2 me-2"></i>{% if current_user.is_admin and not session.get('impersonate_id') %}Dashboard{% else %}Clientboard{% endif %}
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if 'inventory' in request.endpoint %}active{% endif %}" href="{{ url_for('inventory.index') }}">
+          <i class="bi bi-box-seam me-2"></i>Inventory
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint and 'po.' in request.endpoint %}active{% endif %}" href="{{ url_for('po.index') }}">
+          <i class="bi bi-cart me-2"></i>Purchase Orders
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint and 'debtors' in request.endpoint %}active{% endif %}" href="{{ url_for('debtors.index') }}">
+          <i class="bi bi-people me-2"></i>Debtors
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint and 'reports' in request.endpoint %}active{% endif %}" href="{{ url_for('reports.index') }}">
+          <i class="bi bi-bar-chart-line me-2"></i>Reports
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint and 'notifications' in request.endpoint %}active{% endif %}" href="{{ url_for('notifications.index') }}">
+          <i class="bi bi-bell me-2"></i>Notifications
+        </a>
+      </li>
+      <li class="nav-item mt-3">
+        <a class="nav-link {% if request.endpoint and 'settings' in request.endpoint %}active{% endif %}" href="{{ url_for('settings.index') }}">
+          <i class="bi bi-gear me-2"></i>Settings
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint and 'help' in request.endpoint %}active{% endif %}" href="{{ url_for('help.index') }}">
+          <i class="bi bi-question-circle me-2"></i>Help Guide
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Main content -->
+  <div class="main-content flex-grow-1">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+
+{% if current_user.is_authenticated and current_user.is_admin and not session.get('impersonate_id') %}
+<!-- Command Palette -->
+<div id="cmdBackdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;" onclick="closeCmd()"></div>
+<div id="cmdPalette" style="display:none;position:fixed;top:12%;left:50%;transform:translateX(-50%);width:min(560px,94vw);z-index:10001;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+  <div style="background:#1E293B;padding:.9rem 1rem;display:flex;align-items:center;gap:.6rem;border-bottom:1px solid #334155;">
+    <i class="bi bi-search" style="color:#64748B;font-size:1rem;"></i>
+    <input id="cmdInput" type="text" placeholder="Search shops…" autocomplete="off"
+      style="background:transparent;border:none;outline:none;color:#fff;font-size:1rem;flex:1;font-family:inherit;">
+    <span style="color:#475569;font-size:.75rem;background:#0F172A;padding:.2rem .45rem;border-radius:5px;">ESC</span>
+  </div>
+  <div id="cmdResults" style="background:#0F172A;max-height:360px;overflow-y:auto;"></div>
+  <div style="background:#0F172A;border-top:1px solid #1E293B;padding:.45rem 1rem;display:flex;gap:1.2rem;color:#475569;font-size:.72rem;">
+    <span><kbd style="background:#1E293B;color:#94A3B8;padding:.1rem .35rem;border-radius:4px;">↑↓</kbd> navigate</span>
+    <span><kbd style="background:#1E293B;color:#94A3B8;padding:.1rem .35rem;border-radius:4px;">Enter</kbd> view portal</span>
+    <span><kbd style="background:#1E293B;color:#94A3B8;padding:.1rem .35rem;border-radius:4px;">Ctrl+K</kbd> open</span>
+  </div>
+</div>
+<style>
+  .cmd-item { display:flex;align-items:center;padding:.65rem 1rem;cursor:pointer;border-bottom:1px solid #1E293B;gap:.75rem; }
+  .cmd-item:hover, .cmd-item.selected { background:#1E293B; }
+  .cmd-item .cmd-biz { color:#fff;font-weight:600;font-size:.92rem; }
+  .cmd-item .cmd-meta { color:#64748B;font-size:.76rem; }
+  .cmd-item .cmd-badge { font-size:.68rem;padding:.15rem .4rem;border-radius:4px; }
+  .cmd-item .cmd-actions { margin-left:auto;display:flex;gap:.4rem; }
+  .cmd-item .cmd-actions a { font-size:.75rem;padding:.2rem .55rem;border-radius:5px;text-decoration:none;font-weight:600; }
+  .cmd-view { background:#3B82F6;color:#fff !important; }
+  .cmd-edit { background:#334155;color:#94A3B8 !important; }
+  .cmd-item .cmd-actions a:hover { opacity:.85; }
+  #cmdInput::placeholder { color:#475569; }
+</style>
+<script>
+(function(){
+  let tenants=[], filtered=[], sel=0;
+  const urls = {
+    view: id => `/admin/impersonate/${id}`,
+    edit: id => `/admin/tenants/${id}/edit`,
+  };
+
+  async function loadTenants(){
+    if(tenants.length) return;
+    const r = await fetch('/admin/api/tenants');
+    tenants = await r.json();
+  }
+
+  function openCmd(){
+    document.getElementById('cmdBackdrop').style.display='block';
+    document.getElementById('cmdPalette').style.display='block';
+    document.getElementById('cmdInput').value='';
+    sel=0;
+    render('');
+    setTimeout(()=>document.getElementById('cmdInput').focus(),30);
+  }
+  function closeCmd(){
+    document.getElementById('cmdBackdrop').style.display='none';
+    document.getElementById('cmdPalette').style.display='none';
+  }
+  window.closeCmd = closeCmd;
+
+  function render(q){
+    const box = document.getElementById('cmdResults');
+    filtered = q ? tenants.filter(t=>
+      t.business_name.toLowerCase().includes(q.toLowerCase()) ||
+      t.username.toLowerCase().includes(q.toLowerCase()) ||
+      (t.email||'').toLowerCase().includes(q.toLowerCase())
+    ) : tenants;
+    if(!filtered.length){
+      box.innerHTML='<div style="color:#475569;text-align:center;padding:1.5rem;font-size:.88rem;">No shops found</div>';
+      return;
+    }
+    box.innerHTML = filtered.map((t,i)=>`
+      <div class="cmd-item${i===sel?' selected':''}" data-idx="${i}" onclick="gotoView(${t.id})">
+        <div>
+          <div class="cmd-biz">${t.business_name}</div>
+          <div class="cmd-meta">@${t.username}${t.email?' · '+t.email:''}</div>
+        </div>
+        <span class="cmd-badge ${t.is_active?'badge-ok':'badge-out'}">${t.is_active?'Active':'Disabled'}</span>
+        <div class="cmd-actions">
+          <a href="${urls.view(t.id)}" class="cmd-view" onclick="event.stopPropagation()"><i class="bi bi-eye"></i> View</a>
+          <a href="${urls.edit(t.id)}" class="cmd-edit" onclick="event.stopPropagation()"><i class="bi bi-pencil"></i> Edit</a>
+        </div>
+      </div>`).join('');
+    box.querySelectorAll('.cmd-item').forEach(el=>{
+      el.addEventListener('mouseenter',()=>{ sel=+el.dataset.idx; highlight(); });
+    });
+  }
+
+  function highlight(){
+    document.querySelectorAll('.cmd-item').forEach((el,i)=>
+      el.classList.toggle('selected',i===sel));
+    const items=document.querySelectorAll('.cmd-item');
+    if(items[sel]) items[sel].scrollIntoView({block:'nearest'});
+  }
+
+  window.gotoView    = function(id){ window.location=urls.view(id); };
+  window.openCmd     = openCmd;
+  window.loadTenants = loadTenants;
+
+  document.addEventListener('keydown', async e=>{
+    if((e.ctrlKey||e.metaKey) && e.key==='k'){ e.preventDefault(); await loadTenants(); openCmd(); return; }
+    const p = document.getElementById('cmdPalette');
+    if(p.style.display==='none') return;
+    if(e.key==='Escape'){ closeCmd(); return; }
+    if(e.key==='ArrowDown'){ e.preventDefault(); sel=Math.min(sel+1,filtered.length-1); highlight(); return; }
+    if(e.key==='ArrowUp'){ e.preventDefault(); sel=Math.max(sel-1,0); highlight(); return; }
+    if(e.key==='Enter' && filtered[sel]){ window.location=urls.view(filtered[sel].id); return; }
+  });
+
+  document.addEventListener('input', e=>{
+    if(e.target.id==='cmdInput'){ sel=0; render(e.target.value); }
+  });
+})();
+</script>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Keep sidebar + main-content below navbar + impersonation bar
+(function(){
+  const nav     = document.querySelector('.navbar');
+  const bar     = document.querySelector('.impersonate-bar');
+  const sidebar = document.querySelector('.sidebar');
+  const main    = document.querySelector('.main-content');
+  if (!sidebar) return;
+  let top = nav ? nav.offsetHeight : 56;
+  if (bar) top += bar.offsetHeight;
+  sidebar.style.top    = top + 'px';
+  sidebar.style.height = 'calc(100vh - ' + top + 'px)';
+  if (main) {
+    main.style.marginTop = top + 'px';
+    main.style.height    = 'calc(100vh - ' + top + 'px)';
+  }
+})();
+</script>
+<script>
+function sendAlert(e) {
+  e.preventDefault();
+  const btn = document.getElementById('alertBtn');
+  btn.textContent = 'Sending…';
+  fetch('{{ url_for("notifications.send_alert") }}', {method:'POST',
+    headers:{'X-CSRFToken':'', 'Content-Type':'application/json'}})
+    .then(r=>r.json()).then(d=>{
+      alert(d.msg);
+      btn.innerHTML = '<i class="bi bi-bell"></i> Send Alert';
+    });
+}
+</script>
+{% block scripts %}{% endblock %}
+
+<script>
+// ── Inline cell editing ──────────────────────────────────────────
+function initInlineEdit() {
+  document.querySelectorAll('.editable-cell').forEach(cell => {
+    cell.title = 'Click to edit';
+    cell.style.cursor = 'pointer';
+    cell.addEventListener('click', function(e) {
+      if (this.querySelector('input,select')) return;
+      _startCellEdit(this);
+    });
+  });
+}
+
+function _startCellEdit(cell) {
+  const type     = cell.dataset.type || 'text';
+  const raw      = cell.dataset.raw !== undefined ? cell.dataset.raw : cell.textContent.trim().replace(/^R\s*/,'');
+  const origHTML = cell.innerHTML;
+
+  let input;
+  if (type === 'select') {
+    const opts = JSON.parse(cell.dataset.options || '[]');
+    input = document.createElement('select');
+    input.className = 'form-select form-select-sm p-0';
+    input.style.minWidth = '100px';
+    opts.forEach(([v,l]) => input.appendChild(new Option(l, v, false, String(v) === String(raw))));
+  } else {
+    input = document.createElement('input');
+    input.type  = type;
+    input.value = raw;
+    input.className = 'form-control form-control-sm p-1';
+    if (type === 'number') { input.step = '0.01'; input.style.width = '90px'; }
+    if (type === 'date')   input.style.width = '140px';
+  }
+
+  cell.innerHTML = '';
+  cell.appendChild(input);
+  input.focus();
+  if (input.select && type !== 'date') input.select();
+
+  const save = async () => {
+    const val = input.value;
+    cell.innerHTML = origHTML;
+    if (String(val).trim() === String(raw).trim()) return;
+    try {
+      const r = await fetch(cell.dataset.endpoint, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({field: cell.dataset.field, value: val})
+      });
+      const d = await r.json();
+      if (d.ok) location.reload();
+      else alert('Could not save: ' + d.msg);
+    } catch(e) {}
+  };
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && type !== 'select') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { e.stopPropagation(); cell.innerHTML = origHTML; }
+  });
+  if (type === 'select') input.addEventListener('change', () => input.blur());
+}
+
+document.addEventListener('DOMContentLoaded', initInlineEdit);
+// ── End inline cell editing ──────────────────────────────────────
+
+// Auto-save form when navigating away
+(function(){
+  const form = document.querySelector('form[data-autosave]');
+  if (!form) return;
+
+  let dirty = false;
+  form.querySelectorAll('input,select,textarea').forEach(el => {
+    el.addEventListener('input',  () => dirty = true);
+    el.addEventListener('change', () => dirty = true);
+  });
+
+  function showToast(msg, bg) {
+    const t = document.createElement('div');
+    t.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:99999;
+      background:${bg};color:#fff;padding:.5rem 1.2rem;border-radius:8px;
+      font-size:.88rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.25);
+      transition:opacity .4s;pointer-events:none;`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 1600);
+  }
+
+  async function autoSave(dest) {
+    // Skip if required fields are empty
+    const missing = [...form.querySelectorAll('[required]')].filter(el => !el.value.trim());
+    if (missing.length) { window.location = dest; return; }
+
+    showToast('Saving…', '#1E293B');
+    try {
+      await fetch(window.location.href, { method: 'POST', body: new FormData(form) });
+      dirty = false;
+      showToast('✓ Saved', '#065F46');
+    } catch(e) {}
+    window.location = dest;
+  }
+
+  // Intercept sidebar and navbar links
+  document.querySelectorAll('.sidebar a, .navbar a').forEach(link => {
+    if (!link.href || link.href === window.location.href + '#') return;
+    link.addEventListener('click', e => {
+      if (!dirty) return;
+      e.preventDefault();
+      autoSave(link.href);
+    });
+  });
+})();
+</script>
+
+<!-- Arrow key scrolling -->
+<script>
+document.addEventListener('keydown', function(e) {
+  if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
+  const active = document.activeElement;
+  if (active && ['INPUT','SELECT','TEXTAREA'].includes(active.tagName)) return;
+  e.preventDefault();
+
+  const step = 200;
+  const isHoriz = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+  const dir     = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? step : -step;
+  const main    = document.querySelector('.main-content');
+
+  if (isHoriz) {
+    // Find the first element that actually has horizontal overflow content
+    const target = Array.from(document.querySelectorAll('*')).find(function(el) {
+      if (el === document.body || el === document.documentElement) return false;
+      const ov = window.getComputedStyle(el).overflowX;
+      return (ov === 'auto' || ov === 'scroll') && el.scrollWidth > el.clientWidth + 2;
+    });
+    if (target) target.scrollBy({ left: dir, behavior: 'smooth' });
+    else if (main) main.scrollBy({ left: dir, behavior: 'smooth' });
+  } else {
+    if (main) main.scrollBy({ top: dir, behavior: 'smooth' });
+  }
+});
+</script>
+
+<!-- PWA: Install prompt + Service Worker -->
+<script>
+(function(){
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  }
+
+  // Show install button when browser fires beforeinstallprompt
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    const btn = document.getElementById('pwa-install-btn');
+    if (btn) btn.classList.remove('d-none');
+  });
+
+  window.addEventListener('appinstalled', function() {
+    const btn = document.getElementById('pwa-install-btn');
+    if (btn) btn.classList.add('d-none');
+    deferredPrompt = null;
+  });
+
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'pwa-install-btn') {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function(){ deferredPrompt = null; });
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>

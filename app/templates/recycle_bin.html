@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="page-title mb-0"><i class="bi bi-trash3 me-2"></i>Recycle Bin <span class="badge bg-secondary ms-1">{{ items|length }}</span></div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('inventory.index') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Back to Inventory
+    </a>
+    {% if items %}
+    <button class="btn btn-success btn-sm" onclick="restoreAll()">
+      <i class="bi bi-arrow-counterclockwise me-1"></i>Restore All
+    </button>
+    <button class="btn btn-danger btn-sm" onclick="emptyBin()">
+      <i class="bi bi-trash-fill me-1"></i>Empty Bin (permanently delete all)
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="alert alert-info d-flex align-items-start gap-2 mb-3" style="border-left:4px solid #3B82F6;">
+  <i class="bi bi-info-circle-fill fs-5 mt-1"></i>
+  <div>
+    <strong>Items here are hidden from inventory and will never be restored by syncing.</strong><br>
+    <span class="text-muted small">Restore an item to bring it back. Permanent delete removes it forever.</span>
+  </div>
+</div>
+
+{% if items %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0" style="white-space:nowrap;">
+      <thead>
+        <tr>
+          <th>Product Name</th>
+          <th>Code</th>
+          <th>Category</th>
+          <th class="text-center">Last Stock</th>
+          <th>Deleted At</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="binTable">
+        {% for p in items %}
+        <tr id="row-{{ p.id }}">
+          <td class="fw-semibold">{{ p.name }}</td>
+          <td class="text-muted small">{{ p.code }}</td>
+          <td class="text-muted small">{{ p.category }}</td>
+          <td class="text-center text-muted">{{ p.current_stock }}</td>
+          <td class="text-muted small">{{ (p.deleted_at or '')[:16].replace('T',' ') }}</td>
+          <td class="text-center">
+            <button class="btn btn-sm btn-success me-1" onclick="restoreItem({{ p.id }}, '{{ p.name|e }}')" title="Restore to inventory">
+              <i class="bi bi-arrow-counterclockwise me-1"></i>Restore
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="permDelete({{ p.id }}, '{{ p.name|e }}')" title="Delete permanently">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body text-center py-5 text-muted">
+    <i class="bi bi-trash3 fs-1 d-block mb-2"></i>
+    <div class="fw-semibold">Recycle bin is empty</div>
+    <div class="small mt-1">Deleted products will appear here.</div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+async function restoreItem(pid, name) {
+  if (!confirm(`Restore "${name}" back to inventory?`)) return;
+  const r = await fetch(`/recycle-bin/${pid}/restore`, {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    const row = document.getElementById('row-' + pid);
+    if (row) {
+      row.style.transition = 'opacity .3s';
+      row.style.opacity = '0';
+      setTimeout(() => { row.remove(); checkEmpty(); }, 300);
+    }
+  }
+}
+
+async function permDelete(pid, name) {
+  if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) return;
+  const r = await fetch(`/recycle-bin/${pid}/delete`, {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    const row = document.getElementById('row-' + pid);
+    if (row) {
+      row.style.transition = 'opacity .3s';
+      row.style.opacity = '0';
+      setTimeout(() => { row.remove(); checkEmpty(); }, 300);
+    }
+  }
+}
+
+async function restoreAll() {
+  if (!confirm('Restore ALL items back to inventory?')) return;
+  const r = await fetch('/recycle-bin/restore-all', {method:'POST'});
+  const d = await r.json();
+  if (d.ok) location.href = '/inventory/';
+}
+
+async function emptyBin() {
+  if (!confirm('Permanently delete ALL items in the bin? This cannot be undone.')) return;
+  const r = await fetch('/recycle-bin/empty', {method:'POST'});
+  const d = await r.json();
+  if (d.ok) location.reload();
+}
+
+function checkEmpty() {
+  const tbody = document.getElementById('binTable');
+  if (tbody && tbody.querySelectorAll('tr').length === 0) location.reload();
+}
+</script>
+{% endblock %}

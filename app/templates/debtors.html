@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="page-title mb-0"><i class="bi bi-people me-2"></i>Customer Payment Tracker</div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('debtors.refresh_source') }}" class="btn btn-outline-info"><i class="bi bi-arrow-clockwise me-1"></i>Refresh</a>
+    <a href="{{ url_for('debtors.import_debtors') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import</a>
+    <button class="btn btn-outline-danger" onclick="openDeleteModal()"><i class="bi bi-trash me-1"></i>Delete</button>
+    <a href="{{ url_for('debtors.add') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add Debtor</a>
+  </div>
+</div>
+
+<!-- Quick Send Search -->
+<div class="card mb-4" style="border:1.5px solid #6366F1;">
+  <div class="card-body py-3">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-send-fill text-primary"></i>
+        <span class="fw-semibold">Send Immediate Reminder</span>
+      </div>
+      <button id="sendSelectedBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="sendSelected()">
+        <i class="bi bi-send me-1"></i>Send to Selected (<span id="selCount">0</span>)
+      </button>
+    </div>
+    <div class="d-flex gap-2">
+      <input type="text" id="debtorSearch" class="form-control mb-2" placeholder="Search customer name… (leave blank to show all active)" autocomplete="off">
+      <button class="btn btn-outline-secondary btn-sm mb-2" onclick="closeDebtorSearch()" title="Close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div id="debtorResults" style="display:none;">
+      <div class="d-flex align-items-center gap-2 px-1 mb-1" style="font-size:.83rem;">
+        <input type="checkbox" id="selectAll" class="form-check-input mt-0">
+        <label for="selectAll" class="text-muted mb-0" style="cursor:pointer;">Select all</label>
+        <span id="sendStatus" class="ms-auto text-muted"></span>
+      </div>
+      <ul id="debtorList" class="list-group" style="max-height:300px;overflow-y:auto;"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-danger">R {{ "%.2f"|format(total_owed) }}</div>
+      <div class="stat-lbl">Total Outstanding</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-primary">{{ active_count }}</div>
+      <div class="stat-lbl">Active Debtors</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-warning">{{ due_count }}</div>
+      <div class="stat-lbl">Reminders Due</div>
+    </div>
+  </div>
+</div>
+
+<!-- Filter tabs -->
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link {{ 'active' if filter=='active' }}" href="{{ url_for('debtors.index', filter='active') }}">Active</a></li>
+  <li class="nav-item"><a class="nav-link {{ 'active' if filter=='paid' }}" href="{{ url_for('debtors.index', filter='paid') }}">Paid</a></li>
+  <li class="nav-item"><a class="nav-link {{ 'active' if filter=='all' }}" href="{{ url_for('debtors.index', filter='all') }}">All</a></li>
+</ul>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Name</th><th>Products Owed</th><th>Contact</th>
+          <th class="text-end">Amount</th><th class="text-center">Purchase Date</th>
+          <th class="text-center">Remind Every</th><th class="text-center">Next Reminder</th>
+          <th class="text-center">Via</th><th class="text-center">Status</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in debtors %}
+        {% set rs = d.reminder_status %}
+        {% set _freq_opts = '[["3","Every 3 days"],["7","Every week"],["14","Every 2 weeks"],["30","Every month"],["60","Every 2 months"],["90","Every 3 months"]]' %}
+        {% set _notify_opts = '[["email","Email"],["sms","SMS"],["whatsapp","WhatsApp"],["both","Email+WhatsApp"]]' %}
+        <tr class="{{ 'table-danger' if rs=='overdue' else ('table-warning' if rs=='due_today' else ('table-success' if d.is_paid else '')) }}">
+          <td class="fw-semibold editable-cell" data-field="name" data-raw="{{ d.name }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.name }}</td>
+          <td class="small editable-cell" data-field="products_owed" data-raw="{{ d.products_owed or '' }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.products_owed or '—' }}</td>
+          <td class="small editable-cell" data-field="email" data-raw="{{ d.email or '' }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.email or d.phone or '—' }}</td>
+          <td class="text-end fw-semibold text-danger editable-cell" data-field="amount_owed" data-type="number" data-raw="{{ d.amount_owed }}" data-endpoint="/debtors/{{ d.id }}/update-field">R {{ "%.2f"|format(d.amount_owed) }}</td>
+          <td class="text-center small editable-cell" data-field="date_of_purchase" data-type="date" data-raw="{{ d.date_of_purchase }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.date_of_purchase }}</td>
+          <td class="text-center small editable-cell" data-field="reminder_days" data-type="select" data-raw="{{ d.reminder_days }}" data-options="{{ _freq_opts }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.freq_label }}</td>
+          <td class="text-center small">
+            {% if rs == 'overdue' %}<span class="text-danger fw-bold">OVERDUE</span>
+            {% elif rs == 'due_today' %}<span class="text-warning fw-bold">TODAY</span>
+            {% else %}{{ d.next_reminder }}{% endif %}
+          </td>
+          <td class="text-center small editable-cell" data-field="notify_method" data-type="select" data-raw="{{ d.notify_method }}" data-options="{{ _notify_opts }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.notify_method|capitalize }}</td>
+          <td class="text-center">
+            {% if d.is_paid %}
+              <span class="badge badge-ok px-2">Paid</span>
+            {% else %}
+              <span class="badge badge-low px-2">Active</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <div class="d-flex gap-1 justify-content-center">
+              <a href="{{ url_for('debtors.edit', did=d.id) }}" class="btn btn-sm btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>
+              {% if not d.is_paid %}
+              <button class="btn btn-sm btn-outline-success" title="Send reminder" onclick="sendReminder({{ d.id }}, this)"><i class="bi bi-envelope"></i></button>
+              <form method="POST" action="{{ url_for('debtors.mark_paid', did=d.id) }}" class="d-inline" onsubmit="return confirm('Mark as paid?')">
+                <button class="btn btn-sm btn-outline-primary" title="Mark paid"><i class="bi bi-check-lg"></i></button>
+              </form>
+              {% endif %}
+              <form method="POST" action="{{ url_for('debtors.delete', did=d.id) }}" class="d-inline" onsubmit="return confirm('Delete?')">
+                <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not debtors %}
+        <tr><td colspan="10" class="text-center text-muted py-4">No records found.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Single delete modal with two screens -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+
+      <!-- Screen 1: choice -->
+      <div id="delScreen1">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title text-danger"><i class="bi bi-trash me-2"></i>Delete Debtors</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-2">
+          <p class="text-muted mb-4">Choose what you want to delete:</p>
+          <div class="d-grid gap-2">
+            <button class="btn btn-danger" onclick="confirmDeleteAll()">
+              <i class="bi bi-trash-fill me-2"></i>Delete ALL Debtors
+            </button>
+            <button class="btn btn-outline-danger" onclick="showDelScreen2()">
+              <i class="bi bi-check2-square me-2"></i>Delete Selected Debtors…
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Screen 2: select -->
+      <div id="delScreen2" style="display:none;">
+        <div class="modal-header">
+          <button class="btn btn-link btn-sm text-muted p-0 me-2" onclick="showDelScreen1()" title="Back">
+            <i class="bi bi-arrow-left fs-5"></i>
+          </button>
+          <h5 class="modal-title text-danger"><i class="bi bi-check2-square me-2"></i>Select Debtors to Delete</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="text" id="delSearch" class="form-control mb-2" placeholder="Search by name…" autocomplete="off">
+          <div class="d-flex align-items-center gap-2 px-1 mb-2" style="font-size:.85rem;">
+            <input type="checkbox" id="delSelectAll" class="form-check-input mt-0">
+            <label for="delSelectAll" class="text-muted mb-0" style="cursor:pointer;">Select all visible</label>
+            <span id="delSelCount" class="ms-auto text-muted fw-semibold"></span>
+          </div>
+          <ul id="delList" class="list-group" style="max-height:360px;overflow-y:auto;"></ul>
+          <div id="delEmpty" class="text-center text-muted py-4" style="display:none;">No debtors found.</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="delConfirmBtn" class="btn btn-danger" onclick="confirmDeleteSelected()" disabled>
+            <i class="bi bi-trash me-1"></i>Delete Selected (<span id="delBtnCount">0</span>)
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Delete helpers ──────────────────────────────────────────────
+let _delModal = null;
+let _allDebtorsForDelete = [];
+
+function openDeleteModal() {
+  document.getElementById('delScreen1').style.display = '';
+  document.getElementById('delScreen2').style.display = 'none';
+  document.getElementById('delSearch').value = '';
+  _delModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteModal'));
+  _delModal.show();
+}
+
+function showDelScreen1() {
+  document.getElementById('delScreen1').style.display = '';
+  document.getElementById('delScreen2').style.display = 'none';
+}
+
+function showDelScreen2() {
+  document.getElementById('delScreen1').style.display = 'none';
+  document.getElementById('delScreen2').style.display = '';
+  fetch('/debtors/suggest?q=')
+    .then(r=>r.json()).then(hits=>{
+      _allDebtorsForDelete = hits;
+      renderDelList(hits);
+    });
+}
+
+function confirmDeleteAll() {
+  if (!confirm('Delete EVERY debtor? This cannot be undone.')) return;
+  _delModal?.hide();
+  fetch('/debtors/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}})
+    .then(r=>r.json()).then(d=>{
+      if (d.ok) location.reload();
+      else alert(d.msg);
+    });
+}
+
+function renderDelList(hits) {
+  const list   = document.getElementById('delList');
+  const empty  = document.getElementById('delEmpty');
+  const selAll = document.getElementById('delSelectAll');
+  if (!hits.length) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    selAll.checked = false;
+    updateDelCount();
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = hits.map(h=>`
+    <li class="list-group-item d-flex align-items-center gap-3 py-2 px-3 del-row" data-id="${h.id}">
+      <input type="checkbox" class="form-check-input flex-shrink-0 mt-0 del-cb" style="width:1.1em;height:1.1em;">
+      <div class="flex-grow-1">
+        <div class="fw-semibold">${h.name}</div>
+        <div class="text-muted small">${h.contact || '—'} &nbsp;·&nbsp; <span class="text-danger fw-semibold">R ${parseFloat(h.amount).toFixed(2)}</span></div>
+      </div>
+    </li>`).join('');
+  list.querySelectorAll('.del-cb').forEach(cb => cb.addEventListener('change', ()=>{
+    const all = [...list.querySelectorAll('.del-cb')];
+    selAll.checked = all.length > 0 && all.every(c=>c.checked);
+    updateDelCount();
+  }));
+  selAll.checked = false;
+  updateDelCount();
+}
+
+function updateDelCount() {
+  const n = document.querySelectorAll('.del-cb:checked').length;
+  document.getElementById('delSelCount').textContent = n ? `${n} selected` : '';
+  document.getElementById('delBtnCount').textContent = n;
+  document.getElementById('delConfirmBtn').disabled  = n === 0;
+}
+
+document.getElementById('delSearch').addEventListener('input', function(){
+  const q = this.value.trim().toLowerCase();
+  const filtered = q ? _allDebtorsForDelete.filter(h=>h.name.toLowerCase().includes(q)) : _allDebtorsForDelete;
+  renderDelList(filtered);
+});
+
+document.getElementById('delSelectAll').addEventListener('change', function(){
+  document.querySelectorAll('.del-cb').forEach(cb => cb.checked = this.checked);
+  updateDelCount();
+});
+
+function confirmDeleteSelected() {
+  const ids = [...document.querySelectorAll('.del-row')]
+    .filter(li => li.querySelector('.del-cb')?.checked)
+    .map(li => parseInt(li.dataset.id));
+  if (!ids.length) return;
+  if (!confirm(`Permanently delete ${ids.length} debtor(s)?`)) return;
+  const btn = document.getElementById('delConfirmBtn');
+  btn.disabled = true;
+  _delModal?.hide();
+  fetch('/debtors/delete-selected', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ids})
+  }).then(r=>r.json()).then(d=>{
+    if (d.ok) location.reload();
+    else { alert(d.msg); btn.disabled = false; }
+  });
+}
+// ── End delete helpers ──────────────────────────────────────────
+
+function sendReminder(did, btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+  fetch(`/debtors/${did}/send`, {method:'POST', headers:{'Content-Type':'application/json'}})
+    .then(r=>r.json()).then(d=>{
+      alert(d.ok ? '✓ ' + d.msg : '✗ ' + d.msg);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-envelope"></i>';
+    });
+}
+
+(function(){
+  const inp       = document.getElementById('debtorSearch');
+  const results   = document.getElementById('debtorResults');
+  const list      = document.getElementById('debtorList');
+  const selBtn    = document.getElementById('sendSelectedBtn');
+  const selCount  = document.getElementById('selCount');
+  const selectAll = document.getElementById('selectAll');
+  const status    = document.getElementById('sendStatus');
+  let timer, allHits = [];
+
+  function methodBadge(m){
+    if(m==='whatsapp') return '<span class="badge bg-success ms-1">WhatsApp</span>';
+    if(m==='sms')      return '<span class="badge bg-warning text-dark ms-1">SMS</span>';
+    if(m==='both')     return '<span class="badge bg-secondary ms-1">Email+WA</span>';
+    return '<span class="badge bg-primary ms-1">Email</span>';
+  }
+
+  function updateSelBtn(){
+    const n = list.querySelectorAll('input[type=checkbox]:checked').length;
+    selCount.textContent = n;
+    selBtn.style.display = n > 0 ? '' : 'none';
+  }
+
+  function renderHits(hits){
+    allHits = hits;
+    if(!hits.length){
+      list.innerHTML = '<li class="list-group-item text-muted text-center py-3">No active debtors found.</li>';
+      results.style.display = '';
+      selectAll.checked = false;
+      updateSelBtn();
+      return;
+    }
+    list.innerHTML = hits.map(h=>`
+      <li class="list-group-item d-flex align-items-center gap-3 py-2 px-3" data-id="${h.id}" data-name="${h.name}">
+        <input type="checkbox" class="form-check-input flex-shrink-0 mt-0 row-cb" style="width:1.1em;height:1.1em;">
+        <div class="flex-grow-1 min-width-0">
+          <div class="fw-semibold">${h.name} ${methodBadge(h.method)}</div>
+          <div class="text-muted small">${h.contact || '—'} &nbsp;·&nbsp; <span class="text-danger fw-semibold">R ${parseFloat(h.amount).toFixed(2)}</span></div>
+        </div>
+        <span class="row-status small"></span>
+      </li>`).join('');
+    results.style.display = '';
+    list.querySelectorAll('.row-cb').forEach(cb => cb.addEventListener('change', ()=>{
+      selectAll.checked = [...list.querySelectorAll('.row-cb')].every(c=>c.checked);
+      updateSelBtn();
+    }));
+    selectAll.checked = false;
+    updateSelBtn();
+  }
+
+  function doSearch(){
+    const q = inp.value.trim();
+    fetch(`/debtors/suggest?q=${encodeURIComponent(q)}`)
+      .then(r=>r.json()).then(renderHits);
+  }
+
+  inp.addEventListener('input', function(){
+    clearTimeout(timer);
+    timer = setTimeout(doSearch, 250);
+  });
+
+  inp.addEventListener('focus', function(){
+    if(results.style.display === 'none' || !list.innerHTML){
+      doSearch();
+    }
+  });
+
+  window.closeDebtorSearch = function(){
+    results.style.display = 'none';
+    inp.value = '';
+  };
+
+  // Close when clicking outside the search card
+  document.addEventListener('click', function(e){
+    const card = document.querySelector('.card.mb-4');
+    if (card && !card.contains(e.target)) {
+      results.style.display = 'none';
+    }
+  });
+
+  selectAll.addEventListener('change', function(){
+    list.querySelectorAll('.row-cb').forEach(cb => cb.checked = this.checked);
+    updateSelBtn();
+  });
+
+  window.sendSelected = async function(){
+    const checked = [...list.querySelectorAll('li')].filter(li => li.querySelector('.row-cb')?.checked);
+    if(!checked.length) return;
+    selBtn.disabled = true;
+    status.textContent = '';
+    let sent = 0, failed = 0;
+    for(const li of checked){
+      const did  = li.dataset.id;
+      const name = li.dataset.name;
+      const sp   = li.querySelector('.row-status');
+      sp.innerHTML = '<i class="bi bi-hourglass-split text-muted"></i>';
+      try {
+        const r = await fetch(`/debtors/${did}/send`, {method:'POST', headers:{'Content-Type':'application/json'}});
+        const d = await r.json();
+        if(d.ok){ sent++;  sp.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>'; }
+        else    { failed++; sp.innerHTML = `<i class="bi bi-x-circle-fill text-danger" title="${d.msg}"></i>`; }
+      } catch(e){ failed++; sp.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i>'; }
+    }
+    selBtn.disabled = false;
+    status.innerHTML = `<span class="text-success fw-semibold">${sent} sent</span>${failed ? ` &nbsp;<span class="text-danger">${failed} failed</span>` : ''}`;
+  };
+})();
+</script>
+{% endblock %}

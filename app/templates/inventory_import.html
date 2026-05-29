@@ -1,0 +1,436 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center gap-3 mb-3">
+  <a href="{{ url_for('inventory.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <div class="page-title mb-0"><i class="bi bi-file-earmark-arrow-up me-2"></i>Import Inventory from CSV</div>
+</div>
+
+{% if phase == "upload" %}
+{% set active = active_tab if active_tab is defined else "file" %}
+
+{% if connections %}
+<div class="mb-3">
+  <div class="fw-semibold mb-2" style="font-size:.88rem;"><i class="bi bi-bookmark-fill text-primary me-1"></i>Saved Connections — click to import instantly</div>
+  <div class="d-flex flex-wrap gap-2">
+    {% for c in connections %}
+    <form method="POST" action="{{ url_for('inventory.import_csv') }}" class="d-inline">
+      <input type="hidden" name="phase"      value="upload">
+      <input type="hidden" name="use_saved"  value="{{ c.name }}">
+      <input type="hidden" name="source"     value="{{ c.source }}">
+      <input type="hidden" name="has_header" value="1">
+      <button type="submit" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-{{ 'link-45deg' if c.source=='url' else 'braces' }} me-1"></i>{{ c.name }}
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+  <hr class="mt-3">
+</div>
+{% endif %}
+
+<!-- ── Step 1: Source ── -->
+<div class="row justify-content-center">
+  <div class="col-12 col-md-8">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-cloud-arrow-down me-2"></i>Step 1 — Choose your import source</div>
+      <div class="card-body">
+
+        <!-- Tabs -->
+        <ul class="nav nav-pills mb-4 gap-1" id="srcTabs">
+          <li class="nav-item">
+            <button class="nav-link {% if active=='file' %}active{% endif %}" data-tab="file" type="button">
+              <i class="bi bi-file-earmark-spreadsheet me-1"></i>File Upload
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link {% if active=='url' %}active{% endif %}" data-tab="url" type="button">
+              <i class="bi bi-link-45deg me-1"></i>URL
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link {% if active=='api' %}active{% endif %}" data-tab="api" type="button">
+              <i class="bi bi-braces me-1"></i>API
+            </button>
+          </li>
+        </ul>
+
+        <form method="POST" enctype="multipart/form-data" action="{{ url_for('inventory.import_csv') }}" id="importForm">
+          <input type="hidden" name="phase"  value="upload">
+          <input type="hidden" name="source" id="sourceInput" value="{{ active }}">
+
+          <!-- ── File tab ── -->
+          <div class="tab-pane" id="pane-file">
+            <p class="text-muted small mb-3">
+              Upload a <strong>CSV</strong> or <strong>Excel (.xlsx)</strong> file exported from any software.
+              The first row must be column headers.
+            </p>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Choose file</label>
+              <input type="file" name="csv_file" accept=".csv,.xlsx,.xls,.txt" class="form-control">
+              <div class="form-text">Supported: .csv, .xlsx — exported from Excel, Google Sheets, QuickBooks, Shopify, etc.</div>
+            </div>
+          </div>
+
+          <!-- ── URL tab ── -->
+          <div class="tab-pane" id="pane-url" style="display:none;">
+            <div class="alert alert-success py-2 mb-3">
+              <strong>Google Sheets — instant sync:</strong> paste the URL directly from your sheet's address bar.<br>
+              <span class="small">Example: <code>https://docs.google.com/spreadsheets/d/1AbC…xyz/edit</code><br>
+              The sheet must be shared as <em>"Anyone with the link can view"</em>.<br>
+              <span class="text-danger fw-semibold">Do NOT use "Publish to web → CSV" — that URL has a 5–15 minute delay.</span></span>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Google Sheets or CSV URL</label>
+              <input type="url" name="csv_url" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit">
+              <div class="form-text">Also works with any public CSV URL (Dropbox, direct link, etc.).</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:.85rem;"><i class="bi bi-bookmark me-1"></i>Save this connection as <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="text" name="save_as" class="form-control form-control-sm" placeholder='e.g. "Stock Sheet" — leave blank to not save'>
+            </div>
+          </div>
+
+          <!-- ── API tab ── -->
+          <div class="tab-pane" id="pane-api" style="display:none;">
+            <p class="text-muted small mb-3">
+              Connect to a REST API endpoint that returns your inventory as JSON or CSV.
+              Works with Airtable, custom ERP systems, WooCommerce, and more.
+            </p>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">API Endpoint URL</label>
+              <input type="url" name="api_url" class="form-control" placeholder="https://api.example.com/products">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">API Key / Bearer Token <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="text" name="api_key" class="form-control font-monospace" placeholder="your_api_key_here">
+              <div class="form-text">Sent as <code>Authorization: Bearer &lt;key&gt;</code> header.</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">JSON records key <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="text" name="api_path" class="form-control font-monospace" placeholder='e.g. data  or  records  or  result.items'>
+              <div class="form-text">
+                If the API returns <code>{"records": [...]}</code>, enter <code>records</code> here.
+                Leave blank if the response is a direct array <code>[...]</code>.
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:.85rem;"><i class="bi bi-bookmark me-1"></i>Save this connection as <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="text" name="save_as" class="form-control form-control-sm" placeholder='e.g. "EPOS Inventory" — leave blank to not save'>
+            </div>
+          </div>
+
+          <!-- Import Options -->
+          <div class="card mb-3 mt-3" style="border:1px solid #CBD5E1;">
+            <div class="card-header py-2" style="cursor:pointer;background:#F8FAFC;" data-bs-toggle="collapse" data-bs-target="#importOpts">
+              <i class="bi bi-sliders me-1"></i><strong style="font-size:.9rem;">Import Options</strong>
+              <small class="text-muted ms-2">delimiter · date format · duplicates · headers</small>
+              <i class="bi bi-chevron-down float-end mt-1" style="font-size:.75rem;"></i>
+            </div>
+            <div class="collapse" id="importOpts">
+              <div class="card-body pt-2 pb-3">
+                <div class="row g-3">
+                  <div class="col-sm-6 col-md-3">
+                    <label class="form-label fw-semibold" style="font-size:.82rem;">Delimiter</label>
+                    <select name="delimiter" class="form-select form-select-sm">
+                      <option value=",">Comma  ( , )</option>
+                      <option value=";">Semicolon  ( ; )</option>
+                      <option value="tab">Tab</option>
+                      <option value="|">Pipe  ( | )</option>
+                    </select>
+                  </div>
+                  <div class="col-sm-6 col-md-3">
+                    <label class="form-label fw-semibold" style="font-size:.82rem;">Date Format</label>
+                    <select name="date_format" class="form-select form-select-sm">
+                      <option value="%Y-%m-%d">YYYY-MM-DD</option>
+                      <option value="%d/%m/%Y">DD/MM/YYYY</option>
+                      <option value="%m/%d/%Y">MM/DD/YYYY</option>
+                      <option value="%d-%m-%Y">DD-MM-YYYY</option>
+                    </select>
+                  </div>
+                  <div class="col-sm-6 col-md-3">
+                    <label class="form-label fw-semibold" style="font-size:.82rem;">Duplicates</label>
+                    <select name="dup_handling" class="form-select form-select-sm">
+                      <option value="skip">Skip duplicates</option>
+                      <option value="overwrite">Overwrite existing</option>
+                      <option value="add">Add as new</option>
+                    </select>
+                  </div>
+                  <div class="col-sm-6 col-md-3 d-flex align-items-end pb-1">
+                    <div class="form-check">
+                      <input type="checkbox" name="has_header" id="hasHeader" class="form-check-input" value="1" checked>
+                      <label class="form-check-label fw-semibold" for="hasHeader" style="font-size:.82rem;">First row is headers</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100 mt-2">
+            <i class="bi bi-arrow-right me-1"></i>Next: Map Columns
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header text-white" style="background:#334155;"><i class="bi bi-lightbulb me-2"></i>Tips</div>
+      <div class="card-body small text-muted">
+        <ul class="mb-0 ps-3">
+          <li>Only <strong>Product Name</strong> is required — all other columns are optional.</li>
+          <li>Quantities and prices should be plain numbers (e.g. <code>25</code> not <code>25 units</code>).</li>
+          <li><strong>Google Sheets:</strong> share the sheet as "Anyone with the link can view", then paste the URL from the address bar — changes sync within seconds. Avoid "Publish to web" URLs (5–15 min delay).</li>
+          <li><strong>Airtable API:</strong> use your base's REST URL with your personal access token.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const panes = {file:'pane-file', url:'pane-url', api:'pane-api'};
+  function showTab(tab){
+    Object.values(panes).forEach(id => document.getElementById(id).style.display='none');
+    document.getElementById(panes[tab]).style.display='block';
+    document.querySelectorAll('#srcTabs .nav-link').forEach(b=>{
+      b.classList.toggle('active', b.dataset.tab===tab);
+    });
+    document.getElementById('sourceInput').value = tab;
+  }
+  document.querySelectorAll('#srcTabs .nav-link').forEach(b=>{
+    b.addEventListener('click', ()=>showTab(b.dataset.tab));
+  });
+  showTab('{{ active }}');
+})();
+</script>
+
+{% elif phase == "map" %}
+<!-- ── Step 2: Map columns ── -->
+<form method="POST" action="{{ url_for('inventory.import_csv') }}">
+  <input type="hidden" name="phase"        value="review">
+  <input type="hidden" name="csv_b64"      value="{{ csv_b64 }}">
+  <input type="hidden" name="date_format"  value="{{ opts.date_format }}">
+  <input type="hidden" name="dup_handling" value="{{ opts.dup_handling }}">
+
+  <div class="row g-3">
+    <!-- Left: mapping -->
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header"><i class="bi bi-diagram-3 me-2"></i>Step 2 — Map your columns</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Match each app field to the column in your CSV. <strong>{{ total }} row(s)</strong> detected.
+            Columns auto-detected where possible — adjust as needed.
+          </p>
+
+          {% set fields = [
+            ("map_name",     "Product Name",  True,  guesses.name),
+            ("map_code",     "Code / SKU",    False, guesses.code),
+            ("map_category", "Category",      False, guesses.category),
+            ("map_unit",     "Unit",          False, guesses.unit),
+            ("map_stock",    "Current Stock", False, guesses.current_stock),
+            ("map_min",      "Min Level",     False, guesses.reorder_level),
+            ("map_cost",     "Cost Price",    False, guesses.last_cost_price),
+            ("map_supplier", "Supplier",      False, guesses.supplier),
+          ] %}
+
+<!-- shared datalist of all CSV headers -->
+<datalist id="colList">
+  {% for h in headers %}<option value="{{ h }}">{% endfor %}
+</datalist>
+
+          {% for fname, label, required, guessed in fields %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:.85rem;">
+              {{ label }}{% if required %} <span class="text-danger">*</span>{% endif %}
+            </label>
+            <input type="text" name="{{ fname }}" list="colList"
+                   class="form-control form-control-sm"
+                   value="{{ guessed }}"
+                   placeholder="Type or pick a column name…"
+                   autocomplete="off">
+          </div>
+          {% endfor %}
+
+          <button type="submit" class="btn btn-primary w-100 mt-2">
+            <i class="bi bi-pencil-square me-1"></i>Next: Review &amp; Edit
+          </button>
+          <a href="{{ url_for('inventory.import_csv') }}" class="btn btn-outline-secondary w-100 mt-2">
+            ← Start over
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: raw preview -->
+    <div class="col-12 col-lg-7">
+      <div class="card">
+        <div class="card-header"><i class="bi bi-eye me-2"></i>Raw Data Preview ({{ preview|length }} rows)</div>
+        <div class="card-body p-0" style="overflow-x:auto;">
+          <table class="table table-sm table-hover mb-0" style="font-size:.78rem;white-space:nowrap;">
+            <thead>
+              <tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+              {% for row in preview %}
+              <tr>{% for h in headers %}<td class="text-muted">{{ row[h] or '' }}</td>{% endfor %}</tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer text-muted small text-center">{{ total }} row(s) will be imported</div>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% elif phase == "edit" %}
+<!-- ── Step 3: Review & Edit ── -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div style="font-size:.9rem;color:#64748B;"><i class="bi bi-pencil-square me-1"></i>Step 3 — Review &amp; Edit before importing</div>
+  <span class="badge" style="background:#1E293B;color:#94A3B8;font-size:.8rem;" id="rowCount">{{ rows|length }} rows</span>
+</div>
+
+<form method="POST" action="{{ url_for('inventory.import_csv') }}" id="editForm">
+  <input type="hidden" name="phase"        value="confirm">
+  <input type="hidden" name="rows_json"    value="{{ rows_json }}">
+  <input type="hidden" name="dup_handling" value="{{ opts.dup_handling if opts is defined else 'skip' }}">
+
+  <div class="card mb-3">
+    <div class="card-body p-0" style="overflow-x:auto;">
+      <table class="table table-sm mb-0" id="editTable" style="font-size:.82rem;min-width:900px;">
+        {% set c = col if col is defined else {} %}
+        <thead>
+          <tr style="background:#F8FAFC;">
+            <th style="width:36px;"></th>
+            <th>{{ c.name or 'Name' }} <span class="text-danger">*</span></th>
+            <th>{{ c.code or 'Code / SKU' }}</th>
+            <th>{{ c.category or 'Category' }}</th>
+            <th style="width:70px;">{{ c.unit or 'Unit' }}</th>
+            <th style="width:90px;">{{ c.current_stock or 'Stock' }}</th>
+            <th style="width:90px;background:#FFF9C4;">Min Level</th>
+            <th style="width:100px;">{{ c.last_cost_price or 'Cost Price' }}</th>
+            <th>{{ c.supplier or 'Supplier' }}</th>
+            <th style="width:36px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr data-idx="{{ loop.index0 }}">
+            <td class="text-center text-muted" style="font-size:.72rem;vertical-align:middle;">{{ loop.index }}</td>
+            <td><input name="name"            class="form-control form-control-sm" value="{{ r.name }}"            required></td>
+            <td><input name="code"            class="form-control form-control-sm" value="{{ r.code }}"></td>
+            <td><input name="category"        class="form-control form-control-sm" value="{{ r.category }}"></td>
+            <td><input name="unit"            class="form-control form-control-sm" value="{{ r.unit }}"></td>
+            <td><input name="current_stock"   class="form-control form-control-sm" value="{{ r.current_stock }}"   type="number" step="0.01"></td>
+            <td><input name="reorder_level"   class="form-control form-control-sm" value="{{ r.reorder_level }}"   type="number" step="0.01"></td>
+            <td><input name="last_cost_price" class="form-control form-control-sm" value="{{ r.last_cost_price }}" type="number" step="0.01"></td>
+            <td><input name="supplier"        class="form-control form-control-sm" value="{{ r.supplier }}"></td>
+            <td class="text-center" style="vertical-align:middle;">
+              <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 del-row" title="Remove row">
+                <i class="bi bi-x-lg" style="font-size:.7rem;"></i>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Sticky action bar -->
+  <div style="position:sticky;bottom:0;background:#F1F5F9;padding:.75rem 0;border-top:1px solid #E2E8F0;z-index:100;">
+    <div class="d-flex gap-2 align-items-center">
+      <button type="button" id="addRowBtn" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>Add row
+      </button>
+      <span class="text-muted small ms-2" id="deletedNote" style="display:none;">
+        <i class="bi bi-info-circle me-1"></i>Deleted rows won't be imported.
+      </span>
+      <div class="ms-auto d-flex gap-2">
+        <a href="{{ url_for('inventory.import_csv') }}" class="btn btn-outline-secondary btn-sm">← Start over</a>
+        <button type="submit" class="btn btn-primary" id="importBtn">
+          <i class="bi bi-check2-circle me-1"></i>Import <span id="importCount">{{ rows|length }}</span> Product(s)
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script>
+(function(){
+  const tbody   = document.querySelector('#editTable tbody');
+  const countEl = document.getElementById('importCount');
+  const noteEl  = document.getElementById('deletedNote');
+  let   deleted = new Set();
+
+  function recount(){
+    const total = tbody.querySelectorAll('tr:not(.deleted-row)').length;
+    countEl.textContent = total;
+    noteEl.style.display = deleted.size ? 'inline' : 'none';
+  }
+
+  // Delete row — hide visually, mark inputs disabled so they're not submitted
+  tbody.addEventListener('click', e=>{
+    const btn = e.target.closest('.del-row');
+    if(!btn) return;
+    const tr = btn.closest('tr');
+    tr.classList.add('deleted-row');
+    tr.style.opacity = '.35';
+    tr.querySelectorAll('input').forEach(i=>i.disabled=true);
+    // Add hidden delete marker
+    const h = document.createElement('input');
+    h.type='hidden'; h.name='delete_row'; h.value=tr.dataset.idx;
+    tr.appendChild(h);
+    btn.innerHTML='<i class="bi bi-arrow-counterclockwise" style="font-size:.7rem;"></i>';
+    btn.title='Restore row';
+    btn.classList.replace('btn-outline-danger','btn-outline-success');
+    deleted.add(tr.dataset.idx);
+    recount();
+  });
+
+  // Restore deleted row on second click
+  tbody.addEventListener('click', e=>{
+    const btn = e.target.closest('.del-row');
+    if(!btn || !btn.classList.contains('btn-outline-success')) return;
+    const tr = btn.closest('tr');
+    tr.classList.remove('deleted-row');
+    tr.style.opacity='1';
+    tr.querySelectorAll('input[type!=hidden]').forEach(i=>i.disabled=false);
+    tr.querySelectorAll('input[name=delete_row]').forEach(i=>i.remove());
+    btn.innerHTML='<i class="bi bi-x-lg" style="font-size:.7rem;"></i>';
+    btn.title='Remove row';
+    btn.classList.replace('btn-outline-success','btn-outline-danger');
+    deleted.delete(tr.dataset.idx);
+    recount();
+  });
+
+  // Add blank row
+  document.getElementById('addRowBtn').addEventListener('click',()=>{
+    const idx = tbody.querySelectorAll('tr').length;
+    const tr  = document.createElement('tr');
+    tr.dataset.idx = idx;
+    tr.innerHTML = `
+      <td class="text-center text-muted" style="font-size:.72rem;vertical-align:middle;">${idx+1}</td>
+      <td><input name="name"            class="form-control form-control-sm" required></td>
+      <td><input name="code"            class="form-control form-control-sm"></td>
+      <td><input name="category"        class="form-control form-control-sm"></td>
+      <td><input name="unit"            class="form-control form-control-sm" value="PCS"></td>
+      <td><input name="current_stock"   class="form-control form-control-sm" value="0" type="number" step="0.01"></td>
+      <td><input name="reorder_level"   class="form-control form-control-sm" value="0" type="number" step="0.01"></td>
+      <td><input name="last_cost_price" class="form-control form-control-sm" value="0" type="number" step="0.01"></td>
+      <td><input name="supplier"        class="form-control form-control-sm"></td>
+      <td class="text-center" style="vertical-align:middle;">
+        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 del-row" title="Remove row">
+          <i class="bi bi-x-lg" style="font-size:.7rem;"></i>
+        </button>
+      </td>`;
+    tbody.appendChild(tr);
+    recount();
+    tr.querySelector('input[name=name]').focus();
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title"><i class="bi bi-bar-chart-line me-2"></i>Reports & Analytics</div>
+
+<!-- Overview -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-primary">R {{ "%.2f"|format(inv_value) }}</div>
+      <div class="stat-lbl">Total Inventory Value</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-warning">R {{ "%.2f"|format(low_value) }}</div>
+      <div class="stat-lbl">Value at Risk (Low Stock)</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-success">R {{ "%.2f"|format(sales_stats.total_revenue) }}</div>
+      <div class="stat-lbl">Total Sales Revenue</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-danger">R {{ "%.2f"|format(stats.total_owed) }}</div>
+      <div class="stat-lbl">Outstanding Debt</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+
+  <!-- Debt Aging -->
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-calendar-x me-2"></i>Debt Aging</div>
+      <div class="card-body">
+        {% set aging_rows = [
+          ('Current (0–30 days)', debt_aging.current, 'success'),
+          ('31–60 days overdue',  debt_aging['30'],   'warning'),
+          ('61–90 days overdue',  debt_aging['60'],   'orange'),
+          ('90+ days overdue',    debt_aging.get('90plus', 0), 'danger'),
+        ] %}
+        {% for label, amt, cls in aging_rows %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="small fw-semibold">{{ label }}</span>
+          <span class="fw-bold {% if cls == 'orange' %}text-warning{% else %}text-{{ cls }}{% endif %}">
+            R {{ "%.2f"|format(amt) }}
+          </span>
+        </div>
+        {% set total_debt = stats.total_owed if stats.total_owed > 0 else 1 %}
+        <div class="progress mb-3" style="height:6px;">
+          <div class="progress-bar bg-{{ 'warning' if cls == 'orange' else cls }}"
+               style="width:{{ [amt / total_debt * 100, 100]|min }}%"></div>
+        </div>
+        {% endfor %}
+        <hr class="my-2">
+        <div class="d-flex justify-content-between fw-bold">
+          <span>Total Outstanding</span>
+          <span class="text-danger">R {{ "%.2f"|format(stats.total_owed) }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category Value Breakdown -->
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-pie-chart me-2"></i>Inventory by Category</div>
+      <div class="card-body">
+        {% if cat_totals %}
+          {% set max_cat = cat_totals[0][1] if cat_totals else 1 %}
+          {% for cat, val in cat_totals[:8] %}
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="small text-truncate" style="max-width:180px;" title="{{ cat }}">{{ cat }}</span>
+            <span class="small fw-bold text-primary ms-2">R {{ "%.0f"|format(val) }}</span>
+          </div>
+          <div class="progress mb-2" style="height:5px;">
+            <div class="progress-bar bg-primary" style="width:{{ [val / max_cat * 100, 100]|min }}%"></div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="text-center text-muted py-3">No category data yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+
+  <!-- Top Sold Products -->
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-trophy me-2"></i>Top Selling Products</div>
+      <div class="card-body p-0">
+        {% if top_sold %}
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>#</th><th>Product</th>
+              <th class="text-center">Units Sold</th>
+              <th class="text-end">Revenue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for i, p in top_sold|enumerate %}
+            <tr>
+              <td class="text-muted">{{ i+1 }}</td>
+              <td class="fw-semibold" style="max-width:200px;white-space:normal;">{{ p.product_name }}</td>
+              <td class="text-center">{{ "%.0f"|format(p.total_qty) }}</td>
+              <td class="text-end text-success">R {{ "%.2f"|format(p.total_revenue) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-4 text-muted">No sales data yet. Record sales to see top products.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Highest Value Stock -->
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-cash-stack me-2"></i>Highest Value Stock Items</div>
+      <div class="card-body p-0">
+        {% if top_value %}
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>#</th><th>Product</th>
+              <th class="text-center">Qty</th>
+              <th class="text-end">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for i, p in top_value|enumerate %}
+            <tr>
+              <td class="text-muted">{{ i+1 }}</td>
+              <td class="fw-semibold" style="max-width:200px;white-space:normal;">{{ p.name }}</td>
+              <td class="text-center">{{ p.current_stock }}</td>
+              <td class="text-end fw-bold text-primary">
+                R {{ "%.2f"|format(p.current_stock * p.last_cost_price) }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-4 text-muted">Add cost prices to products to see values.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+{% block content %}
+{% if slow_url %}
+<div class="alert alert-warning alert-dismissible fade show py-2 mb-2" role="alert">
+  <strong>Slow sync detected.</strong>
+  Your Google Sheet is connected using a "Publish to web" URL which can delay changes by 5–15 minutes.
+  For <strong>instant sync</strong>: go to
+  <a href="{{ url_for('inventory.import_csv') }}" class="alert-link">Import CSV → URL tab</a>,
+  paste the sheet's address bar URL (e.g. <code>…/spreadsheets/d/YOUR_ID/edit</code>),
+  and make sure the sheet is shared as <em>"Anyone with the link can view"</em>.
+  <button type="button" class="btn-close py-2" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="page-title mb-0"><i class="bi bi-box-seam me-2"></i>Inventory ({{ products|length }} items)</div>
+  <div class="d-flex gap-2">
+    {% if has_source %}
+    <span class="text-muted small align-self-center me-1" id="lastSyncLabel">
+      {% if last_sync %}Last sync: {{ last_sync }}{% endif %}
+    </span>
+    <button class="btn btn-outline-info" id="refreshBtn" onclick="doAutoSync()" title="Re-fetch from saved Google Sheet / URL">
+      <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+    </button>
+    {% endif %}
+    <a href="{{ url_for('inventory.import_csv') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import CSV</a>
+    <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#defaultMinModal">
+      <i class="bi bi-sliders me-1"></i>Set Default Min Level
+    </button>
+    <a href="{{ url_for('recycle.index') }}" class="btn btn-outline-secondary" title="Recycle Bin"><i class="bi bi-trash3 me-1"></i>Bin</a>
+    <button class="btn btn-outline-danger" onclick="openInvDeleteModal()"><i class="bi bi-trash me-1"></i>Delete</button>
+    <a href="{{ url_for('inventory.add') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add Product</a>
+  </div>
+</div>
+
+<div class="card mb-4" style="border:1.5px solid #6366F1;">
+  <div class="card-body py-3">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-search text-primary"></i>
+        <span class="fw-semibold">Search Products</span>
+      </div>
+      <button id="invDelSelectedBtn" class="btn btn-danger btn-sm" style="display:none;" onclick="invDeleteSelected()">
+        <i class="bi bi-trash me-1"></i>Delete Selected (<span id="invSelCount">0</span>)
+      </button>
+    </div>
+    <div class="d-flex gap-2">
+      <input type="text" id="invSearchInput" class="form-control mb-2" placeholder="Search by name or code… (leave blank to show all)" autocomplete="off">
+      <button class="btn btn-outline-secondary btn-sm mb-2" onclick="closeInvSearch()" title="Close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div id="invSearchResults" style="display:none;">
+      <div class="d-flex align-items-center gap-2 px-1 mb-1" style="font-size:.83rem;">
+        <input type="checkbox" id="invSelectAll" class="form-check-input mt-0">
+        <label for="invSelectAll" class="text-muted mb-0" style="cursor:pointer;">Select all</label>
+        <span id="invSelStatus" class="ms-auto text-muted fw-semibold"></span>
+      </div>
+      <ul id="invSearchList" class="list-group" style="max-height:300px;overflow-y:auto;"></ul>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0" style="overflow-x:auto;">
+    <table class="table table-hover mb-0" id="invTable" style="white-space:nowrap;">
+      <thead>
+        <tr>
+          {% if source_headers %}
+            {% for col in source_headers %}
+              <th>{{ col }}</th>
+            {% endfor %}
+          {% else %}
+            <th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th class="text-center">Stock</th>
+          {% endif %}
+          <th class="text-center">Min Level</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+        {% set status = 'out' if p.current_stock <= 0 else ('low' if (p.reorder_level > 0 and p.current_stock <= p.reorder_level) else 'ok') %}
+        <tr class="{{ 'table-danger' if status=='out' else ('table-warning' if status=='low' else '') }}">
+          {% if source_headers %}
+            {% for col in source_headers %}
+              {% set field = col_to_field.get(col, '') %}
+              {% if field == 'current_stock' %}
+                <td class="text-center editable-cell" data-field="current_stock" data-type="number"
+                    data-raw="{{ p.current_stock }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.current_stock }}</td>
+              {% elif field == 'reorder_level' %}
+                <td class="text-center editable-cell" data-field="reorder_level" data-type="number"
+                    data-raw="{{ p.reorder_level }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.reorder_level }}</td>
+              {% elif field == 'last_cost_price' %}
+                <td class="editable-cell" data-field="last_cost_price" data-type="number"
+                    data-raw="{{ p.last_cost_price }}" data-endpoint="/inventory/{{ p.id }}/update-field">R {{ "%.2f"|format(p.last_cost_price) }}</td>
+              {% elif field == 'name' %}
+                <td class="fw-semibold editable-cell" data-field="name"
+                    data-raw="{{ p.name }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.name }}</td>
+              {% elif field in ('category','unit','supplier') %}
+                <td class="editable-cell" data-field="{{ field }}"
+                    data-raw="{{ p[field] }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p[field] }}</td>
+              {% elif field %}
+                <td class="editable-cell" data-field="{{ field }}"
+                    data-raw="{{ p[field] }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p[field] }}</td>
+              {% else %}
+                <td class="editable-cell" data-field="extra:{{ col }}"
+                    data-raw="{{ p._extra.get(col, '') }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p._extra.get(col, '') }}</td>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            <td class="text-muted small">{{ p.code }}</td>
+            <td class="fw-semibold editable-cell" data-field="name" data-raw="{{ p.name }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.name }}</td>
+            <td class="editable-cell" data-field="category" data-raw="{{ p.category }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.category }}</td>
+            <td class="editable-cell" data-field="unit" data-raw="{{ p.unit }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.unit }}</td>
+            <td class="text-center editable-cell" data-field="current_stock" data-type="number" data-raw="{{ p.current_stock }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.current_stock }}</td>
+          {% endif %}
+          <td class="text-center editable-cell" data-field="reorder_level" data-type="number"
+              data-raw="{{ p.reorder_level }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.reorder_level }}</td>
+          <td class="text-center">
+            {% if status == 'out' %}<span class="badge badge-out px-2">OUT OF STOCK</span>
+            {% elif status == 'low' %}<span class="badge badge-low px-2">LOW STOCK</span>
+            {% else %}<span class="badge badge-ok px-2">OK</span>{% endif %}
+          </td>
+          <td class="text-center">
+            <a href="{{ url_for('inventory.edit', pid=p.id) }}" class="btn btn-sm btn-outline-secondary me-1" title="Edit"><i class="bi bi-pencil"></i></a>
+            <form method="POST" action="{{ url_for('inventory.delete', pid=p.id) }}" class="d-inline" onsubmit="return confirm('Delete this product?')">
+              <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<!-- Delete Modal -->
+<div class="modal fade" id="invDeleteModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+
+      <!-- Screen 1: choice -->
+      <div id="invDelScreen1">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title text-danger"><i class="bi bi-trash me-2"></i>Delete Products</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-2">
+          <div class="alert alert-warning py-2 px-3 mb-3 d-flex align-items-start gap-2" style="font-size:.85rem;">
+            <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+            <div>Deleted items move to the <strong>Recycle Bin</strong> and will <strong>not</strong> be restored by future syncs. You can recover them anytime from the Bin.</div>
+          </div>
+          <p class="text-muted mb-3">Choose what you want to delete:</p>
+          <div class="d-grid gap-2">
+            <button class="btn btn-danger" onclick="confirmInvDeleteAll()">
+              <i class="bi bi-trash-fill me-2"></i>Delete ALL Products
+            </button>
+            <button class="btn btn-outline-danger" onclick="showInvDelScreen2()">
+              <i class="bi bi-check2-square me-2"></i>Delete Selected Products…
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Screen 2: select -->
+      <div id="invDelScreen2" style="display:none;">
+        <div class="modal-header">
+          <button class="btn btn-link btn-sm text-muted p-0 me-2" onclick="showInvDelScreen1()" title="Back">
+            <i class="bi bi-arrow-left fs-5"></i>
+          </button>
+          <h5 class="modal-title text-danger"><i class="bi bi-check2-square me-2"></i>Select Products to Delete</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="text" id="invDelSearch" class="form-control mb-2" placeholder="Search by name or code…" autocomplete="off">
+          <div class="d-flex align-items-center gap-2 px-1 mb-2" style="font-size:.85rem;">
+            <input type="checkbox" id="invDelSelectAll" class="form-check-input mt-0">
+            <label for="invDelSelectAll" class="text-muted mb-0" style="cursor:pointer;">Select all visible</label>
+            <span id="invDelSelCount" class="ms-auto text-muted fw-semibold"></span>
+          </div>
+          <ul id="invDelList" class="list-group" style="max-height:360px;overflow-y:auto;"></ul>
+          <div id="invDelEmpty" class="text-center text-muted py-4" style="display:none;">No products found.</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button id="invDelConfirmBtn" class="btn btn-danger" onclick="confirmInvDeleteSelected()" disabled>
+            <i class="bi bi-trash me-1"></i>Delete Selected (<span id="invDelBtnCount">0</span>)
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Default Min Level Modal -->
+<div class="modal fade" id="defaultMinModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1E293B;color:#fff;border-radius:10px 10px 0 0;">
+        <h6 class="modal-title mb-0"><i class="bi bi-sliders me-2"></i>Set Default Min Level</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label fw-semibold">Minimum quantity for all products</label>
+        <input type="number" id="defaultMinInput" class="form-control form-control-lg text-center fw-bold"
+               placeholder="e.g. 5" min="0" step="1" style="font-size:2rem;letter-spacing:2px;">
+        <div class="form-text mb-3">Enter any number — applies to all products.</div>
+        <hr>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="overrideManual">
+          <label class="form-check-label fw-semibold" for="overrideManual">
+            Also apply to products I manually changed from the table
+          </label>
+          <div class="form-text">If unchecked, products you edited directly in the inventory table will keep their own min level.</div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 gap-2">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-warning fw-bold px-4" onclick="applyDefaultMin()">
+          <i class="bi bi-check2 me-1"></i>Apply
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Inventory search panel ───────────────────────────────────────
+(function(){
+  const inp      = document.getElementById('invSearchInput');
+  const results  = document.getElementById('invSearchResults');
+  const list     = document.getElementById('invSearchList');
+  const selAll   = document.getElementById('invSelectAll');
+  const selStatus= document.getElementById('invSelStatus');
+  const delBtn   = document.getElementById('invDelSelectedBtn');
+  const selCount = document.getElementById('invSelCount');
+  let timer, allHits = [];
+
+  const statusLabel = {out:'OUT OF STOCK', low:'LOW STOCK', ok:'OK'};
+  const statusClass = {out:'badge-out', low:'badge-low', ok:'badge-ok'};
+
+  function updateInvSelBtn() {
+    const n = list.querySelectorAll('.inv-srch-cb:checked').length;
+    selCount.textContent = n;
+    selStatus.textContent = n ? `${n} selected` : '';
+    delBtn.style.display = n > 0 ? '' : 'none';
+  }
+
+  function renderHits(hits) {
+    if (!hits.length) {
+      list.innerHTML = '<li class="list-group-item text-muted text-center py-3">No products found.</li>';
+      results.style.display = '';
+      selAll.checked = false;
+      updateInvSelBtn();
+      return;
+    }
+    list.innerHTML = hits.map(h => `
+      <li class="list-group-item d-flex align-items-center gap-3 py-2 px-3 inv-srch-row" data-id="${h.id}">
+        <input type="checkbox" class="form-check-input flex-shrink-0 mt-0 inv-srch-cb" style="width:1.1em;height:1.1em;">
+        <div class="flex-grow-1" style="cursor:pointer;min-width:0;" onclick="window.location='/inventory/${h.id}/edit'">
+          <div class="fw-semibold" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.name}</div>
+          <div class="text-muted small">${h.code} &nbsp;·&nbsp; Stock: ${h.stock}</div>
+        </div>
+        <span class="badge ${statusClass[h.status]} px-2" style="font-size:.7rem;flex-shrink:0;">${statusLabel[h.status]}</span>
+      </li>`).join('');
+    results.style.display = '';
+    list.querySelectorAll('.inv-srch-cb').forEach(cb => cb.addEventListener('change', () => {
+      selAll.checked = [...list.querySelectorAll('.inv-srch-cb')].every(c => c.checked);
+      updateInvSelBtn();
+    }));
+    selAll.checked = false;
+    updateInvSelBtn();
+  }
+
+  function doSearch() {
+    const q = inp.value.trim().toLowerCase();
+    const filtered = q
+      ? allHits.filter(h => h.name.toLowerCase().includes(q) || h.code.toLowerCase().includes(q))
+      : allHits;
+    renderHits(filtered);
+  }
+
+  function loadAll() {
+    fetch('/inventory/suggest-all')
+      .then(r => r.json()).then(hits => {
+        allHits = hits;
+        doSearch();
+      });
+  }
+
+  inp.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(doSearch, 200); });
+
+  inp.addEventListener('focus', () => {
+    if (!allHits.length) loadAll();
+    else if (results.style.display === 'none') doSearch();
+  });
+
+  selAll.addEventListener('change', function() {
+    list.querySelectorAll('.inv-srch-cb').forEach(cb => cb.checked = this.checked);
+    updateInvSelBtn();
+  });
+
+  window.closeInvSearch = function() {
+    results.style.display = 'none';
+    inp.value = '';
+  };
+
+  window.invDeleteSelected = function() {
+    const ids = [...list.querySelectorAll('.inv-srch-row')]
+      .filter(li => li.querySelector('.inv-srch-cb')?.checked)
+      .map(li => parseInt(li.dataset.id));
+    if (!ids.length) return;
+    if (!confirm(`Permanently delete ${ids.length} product(s)?`)) return;
+    delBtn.disabled = true;
+    fetch('/inventory/delete-selected', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ids})
+    }).then(r=>r.json()).then(d => {
+      if (d.ok) location.reload();
+      else { alert(d.msg); delBtn.disabled = false; }
+    });
+  };
+
+  // Close list when clicking outside the card
+  document.addEventListener('click', e => {
+    const card = document.querySelector('.card.mb-4');
+    if (card && !card.contains(e.target)) results.style.display = 'none';
+  });
+})();
+// ── End inventory search panel ───────────────────────────────────
+
+document.getElementById('defaultMinModal').addEventListener('show.bs.modal', () => {
+  document.getElementById('defaultMinInput').value = '';
+  document.getElementById('overrideManual').checked = false;
+});
+
+async function applyDefaultMin() {
+  const val = parseFloat(document.getElementById('defaultMinInput').value);
+  if (isNaN(val) || val < 0) { document.getElementById('defaultMinInput').focus(); return; }
+  const override = document.getElementById('overrideManual').checked;
+  bootstrap.Modal.getInstance(document.getElementById('defaultMinModal')).hide();
+  await fetch('/inventory/set-default-min', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ min_level: val, override_manual: override })
+  });
+  location.reload();
+}
+
+// ── Inventory delete helpers ─────────────────────────────────────
+let _invDelModal = null;
+let _allProductsForDelete = [];
+
+function openInvDeleteModal() {
+  document.getElementById('invDelScreen1').style.display = '';
+  document.getElementById('invDelScreen2').style.display = 'none';
+  document.getElementById('invDelSearch').value = '';
+  _invDelModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('invDeleteModal'));
+  _invDelModal.show();
+}
+
+function showInvDelScreen1() {
+  document.getElementById('invDelScreen1').style.display = '';
+  document.getElementById('invDelScreen2').style.display = 'none';
+}
+
+function showInvDelScreen2() {
+  document.getElementById('invDelScreen1').style.display = 'none';
+  document.getElementById('invDelScreen2').style.display = '';
+  fetch('/inventory/suggest-all')
+    .then(r=>r.json()).then(hits=>{
+      _allProductsForDelete = hits;
+      renderInvDelList(hits);
+    });
+}
+
+function confirmInvDeleteAll() {
+  if (!confirm('Delete ALL products? This cannot be undone.')) return;
+  _invDelModal?.hide();
+  fetch('/inventory/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}})
+    .then(r=>r.json()).then(d=>{
+      if (d.ok) location.reload();
+      else alert(d.msg);
+    });
+}
+
+function renderInvDelList(hits) {
+  const list   = document.getElementById('invDelList');
+  const empty  = document.getElementById('invDelEmpty');
+  const selAll = document.getElementById('invDelSelectAll');
+  if (!hits.length) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    selAll.checked = false;
+    updateInvDelCount();
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = hits.map(h=>`
+    <li class="list-group-item d-flex align-items-center gap-3 py-2 px-3 inv-del-row" data-id="${h.id}">
+      <input type="checkbox" class="form-check-input flex-shrink-0 mt-0 inv-del-cb" style="width:1.1em;height:1.1em;">
+      <div class="flex-grow-1">
+        <div class="fw-semibold">${h.name}</div>
+        <div class="text-muted small">${h.code} &nbsp;·&nbsp; Stock: ${h.stock}</div>
+      </div>
+    </li>`).join('');
+  list.querySelectorAll('.inv-del-cb').forEach(cb => cb.addEventListener('change', ()=>{
+    const all = [...list.querySelectorAll('.inv-del-cb')];
+    selAll.checked = all.length > 0 && all.every(c=>c.checked);
+    updateInvDelCount();
+  }));
+  selAll.checked = false;
+  updateInvDelCount();
+}
+
+function updateInvDelCount() {
+  const n = document.querySelectorAll('.inv-del-cb:checked').length;
+  document.getElementById('invDelSelCount').textContent = n ? `${n} selected` : '';
+  document.getElementById('invDelBtnCount').textContent = n;
+  document.getElementById('invDelConfirmBtn').disabled  = n === 0;
+}
+
+document.getElementById('invDelSearch').addEventListener('input', function(){
+  const q = this.value.trim().toLowerCase();
+  const filtered = q
+    ? _allProductsForDelete.filter(h => h.name.toLowerCase().includes(q) || h.code.toLowerCase().includes(q))
+    : _allProductsForDelete;
+  renderInvDelList(filtered);
+});
+
+document.getElementById('invDelSelectAll').addEventListener('change', function(){
+  document.querySelectorAll('.inv-del-cb').forEach(cb => cb.checked = this.checked);
+  updateInvDelCount();
+});
+
+function confirmInvDeleteSelected() {
+  const ids = [...document.querySelectorAll('.inv-del-row')]
+    .filter(li => li.querySelector('.inv-del-cb')?.checked)
+    .map(li => parseInt(li.dataset.id));
+  if (!ids.length) return;
+  if (!confirm(`Permanently delete ${ids.length} product(s)?`)) return;
+  const btn = document.getElementById('invDelConfirmBtn');
+  btn.disabled = true;
+  _invDelModal?.hide();
+  fetch('/inventory/delete-selected', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ids})
+  }).then(r=>r.json()).then(d=>{
+    if (d.ok) location.reload();
+    else { alert(d.msg); btn.disabled = false; }
+  });
+}
+// ── End inventory delete helpers ─────────────────────────────────
+
+{% if has_source %}
+let _syncing = false;
+
+// Silent background check — no UI changes unless something actually changed
+async function _silentSync() {
+  if (_syncing) return;
+  _syncing = true;
+  try {
+    const r = await fetch('/inventory/sync-source', {method:'POST', headers:{'Content-Type':'application/json'}});
+    const ct = r.headers.get('Content-Type') || '';
+    if (!ct.includes('application/json')) { location.reload(); return; }
+    const d = await r.json();
+    if (d.ok && d.changed) {
+      const label = document.getElementById('lastSyncLabel');
+      const active = document.activeElement;
+      const userEditing = active && ['INPUT','SELECT','TEXTAREA'].includes(active.tagName);
+      if (!userEditing) { location.reload(); return; }
+      if (label) label.textContent = 'Changes detected — click Refresh to reload';
+    }
+  } catch(e) { /* ignore */ }
+  finally { _syncing = false; }
+}
+
+// Manual refresh — shows spinner, updates label
+async function doAutoSync() {
+  if (_syncing) return;
+  _syncing = true;
+  const btn   = document.getElementById('refreshBtn');
+  const label = document.getElementById('lastSyncLabel');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Syncing…'; }
+  try {
+    const r = await fetch('/inventory/sync-source', {method:'POST', headers:{'Content-Type':'application/json'}});
+    const ct = r.headers.get('Content-Type') || '';
+    if (!ct.includes('application/json')) { location.reload(); return; }
+    const d = await r.json();
+    if (d.ok) {
+      const now = new Date().toLocaleString('en-ZA', {hour12:false}).replace(',','');
+      if (d.changed) {
+        const active = document.activeElement;
+        const userEditing = active && ['INPUT','SELECT','TEXTAREA'].includes(active.tagName);
+        if (!userEditing) { location.reload(); return; }
+        if (label) label.textContent = 'Changes detected — click Refresh to reload';
+      } else {
+        if (label) label.textContent = 'Last sync: ' + now;
+      }
+    } else {
+      if (label) label.textContent = 'Sync error: ' + d.msg;
+    }
+  } catch(e) { /* ignore */ }
+  finally {
+    _syncing = false;
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Refresh'; }
+  }
+}
+
+// Check silently every 30 seconds — only reloads if something actually changed
+setInterval(_silentSync, 30 * 1000);
+{% endif %}
+</script>
+{% endblock %}

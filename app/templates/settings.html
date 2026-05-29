@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title"><i class="bi bi-gear me-2"></i>Settings</div>
+
+<form method="POST" style="max-width:640px;">
+
+  <!-- General -->
+  <div class="card mb-3">
+    <div class="card-header"><i class="bi bi-shop me-2"></i>General</div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Business Name</label>
+        <input type="text" name="business_name" class="form-control" value="{{ s.get('business_name','') }}">
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Method selector -->
+  <div class="card mb-3">
+    <div class="card-header"><i class="bi bi-bell me-2"></i>Notification Method</div>
+    <div class="card-body">
+      <label class="form-label fw-semibold">How should alerts be sent?</label>
+      <select name="notification_method" id="notifMethod" class="form-select mb-0">
+        <option value="email"      {% if s.get('notification_method','email')=='email'      %}selected{% endif %}>Email only</option>
+        <option value="callmebot"  {% if s.get('notification_method')=='callmebot'          %}selected{% endif %}>WhatsApp only (via CallMeBot)</option>
+        <option value="both"       {% if s.get('notification_method')=='both'               %}selected{% endif %}>Both Email &amp; WhatsApp</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Email Settings -->
+  <div class="card mb-3 method-section" id="sec-email">
+    <div class="card-header"><i class="bi bi-envelope me-2"></i>Email Settings</div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-8">
+          <label class="form-label fw-semibold">SMTP Host</label>
+          <input type="text" name="email_smtp_host" class="form-control" value="{{ s.get('email_smtp_host','smtp.gmail.com') }}" placeholder="smtp.gmail.com">
+        </div>
+        <div class="col-4">
+          <label class="form-label fw-semibold">SMTP Port</label>
+          <input type="text" name="email_smtp_port" class="form-control" value="{{ s.get('email_smtp_port','587') }}" placeholder="587">
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Sender Email Address</label>
+        <input type="email" name="email_sender" class="form-control" value="{{ s.get('email_sender','') }}" placeholder="yourshop@gmail.com">
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Sender App Password</label>
+        <input type="password" name="email_password" class="form-control" value="{{ s.get('email_password','') }}" autocomplete="new-password">
+        <div class="form-text">Use a Gmail App Password, not your normal Gmail password. <a href="https://myaccount.google.com/apppasswords" target="_blank">Get one here →</a></div>
+      </div>
+      <div class="mb-0">
+        <label class="form-label fw-semibold">Alert Recipients <span class="text-muted fw-normal">(comma separated)</span></label>
+        <input type="text" name="email_recipients" class="form-control" value="{{ s.get('email_recipients','') }}" placeholder="owner@email.com, manager@email.com">
+      </div>
+    </div>
+  </div>
+
+  <!-- WhatsApp Settings -->
+  <div class="card mb-3 method-section" id="sec-whatsapp">
+    <div class="card-header"><i class="bi bi-whatsapp me-2"></i>WhatsApp Settings <span class="badge bg-secondary ms-1" style="font-size:.7rem;">via CallMeBot</span></div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Your WhatsApp Number</label>
+        <input type="text" name="whatsapp_number" class="form-control" value="{{ s.get('whatsapp_number','') }}" placeholder="+27612345678">
+        <div class="form-text">Include your country code (e.g. +27 for South Africa).</div>
+      </div>
+      <div class="mb-0">
+        <label class="form-label fw-semibold">CallMeBot API Key</label>
+        <input type="text" name="callmebot_api_key" class="form-control font-monospace" value="{{ s.get('callmebot_api_key','') }}" placeholder="1234567">
+        <div class="form-text">
+          Get your free API key at <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank">callmebot.com →</a>
+          Send <code>I allow callmebot to send me messages</code> to <strong>+34 644 52 74 48</strong> on WhatsApp first.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message Templates -->
+  <div class="card mb-3">
+    <div class="card-header"><i class="bi bi-chat-left-text me-2"></i>Message Templates</div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Low Stock Alert Message</label>
+        <textarea name="notification_message" class="form-control" rows="3" placeholder="Low stock alert: {product_list}">{{ s.get('notification_message','') }}</textarea>
+        <div class="form-text">Use <code>{product_list}</code> to insert the list of low-stock products.</div>
+      </div>
+      <div class="mb-0">
+        <label class="form-label fw-semibold">Debt Reminder Template</label>
+        <textarea name="debt_reminder_template" class="form-control" rows="4" placeholder="Hi {name}, you have an outstanding balance of R{amount}...">{{ s.get('debt_reminder_template','') }}</textarea>
+        <div class="form-text">
+          Available placeholders: <code>{name}</code> <code>{amount}</code> <code>{date}</code> <code>{products_line}</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary px-5">Save Settings</button>
+</form>
+
+<script>
+(function(){
+  const sel    = document.getElementById('notifMethod');
+  const email  = document.getElementById('sec-email');
+  const wapp   = document.getElementById('sec-whatsapp');
+
+  function update(){
+    const v = sel.value;
+    email.style.display = (v === 'email'     || v === 'both') ? '' : 'none';
+    wapp.style.display  = (v === 'callmebot' || v === 'both') ? '' : 'none';
+  }
+
+  sel.addEventListener('change', update);
+  update();
+})();
+</script>
+{% endblock %}

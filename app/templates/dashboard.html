@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- ── Image Carousel ───────────────────────────────────────────────────────── -->
+<div class="mb-4" style="border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);">
+  <div id="dashCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="4000">
+    <div class="carousel-indicators">
+      {% for s in slides %}
+      <button type="button" data-bs-target="#dashCarousel" data-bs-slide-to="{{ loop.index0 }}"
+              {% if loop.first %}class="active" aria-current="true"{% endif %}></button>
+      {% endfor %}
+    </div>
+    <div class="carousel-inner">
+      {% for s in slides %}
+      <div class="carousel-item {% if loop.first %}active{% endif %}">
+        <img src="{{ s.url }}" class="d-block w-100"
+             style="height:320px;object-fit:cover;object-position:center;"
+             alt="{{ s.title }}"
+             onerror="this.src='https://placehold.co/1200x320/1E293B/F59E0B?text=Dunlop+Zone'">
+        <div class="carousel-caption d-flex flex-column justify-content-end"
+             style="background:linear-gradient(transparent,rgba(0,0,0,.65));bottom:0;left:0;right:0;padding:1.5rem 2rem;text-align:left;">
+          <h3 class="mb-1 fw-bold" style="font-size:1.6rem;text-shadow:0 1px 4px rgba(0,0,0,.5);">{{ s.title }}</h3>
+          <p class="mb-0" style="font-size:.95rem;opacity:.9;text-shadow:0 1px 3px rgba(0,0,0,.4);">{{ s.subtitle }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <button class="carousel-control-prev" type="button" data-bs-target="#dashCarousel" data-bs-slide="prev">
+      <span class="carousel-control-prev-icon"></span>
+    </button>
+    <button class="carousel-control-next" type="button" data-bs-target="#dashCarousel" data-bs-slide="next">
+      <span class="carousel-control-next-icon"></span>
+    </button>
+  </div>
+
+  <!-- Edit button — admin/impersonating admin only -->
+  {% if current_user.is_admin %}
+  <div style="background:#F8FAFC;padding:.5rem 1rem;border-top:1px solid #E2E8F0;">
+    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#carouselModal">
+      <i class="bi bi-images me-1"></i>Edit Carousel Images
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Page Title ───────────────────────────────────────────────────────────── -->
+<div class="page-title"><i class="bi bi-speedometer2 me-2"></i>{% if current_user.is_admin and not session.get('impersonate_id') %}Dashboard{% else %}Clientboard{% endif %}</div>
+
+<!-- ── Stat cards ───────────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-primary">{{ stats.total }}</div>
+      <div class="stat-lbl">Total Products</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-warning">{{ stats.low_stock }}</div>
+      <div class="stat-lbl">Low Stock Items</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-danger">{{ stats.out_of_stock }}</div>
+      <div class="stat-lbl">Out of Stock</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val" style="color:#065F46;">{{ stats.active_debtors }}</div>
+      <div class="stat-lbl">Active Debtors</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-4">
+    <div class="stat-card">
+      <div class="stat-val text-danger">R {{ "%.2f"|format(stats.total_owed) }}</div>
+      <div class="stat-lbl">Total Outstanding Debt</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Low stock table ──────────────────────────────────────────────────────── -->
+{% if low %}
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-exclamation-triangle me-2"></i>Items Needing Attention</span>
+    <a href="{{ url_for('po.index') }}" class="btn btn-sm btn-warning text-dark fw-bold">View Purchase Orders</a>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Code</th><th>Name</th><th>Category</th>
+          <th class="text-center">Stock</th><th class="text-center">Min Level</th><th class="text-center">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in low %}
+        <tr>
+          <td class="text-muted small">{{ p.code }}</td>
+          <td class="fw-semibold">{{ p.name }}</td>
+          <td class="text-muted small">{{ p.category }}</td>
+          <td class="text-center">{{ p.current_stock }}</td>
+          <td class="text-center">{{ p.reorder_level }}</td>
+          <td class="text-center">
+            {% if p.current_stock <= 0 %}
+              <span class="badge badge-out px-2 py-1">OUT OF STOCK</span>
+            {% else %}
+              <span class="badge badge-low px-2 py-1">LOW STOCK</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body text-center py-4 text-success">
+    <i class="bi bi-check-circle fs-2 mb-2 d-block"></i>
+    All stock levels are OK — nothing to reorder right now.
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Carousel Edit Modal (admin only) ─────────────────────────────────────── -->
+{% if current_user.is_admin %}
+<div class="modal fade" id="carouselModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1E293B;color:#fff;">
+        <h5 class="modal-title"><i class="bi bi-images me-2"></i>Edit Carousel Images</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('dashboard.save_carousel') }}">
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Paste an image URL for each slide. Leave a URL blank to remove that slide.
+            You can use any public image link (Google Drive, Dropbox, your website, etc.)
+          </p>
+          {% for i in range(1, 6) %}
+          {% set s = slides[i-1] if i <= slides|length else None %}
+          <div class="card mb-3" style="border:1px solid #E2E8F0;">
+            <div class="card-header py-2" style="background:#F8FAFC;font-size:.85rem;font-weight:600;color:#334155;">
+              Slide {{ i }} {% if i > slides|length %}<span class="text-muted fw-normal">(optional)</span>{% endif %}
+            </div>
+            <div class="card-body py-3">
+              <div class="mb-2">
+                <label class="form-label fw-semibold" style="font-size:.82rem;">Image URL</label>
+                <input type="url" name="slide_url_{{ i }}" class="form-control form-control-sm"
+                       value="{{ s.url if s else '' }}"
+                       placeholder="https://example.com/image.jpg">
+              </div>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label fw-semibold" style="font-size:.82rem;">Title</label>
+                  <input type="text" name="slide_title_{{ i }}" class="form-control form-control-sm"
+                         value="{{ s.title if s else '' }}" placeholder="e.g. Dunlop Zone">
+                </div>
+                <div class="col-6">
+                  <label class="form-label fw-semibold" style="font-size:.82rem;">Subtitle / Caption</label>
+                  <input type="text" name="slide_sub_{{ i }}" class="form-control form-control-sm"
+                         value="{{ s.subtitle if s else '' }}" placeholder="e.g. Premium Tyre Solutions">
+                </div>
+              </div>
+              {% if s %}
+              <div class="mt-2">
+                <img src="{{ s.url }}" style="height:70px;border-radius:6px;object-fit:cover;max-width:100%;"
+                     onerror="this.style.display='none'">
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save Carousel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+// Force carousel to start and cycle every 4 seconds
+(function(){
+  var el = document.getElementById('dashCarousel');
+  if (el && typeof bootstrap !== 'undefined') {
+    new bootstrap.Carousel(el, { interval: 4000, ride: 'carousel', wrap: true });
+  }
+})();
+</script>
+{% endblock %}

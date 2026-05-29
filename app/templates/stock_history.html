@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title"><i class="bi bi-clock-history me-2"></i>Stock History / Audit Log</div>
+
+<!-- Oversell alert banner -->
+{% if alerts %}
+<div class="alert alert-danger border-danger mb-3" style="border-left:5px solid #DC2626;">
+  <div class="d-flex align-items-center mb-2">
+    <i class="bi bi-exclamation-triangle-fill fs-4 me-2"></i>
+    <strong class="fs-6">{{ alerts|length }} Oversell Alert{{ 's' if alerts|length > 1 }}  — Immediate Attention Required</strong>
+  </div>
+  <p class="mb-2 small">The following products were sold in quantities exceeding available stock. Physical stock counts may be incorrect. An email alert has been sent.</p>
+  <div class="table-responsive">
+    <table class="table table-sm table-danger mb-0">
+      <thead>
+        <tr>
+          <th>Date & Time</th>
+          <th>Product</th>
+          <th class="text-center">Stock Available</th>
+          <th class="text-center">Qty Sold</th>
+          <th class="text-center">Shortfall</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in alerts %}
+        <tr>
+          <td class="small">{{ a.created_at[:16].replace('T',' ') }}</td>
+          <td class="fw-bold">{{ a.product_name }}</td>
+          <td class="text-center">{{ a.qty_before }}</td>
+          <td class="text-center">{{ (a.qty_before - a.qty_after + a.qty_before)|abs if a.change_by < -a.qty_before else a.qty_before - a.qty_after }}</td>
+          <td class="text-center fw-bold text-danger">{{ (a.change_by * -1 - a.qty_before)|round(2) if (a.change_by * -1) > a.qty_before else '—' }}</td>
+          <td class="small">{{ a.notes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label fw-semibold mb-1" style="font-size:.82rem;">Filter by Product</label>
+        <input type="text" name="product" class="form-control form-control-sm"
+               placeholder="Type product name…" value="{{ filter_product }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold mb-1" style="font-size:.82rem;">Filter by Type</label>
+        <select name="type" class="form-select form-select-sm">
+          <option value="">All types</option>
+          <option value="oversell"   {% if filter_type=='oversell'   %}selected{% endif %}>⚠ Oversold</option>
+          <option value="sale"       {% if filter_type=='sale'       %}selected{% endif %}>Sale</option>
+          <option value="manual"     {% if filter_type=='manual'     %}selected{% endif %}>Manual Edit</option>
+          <option value="sync"       {% if filter_type=='sync'       %}selected{% endif %}>Sync</option>
+          <option value="import"     {% if filter_type=='import'     %}selected{% endif %}>Import</option>
+          <option value="adjustment" {% if filter_type=='adjustment' %}selected{% endif %}>Adjustment</option>
+          <option value="po_receive" {% if filter_type=='po_receive' %}selected{% endif %}>PO Received</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button type="submit" class="btn btn-sm btn-primary flex-grow-1">Filter</button>
+        <a href="{{ url_for('history.index') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-table me-2"></i>{{ history|length }} record(s)</span>
+  </div>
+  <div class="card-body p-0" style="overflow-x:auto;">
+    {% if history %}
+    <table class="table table-hover mb-0" style="white-space:nowrap;">
+      <thead>
+        <tr>
+          <th>Date & Time</th>
+          <th>Product</th>
+          <th>Code</th>
+          <th class="text-center">Type</th>
+          <th class="text-center">Before</th>
+          <th class="text-center">Change</th>
+          <th class="text-center">After</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in history %}
+        {% set icon, cls, label = labels.get(h.change_type, ('bi-question', 'text-secondary', h.change_type)) %}
+        <tr {% if h.change_type == 'oversell' %}class="table-danger"{% endif %}>
+          <td class="text-muted small">{{ h.created_at[:16].replace('T',' ') }}</td>
+          <td class="fw-semibold">{{ h.product_name }}</td>
+          <td class="text-muted small">{{ h.product_code }}</td>
+          <td class="text-center">
+            <span class="badge rounded-pill px-2 py-1 {{ cls }}" style="background:rgba(0,0,0,.06);font-size:.75rem;">
+              <i class="bi {{ icon }} me-1"></i>{{ label }}
+            </span>
+          </td>
+          <td class="text-center text-muted">{{ h.qty_before }}</td>
+          <td class="text-center fw-bold {% if h.change_by > 0 %}text-success{% elif h.change_by < 0 %}text-danger{% endif %}">
+            {% if h.change_by > 0 %}+{{ h.change_by }}{% else %}{{ h.change_by }}{% endif %}
+          </td>
+          <td class="text-center fw-semibold">{{ h.qty_after }}</td>
+          <td class="text-muted small">{{ h.notes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-clock-history fs-1 d-block mb-2"></i>No stock changes recorded yet.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title"><i class="bi bi-bell me-2"></i>Notification Log</div>
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr><th>Date / Time</th><th>Type</th><th>Recipient</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="small text-muted">{{ log.created_at }}</td>
+          <td class="small">{{ log.notification_type }}</td>
+          <td class="small">{{ log.recipient }}</td>
+          <td>
+            {% if 'SUCCESS' in log.status %}
+              <span class="badge badge-ok px-2">Success</span>
+            {% else %}
+              <span class="badge badge-out px-2" title="{{ log.status }}">Failed</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not logs %}
+        <tr><td colspan="4" class="text-center text-muted py-4">No notifications sent yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

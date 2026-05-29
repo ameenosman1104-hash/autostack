@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title"><i class="bi bi-truck me-2"></i>{{ action }} Supplier</div>
+
+<form method="POST" style="max-width:640px;">
+  <div class="card mb-3">
+    <div class="card-header">Supplier Details</div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Supplier Name <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" required
+               value="{{ supplier.name if supplier else '' }}" placeholder="e.g. Dunlop SA">
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-6">
+          <label class="form-label fw-semibold">Phone</label>
+          <input type="text" name="phone" class="form-control"
+                 value="{{ supplier.phone if supplier else '' }}" placeholder="+27 11 000 0000">
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-semibold">Email</label>
+          <input type="email" name="email" class="form-control"
+                 value="{{ supplier.email if supplier else '' }}" placeholder="orders@supplier.com">
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Address</label>
+        <input type="text" name="address" class="form-control"
+               value="{{ supplier.address if supplier else '' }}" placeholder="Street, City, Province">
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-6">
+          <label class="form-label fw-semibold">Lead Time (days)</label>
+          <input type="number" name="lead_time_days" class="form-control" min="0"
+                 value="{{ supplier.lead_time_days if supplier else '0' }}" placeholder="e.g. 3">
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-semibold">Payment Terms</label>
+          <input type="text" name="payment_terms" class="form-control"
+                 value="{{ supplier.payment_terms if supplier else '' }}" placeholder="e.g. 30 days EOM">
+        </div>
+      </div>
+      <div class="mb-0">
+        <label class="form-label fw-semibold">Notes</label>
+        <textarea name="notes" class="form-control" rows="3"
+                  placeholder="Any extra details…">{{ supplier.notes if supplier else '' }}</textarea>
+      </div>
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary px-4">
+      <i class="bi bi-check-lg me-1"></i>{{ action }} Supplier
+    </button>
+    <a href="{{ url_for('suppliers.index') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

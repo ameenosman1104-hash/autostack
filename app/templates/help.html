@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="page-title mb-0"><i class="bi bi-question-circle me-2"></i>Help Guide</div>
+  <button onclick="window.print()" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Print</button>
+</div>
+
+<style>
+  .help-nav { position:sticky;top:1rem; }
+  .help-nav .nav-link { color:#475569;font-size:.83rem;padding:.3rem .75rem;border-radius:6px; }
+  .help-nav .nav-link:hover, .help-nav .nav-link.active-sec { background:#EFF6FF;color:#3B82F6;font-weight:600; }
+  .help-section { scroll-margin-top:1.5rem; }
+  .step { display:flex;gap:.75rem;margin-bottom:.9rem; }
+  .step-num { background:#3B82F6;color:#fff;font-weight:700;font-size:.8rem;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px; }
+  .tip-box { background:#EFF6FF;border-left:4px solid #3B82F6;border-radius:6px;padding:.75rem 1rem;font-size:.875rem;margin:.75rem 0; }
+  .warn-box { background:#FFFBEB;border-left:4px solid #F59E0B;border-radius:6px;padding:.75rem 1rem;font-size:.875rem;margin:.75rem 0; }
+  .section-icon { font-size:1.4rem;width:2.2rem;text-align:center; }
+  h2.sec-title { font-size:1.1rem;font-weight:700;color:#1E293B;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:2px solid #E2E8F0; }
+  h3.sub-title { font-size:.95rem;font-weight:700;color:#334155;margin:1.2rem 0 .6rem; }
+  kbd { background:#F1F5F9;border:1px solid #CBD5E1;border-radius:4px;padding:.1rem .4rem;font-size:.78rem; }
+  @media print { .sidebar,.navbar,.flash-container,.help-nav-col,.btn { display:none !important; } .main-content { padding:0 !important; } }
+</style>
+
+<div class="row g-4">
+  <!-- Sidebar nav -->
+  <div class="col-lg-3 help-nav-col">
+    <div class="card help-nav">
+      <div class="card-body p-2">
+        <div class="text-muted small fw-semibold px-2 py-1 mb-1">SECTIONS</div>
+        <nav class="nav flex-column" id="helpNav">
+          <a class="nav-link" href="#s-login"><i class="bi bi-door-open me-2"></i>1. Logging In</a>
+          <a class="nav-link" href="#s-dashboard"><i class="bi bi-speedometer2 me-2"></i>2. Clientboard</a>
+          <a class="nav-link" href="#s-inventory"><i class="bi bi-box-seam me-2"></i>3. Inventory</a>
+          <a class="nav-link" href="#s-import"><i class="bi bi-file-earmark-arrow-up me-2"></i>4. Importing Stock</a>
+          <a class="nav-link" href="#s-minlevel"><i class="bi bi-sliders me-2"></i>5. Min Levels</a>
+          <a class="nav-link" href="#s-po"><i class="bi bi-cart me-2"></i>6. Purchase Orders</a>
+          <a class="nav-link" href="#s-debtors"><i class="bi bi-people me-2"></i>7. Debtors</a>
+          <a class="nav-link" href="#s-notifications"><i class="bi bi-bell me-2"></i>8. Notifications</a>
+          <a class="nav-link" href="#s-settings"><i class="bi bi-gear me-2"></i>9. Settings</a>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="col-lg-9">
+
+    <!-- 1. Logging In -->
+    <div class="card mb-4 help-section" id="s-login">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">🔐</span> 1. Logging In & Creating Your Account</h2>
+
+        <h3 class="sub-title">Creating an account</h3>
+        <div class="step"><div class="step-num">1</div><div>Go to the portal link provided by your administrator (e.g. <code>http://yourportal.com</code>).</div></div>
+        <div class="step"><div class="step-num">2</div><div>Click <strong>"Create one"</strong> below the Sign In button.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Fill in your <strong>Business Name</strong>, <strong>Username</strong>, <strong>Email</strong>, and choose a <strong>Password</strong> (at least 6 characters).</div></div>
+        <div class="step"><div class="step-num">4</div><div>Click <strong>"Create Account"</strong>. You will be redirected to the login page.</div></div>
+
+        <h3 class="sub-title">Signing in</h3>
+        <div class="step"><div class="step-num">1</div><div>Enter your <strong>Username</strong> and <strong>Password</strong>.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Click <strong>"Sign In"</strong>. You will land on your Clientboard.</div></div>
+
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> <strong>Tip:</strong> Your username and password are case-sensitive. If you forget your password, contact your administrator to reset it.</div>
+
+        <h3 class="sub-title">Logging out</h3>
+        <div class="step"><div class="step-num">1</div><div>Click the red <strong>"Logout"</strong> button in the top-right corner at any time.</div></div>
+      </div>
+    </div>
+
+    <!-- 2. Clientboard -->
+    <div class="card mb-4 help-section" id="s-dashboard">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">📊</span> 2. Clientboard (Dashboard)</h2>
+        <p class="text-muted small">The Clientboard is your home screen. It gives you an instant overview of your entire business.</p>
+
+        <h3 class="sub-title">What you see</h3>
+        <table class="table table-sm" style="font-size:.875rem;">
+          <thead><tr><th>Card</th><th>What it means</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Total Products</strong></td><td>How many different products are in your inventory.</td></tr>
+            <tr><td><strong>Low Stock Items</strong></td><td>Products where stock has dropped to or below your minimum level.</td></tr>
+            <tr><td><strong>Out of Stock</strong></td><td>Products with zero stock remaining.</td></tr>
+            <tr><td><strong>Active Debtors</strong></td><td>Customers who still owe you money.</td></tr>
+            <tr><td><strong>Total Outstanding Debt</strong></td><td>The total rand amount owed to you across all debtors.</td></tr>
+          </tbody>
+        </table>
+
+        <h3 class="sub-title">Items Needing Attention table</h3>
+        <p class="small text-muted">Below the cards you will see a table of any products that are low or out of stock. Use this to quickly decide what to reorder. Click <strong>"View Purchase Orders"</strong> to act on it.</p>
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> If all stock levels are fine, you will see a green "All stock levels are OK" message instead of the table.</div>
+      </div>
+    </div>
+
+    <!-- 3. Inventory -->
+    <div class="card mb-4 help-section" id="s-inventory">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">📦</span> 3. Inventory</h2>
+        <p class="text-muted small">The Inventory page is where you manage all your products — adding, editing, updating stock, and more.</p>
+
+        <h3 class="sub-title">Searching for a product</h3>
+        <div class="step"><div class="step-num">1</div><div>Start typing in the <strong>Search bar</strong> at the top of the inventory page.</div></div>
+        <div class="step"><div class="step-num">2</div><div>A <strong>live dropdown</strong> will appear showing matching products with their stock level and status.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Click a result to go directly to that product, or press <kbd>Enter</kbd> to filter the full table.</div></div>
+
+        <h3 class="sub-title">Adding a new product</h3>
+        <div class="step"><div class="step-num">1</div><div>Click the blue <strong>"+ Add Product"</strong> button (top right).</div></div>
+        <div class="step"><div class="step-num">2</div><div>Fill in the product details:
+          <ul class="mt-1 mb-0" style="font-size:.875rem;">
+            <li><strong>Product Code</strong> — a unique code or SKU (e.g. TYR001). Required.</li>
+            <li><strong>Product Name</strong> — the full name of the product. Required.</li>
+            <li><strong>Category</strong> — group similar products (e.g. "Wheels & Tyres").</li>
+            <li><strong>Unit</strong> — how it is measured (e.g. PCS, KG, BOX). Default is PCS.</li>
+            <li><strong>Current Stock</strong> — how many you have right now.</li>
+            <li><strong>Min Level</strong> — the quantity at which you want to be warned to reorder.</li>
+            <li><strong>Last Cost Price</strong> — what you paid for it last time (in Rands).</li>
+            <li><strong>Supplier</strong> — who you buy it from.</li>
+          </ul>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div>Click <strong>"Save"</strong>.</div></div>
+
+        <h3 class="sub-title">Editing stock or min level quickly (inline edit)</h3>
+        <div class="step"><div class="step-num">1</div><div>In the inventory table, find the product you want to update.</div></div>
+        <div class="step"><div class="step-num">2</div><div><strong>Click directly on the Stock number</strong> or the <strong>Min Level number</strong> in the row.</div></div>
+        <div class="step"><div class="step-num">3</div><div>A small input box will appear. Type the new value.</div></div>
+        <div class="step"><div class="step-num">4</div><div>Press <kbd>Enter</kbd> to save, or <kbd>Escape</kbd> to cancel.</div></div>
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> You do not need to open the edit form just to update stock — clicking the number in the table is the fastest way.</div>
+
+        <h3 class="sub-title">Editing all product details</h3>
+        <div class="step"><div class="step-num">1</div><div>Click the <strong>pencil icon</strong> <i class="bi bi-pencil"></i> in the Actions column for the product.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Update any fields and click <strong>"Save"</strong>.</div></div>
+
+        <h3 class="sub-title">Deleting a product</h3>
+        <div class="step"><div class="step-num">1</div><div>Click the <strong>red trash icon</strong> <i class="bi bi-trash text-danger"></i> for the product.</div></div>
+        <div class="step"><div class="step-num">2</div><div>A confirmation box will appear — click <strong>OK</strong> to confirm deletion.</div></div>
+        <div class="warn-box"><i class="bi bi-exclamation-triangle me-1"></i> <strong>Warning:</strong> Deleting a product is permanent and cannot be undone.</div>
+
+        <h3 class="sub-title">Understanding status badges</h3>
+        <table class="table table-sm" style="font-size:.875rem;">
+          <tbody>
+            <tr><td><span class="badge badge-ok px-2">OK</span></td><td>Stock is above the minimum level. You are fine.</td></tr>
+            <tr><td><span class="badge badge-low px-2">LOW STOCK</span></td><td>Stock has dropped to or below the minimum level. Time to reorder.</td></tr>
+            <tr><td><span class="badge badge-out px-2">OUT OF STOCK</span></td><td>Stock is at zero. Needs immediate attention.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 4. Importing -->
+    <div class="card mb-4 help-section" id="s-import">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">📥</span> 4. Importing Stock from Another System</h2>
+        <p class="text-muted small">If you already have your inventory in another program (Excel, Google Sheets, QuickBooks, etc.), you can import it instead of entering everything manually.</p>
+
+        <h3 class="sub-title">Step 1 — Choose your import source</h3>
+        <p class="small">Click <strong>"Import CSV"</strong> on the Inventory page. You will see three options:</p>
+        <table class="table table-sm" style="font-size:.875rem;">
+          <thead><tr><th>Option</th><th>When to use it</th></tr></thead>
+          <tbody>
+            <tr><td><strong>File Upload</strong></td><td>You have downloaded a <code>.csv</code> or <code>.xlsx</code> file from your software onto your computer.</td></tr>
+            <tr><td><strong>URL</strong></td><td>Your file is online — e.g. a Google Sheet published as CSV. Paste the link.</td></tr>
+            <tr><td><strong>API</strong></td><td>Your system has an API. Enter the endpoint URL and API key (ask your IT person for these).</td></tr>
+          </tbody>
+        </table>
+
+        <h3 class="sub-title">Google Sheets — how to get the URL</h3>
+        <div class="step"><div class="step-num">1</div><div>Open your Google Sheet.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Click <strong>File → Share → Publish to web</strong>.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Set the format to <strong>Comma-separated values (.csv)</strong> and click <strong>Publish</strong>.</div></div>
+        <div class="step"><div class="step-num">4</div><div>Copy the link and paste it into the URL field in the importer.</div></div>
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> Alternatively, go to <strong>File → Download → Comma Separated Values</strong>, save the file, then use the <strong>File Upload</strong> option.</div>
+
+        <h3 class="sub-title">Step 2 — Map your columns</h3>
+        <div class="step"><div class="step-num">1</div><div>After uploading, you will see your file's column names and a preview of the first few rows.</div></div>
+        <div class="step"><div class="step-num">2</div><div>For each app field (Name, Stock, Category, etc.), the system will try to auto-detect the matching column from your file.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Check each field. If a column was not detected, <strong>type the exact column name</strong> from your file, or click the field and pick from the list.</div></div>
+        <div class="step"><div class="step-num">4</div><div>Only <strong>Product Name</strong> is required. Everything else is optional.</div></div>
+        <div class="step"><div class="step-num">5</div><div>Click <strong>"Next: Review &amp; Edit"</strong>.</div></div>
+
+        <h3 class="sub-title">Step 3 — Review &amp; Edit before importing</h3>
+        <div class="step"><div class="step-num">1</div><div>You will see every row in a fully editable table. Check that the data looks correct.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Click any cell to edit it directly.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Click the <strong>× button</strong> at the end of a row to remove it from the import. Click again to restore it.</div></div>
+        <div class="step"><div class="step-num">4</div><div>Use <strong>"+ Add row"</strong> to add a blank product manually.</div></div>
+        <div class="step"><div class="step-num">5</div><div>When satisfied, click <strong>"Import X Product(s)"</strong>.</div></div>
+      </div>
+    </div>
+
+    <!-- 5. Min Levels -->
+    <div class="card mb-4 help-section" id="s-minlevel">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">⚖️</span> 5. Setting Minimum Stock Levels</h2>
+        <p class="text-muted small">The minimum level tells the system when to flag a product as "Low Stock". When stock drops to or below this number, you get a warning.</p>
+
+        <h3 class="sub-title">Setting the min level for one product</h3>
+        <div class="step"><div class="step-num">1</div><div>In the inventory table, <strong>click directly on the Min Level number</strong> for any product.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Type the new value and press <kbd>Enter</kbd>.</div></div>
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> The system remembers that you set this manually. When you use "Set Default Min Level", you can choose to skip products you have already set individually.</div>
+
+        <h3 class="sub-title">Setting the same min level for all products at once</h3>
+        <div class="step"><div class="step-num">1</div><div>Click the <strong>"Set Default Min Level"</strong> button at the top of the Inventory page.</div></div>
+        <div class="step"><div class="step-num">2</div><div>In the popup, type the number you want (e.g. <code>5</code>).</div></div>
+        <div class="step"><div class="step-num">3</div><div>At the bottom of the popup, you will see a checkbox: <strong>"Also apply to products I manually changed from the table"</strong>.
+          <ul class="mt-1 mb-0" style="font-size:.875rem;">
+            <li><strong>Unchecked</strong> — only products you have never individually set will be updated. Your manually-set ones stay as they are.</li>
+            <li><strong>Checked</strong> — every product including ones you set manually will be changed to this number.</li>
+          </ul>
+        </div></div>
+        <div class="step"><div class="step-num">4</div><div>Click <strong>"Apply"</strong>.</div></div>
+      </div>
+    </div>
+
+    <!-- 6. Purchase Orders -->
+    <div class="card mb-4 help-section" id="s-po">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">🛒</span> 6. Purchase Orders</h2>
+        <p class="text-muted small">The Purchase Orders page automatically lists every product that is at or below its minimum stock level — these are the products you need to reorder.</p>
+
+        <h3 class="sub-title">Viewing what needs to be reordered</h3>
+        <div class="step"><div class="step-num">1</div><div>Click <strong>"Purchase Orders"</strong> in the left sidebar.</div></div>
+        <div class="step"><div class="step-num">2</div><div>You will see a table showing all products that need attention, including their current stock and minimum level.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Use this list to contact your supplier and place your order.</div></div>
+
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> This list updates automatically as stock changes. Once you reorder and update stock levels in Inventory, the product will disappear from this list.</div>
+        <div class="warn-box"><i class="bi bi-exclamation-triangle me-1"></i> Products only appear here if their minimum level is set above 0. Make sure you have set min levels in your Inventory first.</div>
+      </div>
+    </div>
+
+    <!-- 7. Debtors -->
+    <div class="card mb-4 help-section" id="s-debtors">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">👥</span> 7. Debtors</h2>
+        <p class="text-muted small">The Debtors section helps you track customers who owe you money and send them payment reminders automatically.</p>
+
+        <h3 class="sub-title">Adding a debtor</h3>
+        <div class="step"><div class="step-num">1</div><div>Click <strong>"Debtors"</strong> in the sidebar, then click <strong>"+ Add Debtor"</strong>.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Fill in:
+          <ul class="mt-1 mb-0" style="font-size:.875rem;">
+            <li><strong>Name</strong> — the customer's full name. Required.</li>
+            <li><strong>Phone</strong> — their phone number (used for WhatsApp reminders).</li>
+            <li><strong>Email</strong> — their email address (used for email reminders).</li>
+            <li><strong>Amount Owed</strong> — how much they owe in Rands.</li>
+            <li><strong>Date of Purchase</strong> — when the sale happened.</li>
+            <li><strong>Products Owed</strong> — what they bought (e.g. "2x Mag Wheels").</li>
+            <li><strong>Reminder Method</strong> — how to contact them: Email, WhatsApp, or Both.</li>
+            <li><strong>Reminder Days</strong> — how many days after purchase to send the first reminder.</li>
+          </ul>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div>Click <strong>"Save"</strong>.</div></div>
+
+        <h3 class="sub-title">Sending a reminder manually</h3>
+        <div class="step"><div class="step-num">1</div><div>On the Debtors page, find the customer in the table.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Click the <strong>"Send Reminder"</strong> button in their row.</div></div>
+        <div class="step"><div class="step-num">3</div><div>A reminder will be sent immediately via the method set on their record (email or WhatsApp).</div></div>
+
+        <h3 class="sub-title">Marking a debtor as paid</h3>
+        <div class="step"><div class="step-num">1</div><div>Click the <strong>pencil icon</strong> to edit the debtor.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Tick the <strong>"Paid"</strong> checkbox and click <strong>"Save"</strong>.</div></div>
+        <div class="step"><div class="step-num">3</div><div>The debtor will be marked as paid and removed from the active count on your Clientboard.</div></div>
+      </div>
+    </div>
+
+    <!-- 8. Notifications -->
+    <div class="card mb-4 help-section" id="s-notifications">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">🔔</span> 8. Notifications</h2>
+        <p class="text-muted small">The Notifications page lets you send instant low-stock alerts and view a history of all alerts sent.</p>
+
+        <h3 class="sub-title">Sending a stock alert</h3>
+        <div class="step"><div class="step-num">1</div><div>Click the <strong><i class="bi bi-bell"></i> Send Alert</strong> button in the top navigation bar.</div></div>
+        <div class="step"><div class="step-num">2</div><div>The system will immediately send an alert listing all low-stock and out-of-stock products to your configured recipients.</div></div>
+
+        <h3 class="sub-title">Viewing notification history</h3>
+        <div class="step"><div class="step-num">1</div><div>Click <strong>"Notifications"</strong> in the sidebar.</div></div>
+        <div class="step"><div class="step-num">2</div><div>You will see a full log of every notification sent — including the date, recipient, and whether it succeeded or failed.</div></div>
+
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> To set up who receives alerts (email address, WhatsApp number), go to <strong>Settings</strong>.</div>
+      </div>
+    </div>
+
+    <!-- 9. Settings -->
+    <div class="card mb-4 help-section" id="s-settings">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">⚙️</span> 9. Settings</h2>
+        <p class="text-muted small">Settings lets you configure how alerts are sent, who receives them, and customise the reminder messages.</p>
+
+        <h3 class="sub-title">Opening Settings</h3>
+        <div class="step"><div class="step-num">1</div><div>Click <strong>"Settings"</strong> at the bottom of the left sidebar.</div></div>
+
+        <h3 class="sub-title">What you can configure</h3>
+        <table class="table table-sm" style="font-size:.875rem;">
+          <thead><tr><th>Setting</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Alert Email</strong></td><td>The email address that receives low-stock alerts.</td></tr>
+            <tr><td><strong>WhatsApp Number</strong></td><td>The number that receives WhatsApp alerts via CallMeBot (include country code, e.g. +27).</td></tr>
+            <tr><td><strong>CallMeBot API Key</strong></td><td>The key from CallMeBot needed to send WhatsApp messages. See callmebot.com for setup instructions.</td></tr>
+            <tr><td><strong>Notification Message</strong></td><td>The text of the low-stock alert message. Can include placeholders for product details.</td></tr>
+            <tr><td><strong>Debt Reminder Template</strong></td><td>The message sent to debtors as a payment reminder.</td></tr>
+          </tbody>
+        </table>
+        <div class="step"><div class="step-num">1</div><div>Update the fields you want to change.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Click <strong>"Save Settings"</strong>.</div></div>
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> <strong>WhatsApp alerts</strong> require a free CallMeBot account. Visit <strong>callmebot.com</strong>, follow the setup steps, and paste your API key here.</div>
+      </div>
+    </div>
+
+  </div><!-- end col -->
+</div><!-- end row -->
+
+<script>
+// Highlight active section in sidebar nav as user scrolls
+const sections = document.querySelectorAll('.help-section');
+const navLinks  = document.querySelectorAll('#helpNav .nav-link');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 80) current = s.id; });
+  navLinks.forEach(a => {
+    a.classList.toggle('active-sec', a.getAttribute('href') === '#' + current);
+  });
+}, { passive: true });
+</script>
+{% endblock %}

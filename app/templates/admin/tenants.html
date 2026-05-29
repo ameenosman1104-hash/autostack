@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="page-title mb-0"><i class="bi bi-building me-2"></i>Admin — All Shops ({{ tenants|length }})</div>
+  <div class="d-flex gap-2">
+    <button onclick="(async()=>{await loadTenants();openCmd();})()" class="btn btn-outline-secondary d-flex align-items-center gap-2" style="font-size:.85rem;">
+      <i class="bi bi-search"></i> Search shops
+      <kbd style="background:#E2E8F0;color:#475569;font-size:.7rem;padding:.1rem .35rem;border-radius:4px;font-family:inherit;">Ctrl+K</kbd>
+    </button>
+    <a href="{{ url_for('admin.new_tenant') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add New Shop</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr><th>Business Name</th><th>Username</th><th>Email</th><th class="text-center">Status</th><th class="text-center">Created</th><th class="text-center">Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for t in tenants %}
+        <tr>
+          <td class="fw-semibold">{{ t.business_name }}</td>
+          <td class="small text-muted">{{ t.username }}</td>
+          <td class="small">{{ t.email }}</td>
+          <td class="text-center">
+            {% if t.is_active %}
+              <span class="badge badge-ok px-2">Active</span>
+            {% else %}
+              <span class="badge badge-out px-2">Disabled</span>
+            {% endif %}
+          </td>
+          <td class="text-center small text-muted">{{ t.created_at[:10] }}</td>
+          <td class="text-center">
+            <div class="d-flex gap-1 justify-content-center">
+              <a href="{{ url_for('admin.impersonate', tid=t.id) }}" class="btn btn-sm btn-outline-primary" title="View as this shop">
+                <i class="bi bi-eye"></i> View
+              </a>
+              <a href="{{ url_for('admin.edit_tenant', tid=t.id) }}" class="btn btn-sm btn-outline-secondary" title="Edit">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <form method="POST" action="{{ url_for('admin.remove_tenant', tid=t.id) }}" class="d-inline"
+                    onsubmit="return confirm('Delete this shop and all their data?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not tenants %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No shops yet. Add your first shop above.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

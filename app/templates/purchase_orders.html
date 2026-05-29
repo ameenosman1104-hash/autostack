@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title"><i class="bi bi-cart me-2"></i>Purchase Order Generator</div>
+
+{% if items %}
+<div class="alert alert-warning d-flex align-items-center gap-2">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  {{ items|length }} item(s) below minimum stock level.
+</div>
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Code</th><th>Name</th><th>Unit</th>
+          <th class="text-center">Current Stock</th>
+          <th class="text-center">Min Level</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">Prev. Cost</th>
+          <th class="text-center">Suggested Qty</th>
+          <th class="text-end">Est. Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set ns = namespace(grand=0) %}
+        {% for item in items %}
+        {% set ns.grand = ns.grand + item.est_total %}
+        <tr class="{{ 'table-danger' if item.current_stock <= 0 else 'table-warning' }}">
+          <td class="small text-muted">{{ item.code }}</td>
+          <td class="fw-semibold">{{ item.name }}</td>
+          <td class="small">{{ item.unit }}</td>
+          <td class="text-center">{{ item.current_stock }}</td>
+          <td class="text-center">{{ item.reorder_level }}</td>
+          <td class="text-center">
+            {% if item.current_stock <= 0 %}
+              <span class="badge badge-out px-2">OUT OF STOCK</span>
+            {% else %}
+              <span class="badge badge-low px-2">LOW STOCK</span>
+            {% endif %}
+          </td>
+          <td class="text-center">R {{ "%.2f"|format(item.previous_cost_price) }}</td>
+          <td class="text-center fw-semibold">{{ item.suggested_qty }}</td>
+          <td class="text-end">R {{ "%.2f"|format(item.est_total) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="table-light fw-bold">
+          <td colspan="8" class="text-end">Estimated Total:</td>
+          <td class="text-end">R {{ "%.2f"|format(ns.grand) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body text-center py-5 text-success">
+    <i class="bi bi-check-circle fs-1 mb-3 d-block"></i>
+    <h5>All stock levels are OK</h5>
+    <p class="text-muted">No items need reordering at this time.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
