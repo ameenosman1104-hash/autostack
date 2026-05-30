@@ -1,0 +1,23 @@
+# This file specifies files that are not uploaded to Google Cloud Platform
+# Using the default gcloud ignore rules:
+# https://cloud.google.com/sdk/gcloud/reference/topic/gcloudignore
+#
+#!include:.gitignore
+*/.git
+*.pyc
+__pycache__/
+.pytest_cache/
+.env
+.venv
+env/
+venv/
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.egg-info/
+dist/
+build/
+node_modules/
