@@ -1,2 +1,8 @@
+[project]
+name = "autostack"
+version = "1.0.0"
+description = "FLOWSTACK - Tyre shop inventory management system"
+requires-python = ">=3.9"
+
 [tool.vercel]
 entrypoint = "run:app"
