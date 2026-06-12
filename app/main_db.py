@@ -2,7 +2,11 @@
 import sqlite3, os
 from werkzeug.security import generate_password_hash
 
-MAIN_DB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "main.db")
+if os.environ.get("VERCEL"):
+    MAIN_DB = "/tmp/main.db"
+else:
+    MAIN_DB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "main.db")
+    os.makedirs(os.path.dirname(MAIN_DB), exist_ok=True)
 
 
 def get_conn():
