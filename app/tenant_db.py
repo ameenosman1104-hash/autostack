@@ -26,20 +26,24 @@ def get_conn(tenant_id):
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
     # migrate missing columns added after initial release
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()]
-    if "min_level_manual" not in cols:
-        conn.execute("ALTER TABLE products ADD COLUMN min_level_manual INTEGER DEFAULT 0")
-        conn.commit()
-    if "updated_at" not in cols:
-        conn.execute("ALTER TABLE products ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
-        conn.commit()
-    if "extra_data" not in cols:
-        conn.execute("ALTER TABLE products ADD COLUMN extra_data TEXT DEFAULT '{}'")
-        conn.commit()
-    if "deleted" not in cols:
-        conn.execute("ALTER TABLE products ADD COLUMN deleted INTEGER DEFAULT 0")
-        conn.execute("ALTER TABLE products ADD COLUMN deleted_at TEXT DEFAULT NULL")
-        conn.commit()
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()]
+        if "min_level_manual" not in cols:
+            conn.execute("ALTER TABLE products ADD COLUMN min_level_manual INTEGER DEFAULT 0")
+            conn.commit()
+        if "updated_at" not in cols:
+            conn.execute("ALTER TABLE products ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
+            conn.commit()
+        if "extra_data" not in cols:
+            conn.execute("ALTER TABLE products ADD COLUMN extra_data TEXT DEFAULT '{}'")
+            conn.commit()
+        if "deleted" not in cols:
+            conn.execute("ALTER TABLE products ADD COLUMN deleted INTEGER DEFAULT 0")
+            conn.execute("ALTER TABLE products ADD COLUMN deleted_at TEXT DEFAULT NULL")
+            conn.commit()
+    except Exception as e:
+        print(f"Migration error (may be expected for new DBs): {e}")
+        pass
     # ensure new tables exist (for databases created before these were added)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS sales (
