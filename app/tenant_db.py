@@ -348,18 +348,21 @@ def permanent_delete_all_deleted(tid):
 
 
 def get_stats(tid):
-    conn = get_conn(tid)
-    f = "(deleted=0 OR deleted IS NULL)"
-    total = conn.execute(f"SELECT COUNT(*) FROM products WHERE {f}").fetchone()[0]
-    low   = conn.execute(
-        f"SELECT COUNT(*) FROM products WHERE {f} AND reorder_level > 0 AND current_stock <= reorder_level AND current_stock > 0"
-    ).fetchone()[0]
-    out   = conn.execute(f"SELECT COUNT(*) FROM products WHERE {f} AND current_stock <= 0").fetchone()[0]
-    debtors = conn.execute("SELECT COUNT(*) FROM debtors WHERE is_paid=0").fetchone()[0]
-    owed    = conn.execute("SELECT COALESCE(SUM(amount_owed),0) FROM debtors WHERE is_paid=0").fetchone()[0]
-    conn.close()
-    return {"total": total, "low_stock": low, "out_of_stock": out,
-            "active_debtors": debtors, "total_owed": owed}
+    try:
+        conn = get_conn(tid)
+        f = "(deleted=0 OR deleted IS NULL)"
+        total = conn.execute(f"SELECT COUNT(*) FROM products WHERE {f}").fetchone()[0]
+        low   = conn.execute(
+            f"SELECT COUNT(*) FROM products WHERE {f} AND reorder_level > 0 AND current_stock <= reorder_level AND current_stock > 0"
+        ).fetchone()[0]
+        out   = conn.execute(f"SELECT COUNT(*) FROM products WHERE {f} AND current_stock <= 0").fetchone()[0]
+        debtors = conn.execute("SELECT COUNT(*) FROM debtors WHERE is_paid=0").fetchone()[0]
+        owed    = conn.execute("SELECT COALESCE(SUM(amount_owed),0) FROM debtors WHERE is_paid=0").fetchone()[0]
+        conn.close()
+        return {"total": total, "low_stock": low, "out_of_stock": out,
+                "active_debtors": debtors, "total_owed": owed}
+    except:
+        return {"total": 0, "low_stock": 0, "out_of_stock": 0, "active_debtors": 0, "total_owed": 0}
 
 
 # ── Debtors ───────────────────────────────────────────────────────────────────
