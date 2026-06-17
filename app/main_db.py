@@ -2,12 +2,20 @@
 import sqlite3, os
 from werkzeug.security import generate_password_hash
 
+MAIN_DB = ":memory:"
+
 try:
-    MAIN_DB = "/tmp/main.db"
-    os.makedirs(os.path.dirname(MAIN_DB), exist_ok=True)
+    db_path = "/tmp/main.db"
+    sqlite3.connect(db_path).close()
+    MAIN_DB = db_path
 except:
-    MAIN_DB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "main.db")
-    os.makedirs(os.path.dirname(MAIN_DB), exist_ok=True)
+    try:
+        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "main.db")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        sqlite3.connect(db_path).close()
+        MAIN_DB = db_path
+    except:
+        MAIN_DB = ":memory:"
 
 
 def get_conn():
@@ -17,29 +25,33 @@ def get_conn():
 
 
 def init_main_db():
-    conn = get_conn()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS tenants (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            business_name TEXT NOT NULL,
-            username     TEXT UNIQUE NOT NULL,
-            email        TEXT DEFAULT '',
-            password_hash TEXT NOT NULL,
-            is_admin     INTEGER DEFAULT 0,
-            is_active    INTEGER DEFAULT 1,
-            created_at   TEXT DEFAULT (datetime('now'))
-        );
-    """)
-    # Create default admin if none exists
-    exists = conn.execute("SELECT id FROM tenants WHERE is_admin=1").fetchone()
-    if not exists:
-        conn.execute(
-            "INSERT INTO tenants (business_name, username, email, password_hash, is_admin) VALUES (?,?,?,?,1)",
-            ("Admin", "admin", "admin@inventorytracker.com",
-             generate_password_hash("admin123"))
-        )
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_conn()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS tenants (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_name TEXT NOT NULL,
+                username     TEXT UNIQUE NOT NULL,
+                email        TEXT DEFAULT '',
+                password_hash TEXT NOT NULL,
+                is_admin     INTEGER DEFAULT 0,
+                is_active    INTEGER DEFAULT 1,
+                created_at   TEXT DEFAULT (datetime('now'))
+            );
+        """)
+        # Create default admin if none exists
+        exists = conn.execute("SELECT id FROM tenants WHERE is_admin=1").fetchone()
+        if not exists:
+            conn.execute(
+                "INSERT INTO tenants (business_name, username, email, password_hash, is_admin) VALUES (?,?,?,?,1)",
+                ("Admin", "admin", "admin@inventorytracker.com",
+                 generate_password_hash("admin123"))
+            )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        pass
 
 
 def get_user_by_id(uid):
