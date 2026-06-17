@@ -72,9 +72,10 @@ def get_conn(tenant_id):
 
 
 def init_tenant_db(tenant_id):
-    conn = get_conn(tenant_id)
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS products (
+    try:
+        conn = get_conn(tenant_id)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS products (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
             code                 TEXT UNIQUE NOT NULL,
             name                 TEXT NOT NULL,
@@ -172,9 +173,12 @@ def init_tenant_db(tenant_id):
             notes          TEXT DEFAULT '',
             created_at     TEXT DEFAULT (datetime('now'))
         );
-    """)
-    conn.commit()
-    conn.close()
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"init_tenant_db error: {e}")
+        pass
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
