@@ -45,8 +45,9 @@ def get_conn(tenant_id):
         print(f"Migration error (may be expected for new DBs): {e}")
         pass
     # ensure new tables exist (for databases created before these were added)
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS sales (
+    try:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER,
             product_code TEXT DEFAULT '', product_name TEXT DEFAULT '',
             qty_sold REAL DEFAULT 0, sale_price REAL DEFAULT 0,
@@ -66,8 +67,10 @@ def get_conn(tenant_id):
             lead_time_days INTEGER DEFAULT 0, payment_terms TEXT DEFAULT '',
             notes TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now'))
         );
-    """)
-    conn.commit()
+        """)
+        conn.commit()
+    except:
+        pass
     return conn
 
 
