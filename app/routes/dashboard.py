@@ -5,23 +5,7 @@ from ..tenant_db import get_stats, get_low_stock_products, init_tenant_db, get_s
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
-DEFAULT_SLIDES = [
-    {
-        "url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1200&h=380&fit=crop&q=80",
-        "title": "Dunlop Zone",
-        "subtitle": "Premium Tyre Solutions — Performance You Can Feel"
-    },
-    {
-        "url": "https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=1200&h=380&fit=crop&q=80",
-        "title": "Dunlop Zone",
-        "subtitle": "Quality & Safety on Every Road"
-    },
-    {
-        "url": "https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=1200&h=380&fit=crop&q=80",
-        "title": "Dunlop Zone",
-        "subtitle": "Expert Fitting — Trusted by Drivers"
-    },
-]
+DEFAULT_SLIDES = []
 
 
 def _get_slides(tid):
