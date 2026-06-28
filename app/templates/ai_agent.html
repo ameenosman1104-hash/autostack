@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid h-100" style="display: flex; flex-direction: column;">
+  <div class="row mb-3">
+    <div class="col-md-12">
+      <div class="card border-primary">
+        <div class="card-header bg-primary text-white d-flex align-items-center">
+          <span style="font-size: 1.5rem; margin-right: 10px;">🤖</span>
+          <div>
+            <h4 class="mb-0">AI Agent - Tyre Shop Assistant</h4>
+            <small>Get inventory info, book appointments, and more</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row flex-grow-1" style="overflow: hidden;">
+    <!-- Chat Area -->
+    <div class="col-md-8" style="display: flex; flex-direction: column;">
+      <div class="card h-100" style="display: flex; flex-direction: column;">
+        <div class="card-body" id="chatBox" style="overflow-y: auto; flex-grow: 1; background: #f8f9fa;">
+          <div class="alert alert-info">
+            <strong>👋 Welcome!</strong> Ask me anything about your inventory, book appointments, or get product recommendations.
+          </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="card-footer border-top">
+          <div class="input-group">
+            <input
+              type="text"
+              id="messageInput"
+              class="form-control"
+              placeholder="Ask about tyres, check stock, book appointment..."
+              autocomplete="off"
+            />
+            <button class="btn btn-primary" id="sendBtn" type="button">
+              <i class="fas fa-paper-plane"></i> Send
+            </button>
+          </div>
+          <small class="text-muted d-block mt-2">
+            💡 Examples: "Do you have Michelin 185/65R15?" | "Book appointment" | "Low stock items?"
+          </small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar with Quick Actions -->
+    <div class="col-md-4">
+      <div class="card mb-3">
+        <div class="card-header bg-success text-white">
+          <h6 class="mb-0">⚡ Quick Actions</h6>
+        </div>
+        <div class="card-body">
+          <button class="btn btn-sm btn-outline-primary w-100 mb-2" onclick="askQuestion('Do you have Michelin tyres in stock?')">
+            📦 Check Michelin Stock
+          </button>
+          <button class="btn btn-sm btn-outline-primary w-100 mb-2" onclick="askQuestion('What tyres are low in stock?')">
+            ⚠️ Low Stock Items
+          </button>
+          <button class="btn btn-sm btn-outline-success w-100 mb-2" onclick="askQuestion('Book an appointment for tyre installation')">
+            📅 Book Appointment
+          </button>
+          <button class="btn btn-sm btn-outline-info w-100 mb-2" onclick="askQuestion('What tire brands do you have?')">
+            🏷️ Available Brands
+          </button>
+          <button class="btn btn-sm btn-outline-warning w-100" onclick="clearChat()">
+            🗑️ Clear Chat
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header bg-info text-white">
+          <h6 class="mb-0">ℹ️ About AI Agent</h6>
+        </div>
+        <div class="card-body" style="font-size: 0.9rem;">
+          <p class="mb-2"><strong>Capabilities:</strong></p>
+          <ul class="mb-0">
+            <li>✅ Check real-time inventory</li>
+            <li>✅ Book appointments</li>
+            <li>✅ Get product recommendations</li>
+            <li>✅ Track stock levels</li>
+            <li>✅ Answer tire questions</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  #chatBox {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 15px;
+  }
+
+  .message {
+    display: flex;
+    margin-bottom: 10px;
+    animation: slideIn 0.3s ease-out;
+  }
+
+  .message.user {
+    justify-content: flex-end;
+  }
+
+  .message.assistant {
+    justify-content: flex-start;
+  }
+
+  .message-bubble {
+    max-width: 70%;
+    padding: 12px 15px;
+    border-radius: 8px;
+    word-wrap: break-word;
+    line-height: 1.4;
+  }
+
+  .message.user .message-bubble {
+    background: #007bff;
+    color: white;
+    border-radius: 15px 15px 0 15px;
+  }
+
+  .message.assistant .message-bubble {
+    background: #e9ecef;
+    color: #333;
+    border-radius: 15px 15px 15px 0;
+  }
+
+  .message-time {
+    font-size: 0.75rem;
+    color: #999;
+    margin-top: 5px;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 10px 15px;
+    background: #e9ecef;
+    border-radius: 15px;
+    width: fit-content;
+  }
+
+  .typing-dot {
+    width: 8px;
+    height: 8px;
+    background: #999;
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+  }
+
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes typing {
+    0%, 60%, 100% {
+      opacity: 0.3;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-10px);
+    }
+  }
+
+  .h-100 {
+    height: 100%;
+  }
+
+  .flex-grow-1 {
+    flex-grow: 1;
+  }
+</style>
+
+<script>
+  const chatBox = document.getElementById('chatBox');
+  const messageInput = document.getElementById('messageInput');
+  const sendBtn = document.getElementById('sendBtn');
+
+  // Send message on button click
+  sendBtn.addEventListener('click', sendMessage);
+
+  // Send message on Enter key
+  messageInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  async function sendMessage() {
+    const message = messageInput.value.trim();
+    if (!message) return;
+
+    // Add user message to chat
+    addMessage(message, 'user');
+    messageInput.value = '';
+    messageInput.focus();
+
+    // Show typing indicator
+    showTypingIndicator();
+
+    try {
+      const response = await fetch('/ai-agent/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = await response.json();
+      removeTypingIndicator();
+
+      if (data.success) {
+        addMessage(data.message, 'assistant');
+      } else {
+        addMessage(`Error: ${data.error}`, 'assistant');
+      }
+    } catch (error) {
+      removeTypingIndicator();
+      addMessage(`Sorry, an error occurred: ${error.message}`, 'assistant');
+    }
+  }
+
+  function addMessage(text, sender) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.textContent = text;
+
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'message-time';
+    timeDiv.textContent = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    messageDiv.appendChild(bubble);
+    messageDiv.appendChild(timeDiv);
+    chatBox.appendChild(messageDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  function showTypingIndicator() {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant';
+    messageDiv.id = 'typingIndicator';
+
+    const typing = document.createElement('div');
+    typing.className = 'typing-indicator';
+    typing.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+
+    messageDiv.appendChild(typing);
+    chatBox.appendChild(messageDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  function removeTypingIndicator() {
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) indicator.remove();
+  }
+
+  function askQuestion(question) {
+    messageInput.value = question;
+    messageInput.focus();
+    sendMessage();
+  }
+
+  function clearChat() {
+    if (confirm('Clear chat history?')) {
+      chatBox.innerHTML = '<div class="alert alert-info">Chat cleared. Start a new conversation!</div>';
+    }
+  }
+</script>
+{% endblock %}
