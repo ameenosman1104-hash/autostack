@@ -218,6 +218,10 @@
         background:#fff !important;
       }
 
+      /* Hide carousel on mobile - show dashboard immediately */
+      .carousel { display:none !important; height:0 !important; }
+      .mb-4:has(.carousel) { display:none !important; }
+
       .table { font-size:0.85rem !important; }
       .table th, .table td { padding:0.85rem !important; }
 
