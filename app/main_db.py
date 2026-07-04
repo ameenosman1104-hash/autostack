@@ -2,20 +2,13 @@
 import sqlite3, os
 from werkzeug.security import generate_password_hash
 
-MAIN_DB = ":memory:"
+# Use file-based database for persistence
+db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "main.db")
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
+MAIN_DB = db_path
 
-try:
-    db_path = "/tmp/main.db"
-    sqlite3.connect(db_path).close()
-    MAIN_DB = db_path
-except:
-    try:
-        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "main.db")
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        sqlite3.connect(db_path).close()
-        MAIN_DB = db_path
-    except:
-        MAIN_DB = ":memory:"
+# Ensure database file exists
+sqlite3.connect(MAIN_DB).close()
 
 
 def get_conn():
