@@ -46,6 +46,46 @@
     .impersonate-bar { background:#F59E0B; color:#1E293B; font-size:.85rem; padding:.4rem 1rem; font-weight:600; }
     .page-title { font-size:1.1rem; font-weight:700; color:var(--nav); margin-bottom:1.2rem; }
     .flash-container { position:fixed; top:70px; right:1rem; z-index:9999; min-width:280px; }
+
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+      .sidebar { width:180px; }
+      .main-content { margin-left:0; padding:1rem; }
+      .sidebar { display:none; }
+      .page-title { font-size:.95rem; margin-bottom:1rem; }
+      .stat-card { padding:1rem; }
+      .stat-val { font-size:1.5rem; }
+      .stat-lbl { font-size:.7rem; }
+      .btn { padding:.5rem 1rem; font-size:.9rem; min-height:40px; }
+      .btn-sm { min-height:36px; padding:.4rem .8rem; }
+      .table { font-size:.75rem; }
+      .table th, .table td { padding:.4rem .5rem; }
+      .card { margin-bottom:1rem; }
+      .card-body { padding:1rem; }
+      .flash-container { width:90vw; right:5vw; left:5vw; }
+      .navbar { height:56px; }
+      .main-content { height:calc(100vh - 56px); }
+    }
+
+    @media (max-width: 576px) {
+      .main-content { padding:.75rem; }
+      .stat-card { padding:.8rem; margin-bottom:.5rem; }
+      .stat-val { font-size:1.3rem; }
+      .stat-lbl { font-size:.65rem; line-height:1.2; }
+      .navbar-brand { font-size:.95rem; }
+      .nav-link { font-size:.8rem; }
+      .page-title { font-size:.85rem; }
+      .btn { padding:.4rem .8rem; font-size:.8rem; min-height:36px; }
+      .btn-sm { min-height:32px; padding:.3rem .6rem; font-size:.7rem; }
+      .table { font-size:.7rem; }
+      .table th, .table td { padding:.3rem .3rem; }
+      .card-body { padding:.75rem; }
+      .carousel-caption { padding:1rem; }
+      .carousel-caption h3 { font-size:1.2rem; }
+      .carousel-caption p { font-size:.8rem; }
+      .form-control, .form-select { font-size:1rem; }
+      input, textarea, select { min-height:44px; }
+    }
   </style>
 </head>
 <body>
