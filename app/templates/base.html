@@ -48,43 +48,74 @@
     .flash-container { position:fixed; top:70px; right:1rem; z-index:9999; min-width:280px; }
 
     /* Mobile optimizations */
+    @media (max-width: 992px) {
+      .sidebar { display:none !important; }
+      .main-content { margin-left:0 !important; }
+    }
+
     @media (max-width: 768px) {
-      .sidebar { width:180px; }
-      .main-content { margin-left:0; padding:1rem; }
-      .sidebar { display:none; }
-      .page-title { font-size:.95rem; margin-bottom:1rem; }
-      .stat-card { padding:1rem; }
-      .stat-val { font-size:1.5rem; }
-      .stat-lbl { font-size:.7rem; }
-      .btn { padding:.5rem 1rem; font-size:.9rem; min-height:40px; }
-      .btn-sm { min-height:36px; padding:.4rem .8rem; }
-      .table { font-size:.75rem; }
-      .table th, .table td { padding:.4rem .5rem; }
-      .card { margin-bottom:1rem; }
-      .card-body { padding:1rem; }
-      .flash-container { width:90vw; right:5vw; left:5vw; }
-      .navbar { height:56px; }
-      .main-content { height:calc(100vh - 56px); }
+      .sidebar { display:none !important; }
+      .main-content { margin-left:0; padding:0.75rem; margin-top:56px; }
+      .page-title { font-size:1rem; margin-bottom:1rem; font-weight:700; }
+      .stat-card { padding:1.2rem; margin-bottom:0.75rem; background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+      .stat-val { font-size:2rem; font-weight:800; line-height:1; }
+      .stat-lbl { font-size:0.8rem; color:#64748B; margin-top:0.5rem; }
+      .btn { padding:0.75rem 1.5rem; font-size:1rem; min-height:44px; border-radius:8px; font-weight:600; }
+      .btn-sm { min-height:40px; padding:0.6rem 1rem; font-size:0.9rem; }
+      .table { font-size:0.85rem; }
+      .table th { padding:0.75rem; background:#F8FAFC; }
+      .table td { padding:0.75rem; }
+      .card { margin-bottom:1.2rem; border-radius:10px; }
+      .card-header { padding:1rem; font-size:1rem; }
+      .card-body { padding:1.2rem; }
+      .flash-container { width:90vw; right:5vw; left:5vw; top:80px !important; }
+      .navbar { height:56px; padding:0.5rem 1rem; }
+      .main-content { height:calc(100vh - 56px); overflow-y:auto; }
+      .row.g-3 { gap:0.75rem !important; }
+      .col-6 { min-width:100% !important; }
+      input, textarea, select { min-height:44px; font-size:16px; padding:0.75rem; }
+      .form-control:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(59,130,246,0.1); }
     }
 
     @media (max-width: 576px) {
-      .main-content { padding:.75rem; }
-      .stat-card { padding:.8rem; margin-bottom:.5rem; }
-      .stat-val { font-size:1.3rem; }
-      .stat-lbl { font-size:.65rem; line-height:1.2; }
-      .navbar-brand { font-size:.95rem; }
-      .nav-link { font-size:.8rem; }
-      .page-title { font-size:.85rem; }
-      .btn { padding:.4rem .8rem; font-size:.8rem; min-height:36px; }
-      .btn-sm { min-height:32px; padding:.3rem .6rem; font-size:.7rem; }
-      .table { font-size:.7rem; }
-      .table th, .table td { padding:.3rem .3rem; }
-      .card-body { padding:.75rem; }
-      .carousel-caption { padding:1rem; }
-      .carousel-caption h3 { font-size:1.2rem; }
-      .carousel-caption p { font-size:.8rem; }
-      .form-control, .form-select { font-size:1rem; }
-      input, textarea, select { min-height:44px; }
+      .main-content { padding:0.5rem; margin-top:56px; }
+      .page-title { font-size:0.95rem; margin-bottom:1rem; }
+      .stat-card { padding:1rem; margin-bottom:0.5rem; }
+      .stat-val { font-size:1.8rem; }
+      .stat-lbl { font-size:0.75rem; }
+      .navbar-brand { font-size:1rem; }
+      .nav-link { font-size:0.85rem; padding:0.5rem !important; }
+      .btn { padding:0.7rem 1.2rem; font-size:0.95rem; min-height:42px; width:100%; }
+      .btn-sm { min-height:38px; padding:0.5rem 1rem; font-size:0.85rem; }
+      .btn-primary { background:var(--blue); }
+      .btn-primary:active { background:#1d4ed8; }
+      .table { font-size:0.8rem; }
+      .table th { padding:0.5rem 0.25rem; }
+      .table td { padding:0.5rem 0.25rem; }
+      .card { margin-bottom:1rem; }
+      .card-header { padding:0.75rem; font-size:0.9rem; }
+      .card-body { padding:1rem; }
+      .carousel-caption { padding:0.75rem; }
+      .carousel-caption h3 { font-size:1.1rem; }
+      .carousel-caption p { font-size:0.75rem; }
+      .form-control, .form-select { font-size:16px; padding:0.75rem; min-height:44px; }
+      input[type="text"], input[type="email"], input[type="password"], textarea { min-height:44px; }
+      .row { margin-left:0; margin-right:0; }
+      .col-6 { padding-left:0.25rem; padding-right:0.25rem; }
+      .modal-dialog { margin:1rem auto; }
+      .modal-content { border-radius:12px; }
+      .badge { padding:0.5rem 0.75rem; font-size:0.75rem; }
+      .alert { padding:0.75rem; margin-bottom:1rem; border-radius:8px; }
+    }
+
+    @media (max-width: 400px) {
+      .main-content { padding:0.25rem; }
+      .stat-card { padding:0.75rem; margin-bottom:0.25rem; }
+      .stat-val { font-size:1.5rem; }
+      .stat-lbl { font-size:0.7rem; }
+      .btn { padding:0.6rem 1rem; font-size:0.9rem; min-height:40px; }
+      .navbar-brand { font-size:0.9rem; }
+      .page-title { font-size:0.9rem; }
     }
   </style>
 </head>
