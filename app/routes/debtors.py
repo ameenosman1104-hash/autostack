@@ -5,7 +5,11 @@ from flask_login import login_required, current_user
 from ..tenant_db import (get_all_debtors, get_debtor, get_debtor_by_name,
                           add_debtor, update_debtor, delete_debtor,
                           delete_all_debtors, delete_debtors_by_ids,
-                          next_reminder, save_setting, get_all_settings)
+                          next_reminder, save_setting, get_all_settings,
+                          add_payment, get_payment_history, get_debtor_payment_summary,
+                          add_reminder_sent, get_reminder_history, pause_reminders, resume_reminders,
+                          count_overdue_debtors, count_partially_paid_debtors,
+                          log_debtor_import, get_debtor_import_history)
 from datetime import date
 
 debtors_bp = Blueprint("debtors", __name__)
@@ -39,10 +43,15 @@ def index(filter="active"):
 
     total_owed = sum(d["amount_owed"] for d in all_rows if not d["is_paid"])
     due_count  = sum(1 for d in rows if d.get("reminder_status") in ("overdue", "due_today"))
+    overdue_count = sum(1 for d in rows if d.get("reminder_status") == "overdue")
+    partially_paid_count = count_partially_paid_debtors(tid)
+
     settings   = get_all_settings(tid)
     has_saved_source = bool(settings.get("debtor_import_config", ""))
     return render_template("debtors.html", debtors=rows, filter=filter,
                            total_owed=total_owed, due_count=due_count,
+                           overdue_count=overdue_count,
+                           partially_paid_count=partially_paid_count,
                            active_count=sum(1 for d in all_rows if not d["is_paid"]),
                            has_saved_source=has_saved_source)
 
@@ -112,6 +121,89 @@ def delete(did):
     delete_debtor(current_user.tenant_id, did)
     flash("Debtor deleted.", "success")
     return redirect(url_for("debtors.index"))
+
+
+@debtors_bp.route("/<int:did>/record-payment", methods=["POST"])
+@login_required
+def record_payment(did):
+    """Record a payment against a debtor's debt."""
+    try:
+        amount = float(request.form.get("amount", 0) or 0)
+        payment_date = request.form.get("payment_date", date.today().isoformat())
+        payment_method = request.form.get("payment_method", "cash")
+        notes = request.form.get("notes", "").strip()
+
+        if amount <= 0:
+            flash("Payment amount must be greater than 0.", "danger")
+            return redirect(url_for("debtors.detail", did=did))
+
+        add_payment(
+            current_user.tenant_id,
+            debtor_id=did,
+            amount_paid=amount,
+            payment_date=payment_date,
+            payment_method=payment_method,
+            notes=notes,
+            recorded_by=current_user.username
+        )
+        flash(f"Payment of R {amount:.2f} recorded successfully.", "success")
+    except Exception as e:
+        flash(f"Error recording payment: {e}", "danger")
+    return redirect(url_for("debtors.detail", did=did))
+
+
+@debtors_bp.route("/<int:did>/detail")
+@login_required
+def detail(did):
+    """Show detailed view of debtor with payment and reminder history."""
+    tid = current_user.tenant_id
+    debtor = get_debtor(tid, did)
+    if not debtor:
+        flash("Debtor not found.", "danger")
+        return redirect(url_for("debtors.index"))
+
+    summary = get_debtor_payment_summary(tid, did)
+    payments = get_payment_history(tid, did)
+    reminders = get_reminder_history(tid, did, limit=20)
+    nxt, status = next_reminder(debtor)
+
+    return render_template("debtors_detail.html",
+                          debtor=debtor,
+                          summary=summary,
+                          payments=payments,
+                          reminders=reminders,
+                          next_reminder_date=nxt,
+                          reminder_status=status,
+                          today=date.today().isoformat(),
+                          freq_options=FREQ_OPTIONS)
+
+
+@debtors_bp.route("/<int:did>/pause-reminders", methods=["POST"])
+@login_required
+def pause_reminders_endpoint(did):
+    """Pause reminders for a debtor until a specified date."""
+    try:
+        pause_until = request.form.get("pause_until", "").strip()
+        if not pause_until:
+            flash("Please specify a date to resume reminders.", "danger")
+        else:
+            pause_reminders(current_user.tenant_id, did, pause_until)
+            flash(f"Reminders paused until {pause_until}.", "success")
+    except Exception as e:
+        flash(f"Error pausing reminders: {e}", "danger")
+    return redirect(url_for("debtors.detail", did=did))
+
+
+@debtors_bp.route("/<int:did>/resume-reminders", methods=["POST"])
+@login_required
+def resume_reminders_endpoint(did):
+    """Resume reminders for a paused debtor."""
+    try:
+        resume_reminders(current_user.tenant_id, did)
+        flash("Reminders resumed.", "success")
+    except Exception as e:
+        flash(f"Error resuming reminders: {e}", "danger")
+    return redirect(url_for("debtors.detail", did=did))
 
 
 _DEBTOR_GUESSES = {
@@ -461,11 +553,23 @@ def import_debtors():
                 except Exception:
                     skipped += 1
 
+            # Log the import event
+            source = request.form.get("source", "file")
+            log_debtor_import(tid, source, imported, 0, skipped)
+
             flash(f"Imported {imported} debtor(s).{' '+str(skipped)+' skipped.' if skipped else ''}", "success")
             return redirect(url_for("debtors.index"))
 
     return render_template("debtors_import.html", phase="upload",
                            connections=_get_dbt_connections(current_user.tenant_id))
+
+
+@debtors_bp.route("/import-history")
+@login_required
+def import_history():
+    tid = current_user.tenant_id
+    history = get_debtor_import_history(tid, limit=50)
+    return render_template("debtors_import_history.html", history=history)
 
 
 @debtors_bp.route("/refresh-source")

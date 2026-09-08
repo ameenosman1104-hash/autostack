@@ -46,6 +46,20 @@ def index():
                            source_headers=source_headers, col_to_field=col_to_field)
 
 
+@inventory_bp.route("/reorder-required")
+@login_required
+def reorder_required():
+    tid = current_user.tenant_id
+    low = get_low_stock_products(tid)
+    out_of_stock = [p for p in low if p["current_stock"] <= 0]
+    low_stock = [p for p in low if p["current_stock"] > 0]
+
+    return render_template("inventory_reorder.html",
+                          low_stock=low_stock,
+                          out_of_stock=out_of_stock,
+                          total_low=len(low))
+
+
 @inventory_bp.route("/add", methods=["GET", "POST"])
 @login_required
 def add():

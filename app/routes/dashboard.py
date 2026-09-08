@@ -1,7 +1,8 @@
 import json
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_required, current_user
-from ..tenant_db import get_stats, get_low_stock_products, init_tenant_db, get_setting, save_setting
+from ..tenant_db import (get_stats, get_low_stock_products, init_tenant_db, get_setting, save_setting,
+                          count_overdue_debtors, count_partially_paid_debtors)
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -28,7 +29,14 @@ def index():
     stats  = get_stats(tid)
     low    = get_low_stock_products(tid)
     slides = _get_slides(tid)
-    return render_template("dashboard.html", stats=stats, low=low, slides=slides)
+
+    # Needs Attention metrics
+    overdue_count = count_overdue_debtors(tid)
+    partially_paid_count = count_partially_paid_debtors(tid)
+
+    return render_template("dashboard.html", stats=stats, low=low, slides=slides,
+                          overdue_count=overdue_count,
+                          partially_paid_count=partially_paid_count)
 
 
 @dashboard_bp.route("/carousel/save", methods=["POST"])

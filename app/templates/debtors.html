@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <div class="page-title mb-0"><i class="bi bi-people me-2"></i>Customer Payment Tracker</div>
+  <div class="page-title mb-0"><i class="bi bi-cash-coin me-2"></i>Debtors & Collections</div>
   <div class="d-flex gap-2">
+    <a href="{{ url_for('debtors.import_history') }}" class="btn btn-outline-info"><i class="bi bi-clock-history me-1"></i>Import History</a>
+    {% if has_saved_source %}
     <a href="{{ url_for('debtors.refresh_source') }}" class="btn btn-outline-info"><i class="bi bi-arrow-clockwise me-1"></i>Refresh</a>
+    {% endif %}
     <a href="{{ url_for('debtors.import_debtors') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import</a>
     <button class="btn btn-outline-danger" onclick="openDeleteModal()"><i class="bi bi-trash me-1"></i>Delete</button>
     <a href="{{ url_for('debtors.add') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add Debtor</a>
@@ -57,6 +60,12 @@
       <div class="stat-lbl">Reminders Due</div>
     </div>
   </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-val text-info">{{ partially_paid_count }}</div>
+      <div class="stat-lbl">Partially Paid</div>
+    </div>
+  </div>
 </div>
 
 <!-- Filter tabs -->
@@ -73,8 +82,7 @@
         <tr>
           <th>Name</th><th>Products Owed</th><th>Contact</th>
           <th class="text-end">Amount</th><th class="text-center">Purchase Date</th>
-          <th class="text-center">Remind Every</th><th class="text-center">Next Reminder</th>
-          <th class="text-center">Via</th><th class="text-center">Status</th>
+          <th class="text-center">Status</th><th class="text-center">Next Reminder</th>
           <th class="text-center">Actions</th>
         </tr>
       </thead>
@@ -89,31 +97,34 @@
           <td class="small editable-cell" data-field="email" data-raw="{{ d.email or '' }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.email or d.phone or '—' }}</td>
           <td class="text-end fw-semibold text-danger editable-cell" data-field="amount_owed" data-type="number" data-raw="{{ d.amount_owed }}" data-endpoint="/debtors/{{ d.id }}/update-field">R {{ "%.2f"|format(d.amount_owed) }}</td>
           <td class="text-center small editable-cell" data-field="date_of_purchase" data-type="date" data-raw="{{ d.date_of_purchase }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.date_of_purchase }}</td>
-          <td class="text-center small editable-cell" data-field="reminder_days" data-type="select" data-raw="{{ d.reminder_days }}" data-options="{{ _freq_opts }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.freq_label }}</td>
+          <td class="text-center">
+            {% if d.status == 'PAID' %}
+              <span class="badge bg-success">PAID</span>
+            {% elif d.status == 'PARTIALLY_PAID' %}
+              <span class="badge bg-info">PARTIAL</span>
+            {% elif rs == 'overdue' %}
+              <span class="badge bg-danger">OVERDUE</span>
+            {% elif rs == 'due_today' %}
+              <span class="badge bg-warning text-dark">DUE TODAY</span>
+            {% else %}
+              <span class="badge bg-secondary">DUE</span>
+            {% endif %}
+          </td>
           <td class="text-center small">
             {% if rs == 'overdue' %}<span class="text-danger fw-bold">OVERDUE</span>
             {% elif rs == 'due_today' %}<span class="text-warning fw-bold">TODAY</span>
             {% else %}{{ d.next_reminder }}{% endif %}
           </td>
-          <td class="text-center small editable-cell" data-field="notify_method" data-type="select" data-raw="{{ d.notify_method }}" data-options="{{ _notify_opts }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.notify_method|capitalize }}</td>
           <td class="text-center">
-            {% if d.is_paid %}
-              <span class="badge badge-ok px-2">Paid</span>
-            {% else %}
-              <span class="badge badge-low px-2">Active</span>
-            {% endif %}
-          </td>
-          <td class="text-center">
-            <div class="d-flex gap-1 justify-content-center">
-              <a href="{{ url_for('debtors.edit', did=d.id) }}" class="btn btn-sm btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>
+            <div class="btn-group btn-group-sm" role="group">
+              <a href="{{ url_for('debtors.detail', did=d.id) }}" class="btn btn-outline-info" title="View details"><i class="bi bi-eye"></i></a>
+              <a href="{{ url_for('debtors.edit', did=d.id) }}" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>
               {% if not d.is_paid %}
-              <button class="btn btn-sm btn-outline-success" title="Send reminder" onclick="sendReminder({{ d.id }}, this)"><i class="bi bi-envelope"></i></button>
-              <form method="POST" action="{{ url_for('debtors.mark_paid', did=d.id) }}" class="d-inline" onsubmit="return confirm('Mark as paid?')">
-                <button class="btn btn-sm btn-outline-primary" title="Mark paid"><i class="bi bi-check-lg"></i></button>
-              </form>
+                <button type="button" class="btn btn-outline-success" title="Record payment" onclick="showPaymentQuickRecord({{ d.id }}, '{{ d.name }}', {{ d.amount_owed }})"><i class="bi bi-cash-coin"></i></button>
+                <button class="btn btn-outline-primary" title="Send reminder" onclick="sendReminder({{ d.id }}, this)"><i class="bi bi-envelope"></i></button>
               {% endif %}
               <form method="POST" action="{{ url_for('debtors.delete', did=d.id) }}" class="d-inline" onsubmit="return confirm('Delete?')">
-                <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
+                <button type="submit" class="btn btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
               </form>
             </div>
           </td>
@@ -181,6 +192,49 @@
         </div>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- Quick Payment Modal -->
+<div class="modal fade" id="quickPaymentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="quickPaymentForm" method="POST">
+        <div class="modal-header">
+          <h5 class="modal-title">Record Payment - <span id="qpName"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info mb-3">
+            <strong>Remaining Balance:</strong> R <span id="qpRemaining">0.00</span>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Amount (R)</label>
+            <input type="number" id="qpAmount" name="amount" class="form-control" placeholder="0.00" step="0.01" required autofocus>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Payment Date</label>
+            <input type="date" id="qpDate" name="payment_date" class="form-control" required>
+          </div>
+          <div class="mb-0">
+            <label class="form-label">Payment Method</label>
+            <select name="payment_method" class="form-control">
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="check">Check</option>
+              <option value="card">Card</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Record Payment
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -411,5 +465,48 @@ function sendReminder(did, btn) {
     status.innerHTML = `<span class="text-success fw-semibold">${sent} sent</span>${failed ? ` &nbsp;<span class="text-danger">${failed} failed</span>` : ''}`;
   };
 })();
+
+// ── Quick payment recording ──────────────────────────────────
+window.showPaymentQuickRecord = function(did, name, amountOwed) {
+  document.getElementById('qpName').textContent = name;
+  document.getElementById('qpRemaining').textContent = parseFloat(amountOwed).toFixed(2);
+  document.getElementById('qpAmount').value = '';
+  document.getElementById('qpDate').valueAsDate = new Date();
+
+  const form = document.getElementById('quickPaymentForm');
+  form.onsubmit = function(e) {
+    e.preventDefault();
+    const amount = document.getElementById('qpAmount').value;
+    const date = document.getElementById('qpDate').value;
+    const method = form.payment_method.value;
+
+    if (!amount || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    const data = new FormData();
+    data.append('amount', amount);
+    data.append('payment_date', date);
+    data.append('payment_method', method);
+
+    fetch(`/debtors/${did}/record-payment`, {
+      method: 'POST',
+      body: data
+    }).then(r => {
+      if (r.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('quickPaymentModal')).hide();
+        alert(`Payment of R ${parseFloat(amount).toFixed(2)} recorded successfully!`);
+        location.reload();
+      } else {
+        alert('Error recording payment. Please try again.');
+      }
+    }).catch(e => {
+      alert('Error: ' + e.message);
+    });
+  };
+
+  new bootstrap.Modal(document.getElementById('quickPaymentModal')).show();
+};
 </script>
 {% endblock %}

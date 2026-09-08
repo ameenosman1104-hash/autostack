@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div class="d-flex align-items-center gap-2">
+    <a href="{{ url_for('inventory.index') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-chevron-left me-1"></i>Back to Inventory
+    </a>
+    <div>
+      <div class="page-title mb-0">Reorder Required</div>
+      <small class="text-muted">{{ total_low }} product(s) need attention</small>
+    </div>
+  </div>
+  <a href="{{ url_for('po.index') }}" class="btn btn-warning text-dark fw-bold">
+    <i class="bi bi-clipboard-check me-1"></i>View Purchase Orders
+  </a>
+</div>
+
+{% if total_low == 0 %}
+<div class="card">
+  <div class="card-body text-center py-5 text-success">
+    <i class="bi bi-check-circle fs-2 mb-2 d-block"></i>
+    <h5>All stock levels are healthy!</h5>
+    <p class="text-muted mb-0">No products need reordering at this time.</p>
+  </div>
+</div>
+{% else %}
+
+<!-- Out of Stock -->
+{% if out_of_stock %}
+<div class="card mb-4">
+  <div class="card-header bg-danger text-white">
+    <h6 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Out of Stock ({{ out_of_stock|length }})</h6>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Code</th>
+            <th>Product Name</th>
+            <th>Category</th>
+            <th class="text-center">Current Stock</th>
+            <th class="text-center">Reorder Level</th>
+            <th class="text-center">Supplier</th>
+            <th class="text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in out_of_stock %}
+          <tr class="table-danger">
+            <td class="fw-semibold text-monospace">{{ p.code }}</td>
+            <td class="fw-semibold">{{ p.name }}</td>
+            <td class="small text-muted">{{ p.category or '—' }}</td>
+            <td class="text-center text-danger fw-bold">{{ p.current_stock }}</td>
+            <td class="text-center">{{ p.reorder_level }}</td>
+            <td class="small">{{ p.supplier or '—' }}</td>
+            <td class="text-center">
+              <a href="{{ url_for('inventory.edit', pid=p.id) }}" class="btn btn-sm btn-outline-secondary" title="Edit">
+                <i class="bi bi-pencil"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Low Stock -->
+{% if low_stock %}
+<div class="card">
+  <div class="card-header bg-warning text-dark">
+    <h6 class="mb-0"><i class="bi bi-exclamation-circle-fill me-2"></i>Low Stock ({{ low_stock|length }})</h6>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Code</th>
+            <th>Product Name</th>
+            <th>Category</th>
+            <th class="text-center">Current Stock</th>
+            <th class="text-center">Reorder Level</th>
+            <th class="text-center">Need to Order</th>
+            <th class="text-center">Supplier</th>
+            <th class="text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in low_stock %}
+          <tr class="table-warning">
+            <td class="fw-semibold text-monospace">{{ p.code }}</td>
+            <td class="fw-semibold">{{ p.name }}</td>
+            <td class="small text-muted">{{ p.category or '—' }}</td>
+            <td class="text-center text-danger fw-bold">{{ p.current_stock }}</td>
+            <td class="text-center">{{ p.reorder_level }}</td>
+            <td class="text-center">
+              <span class="badge bg-info">{{ (p.reorder_level * 2 - p.current_stock)|int }}</span>
+            </td>
+            <td class="small">{{ p.supplier or '—' }}</td>
+            <td class="text-center">
+              <a href="{{ url_for('inventory.edit', pid=p.id) }}" class="btn btn-sm btn-outline-secondary" title="Edit">
+                <i class="bi bi-pencil"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+{% endblock %}

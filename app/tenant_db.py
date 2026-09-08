@@ -44,6 +44,24 @@ def get_conn(tenant_id):
     except Exception as e:
         print(f"Migration error (may be expected for new DBs): {e}")
         pass
+    # migrate debtor columns for collections tracking
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(debtors)").fetchall()]
+        if "status" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN status TEXT DEFAULT 'DUE'")
+            conn.commit()
+        if "reminders_paused_until" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN reminders_paused_until TEXT DEFAULT NULL")
+            conn.commit()
+        if "last_payment_date" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN last_payment_date TEXT DEFAULT NULL")
+            conn.commit()
+        if "total_paid_to_date" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN total_paid_to_date REAL DEFAULT 0")
+            conn.commit()
+    except Exception as e:
+        print(f"Debtor migration error (may be expected for new DBs): {e}")
+        pass
     # ensure new tables exist (for databases created before these were added)
     try:
         conn.executescript("""
@@ -175,6 +193,27 @@ def init_tenant_db(tenant_id):
             payment_terms  TEXT DEFAULT '',
             notes          TEXT DEFAULT '',
             created_at     TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS payment_history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            debtor_id       INTEGER NOT NULL,
+            amount_paid     REAL DEFAULT 0,
+            payment_date    TEXT NOT NULL,
+            payment_method  TEXT DEFAULT 'cash',
+            notes           TEXT DEFAULT '',
+            recorded_by     TEXT DEFAULT '',
+            created_at      TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS reminder_history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            debtor_id       INTEGER NOT NULL,
+            reminder_date   TEXT NOT NULL,
+            method          TEXT DEFAULT 'email',
+            status          TEXT DEFAULT 'sent',
+            message_preview TEXT DEFAULT '',
+            created_at      TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
         );
         """)
         conn.commit()
@@ -722,3 +761,303 @@ def auto_create_po_if_needed(tid, triggered_products=None):
     conn.commit()
     conn.close()
     return po_id, po_number, len(low)
+
+
+# ── Payment History & Collections ────────────────────────────────────────────
+
+def add_payment(tid, debtor_id, amount_paid, payment_date=None, payment_method="cash", notes="", recorded_by=""):
+    """Record a payment against a debtor. Automatically updates debtor status and balance."""
+    if payment_date is None:
+        payment_date = date.today().isoformat()
+    conn = get_conn(tid)
+    try:
+        conn.execute(
+            """INSERT INTO payment_history (debtor_id, amount_paid, payment_date, payment_method, notes, recorded_by)
+               VALUES (?,?,?,?,?,?)""",
+            (debtor_id, amount_paid, payment_date, payment_method, notes, recorded_by)
+        )
+        conn.commit()
+
+        # Update debtor: recalculate total_paid_to_date and update last_payment_date
+        total_paid = conn.execute(
+            "SELECT COALESCE(SUM(amount_paid),0) FROM payment_history WHERE debtor_id=?",
+            (debtor_id,)
+        ).fetchone()[0]
+
+        debtor = get_debtor(tid, debtor_id)
+        if debtor:
+            remaining = debtor["amount_owed"] - total_paid
+            # Determine new status
+            if remaining <= 0:
+                new_status = "PAID"
+            elif total_paid > 0:
+                new_status = "PARTIALLY_PAID"
+            else:
+                new_status = "DUE"
+
+            conn.execute(
+                """UPDATE debtors SET total_paid_to_date=?, last_payment_date=?, status=?, is_paid=?
+                   WHERE id=?""",
+                (total_paid, payment_date, new_status, 1 if new_status == "PAID" else 0, debtor_id)
+            )
+            conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise
+
+
+def get_payment_history(tid, debtor_id):
+    """Get all payments made by a debtor, newest first."""
+    conn = get_conn(tid)
+    rows = conn.execute(
+        """SELECT * FROM payment_history WHERE debtor_id=?
+           ORDER BY payment_date DESC, created_at DESC""",
+        (debtor_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_debtor_payment_summary(tid, debtor_id):
+    """Get total paid, remaining balance, and payment statistics for a debtor."""
+    conn = get_conn(tid)
+    debtor = conn.execute("SELECT * FROM debtors WHERE id=?", (debtor_id,)).fetchone()
+    conn.close()
+    if not debtor:
+        return None
+
+    debtor = dict(debtor)
+    total_paid = debtor.get("total_paid_to_date", 0)
+    amount_owed = debtor.get("amount_owed", 0)
+    remaining = max(0, amount_owed - total_paid)
+
+    payments = get_payment_history(tid, debtor_id)
+    payment_count = len(payments)
+    latest_payment = payments[0] if payments else None
+
+    return {
+        "debtor_id": debtor_id,
+        "debtor_name": debtor.get("name", ""),
+        "amount_owed": amount_owed,
+        "total_paid": total_paid,
+        "remaining": remaining,
+        "status": debtor.get("status", "DUE"),
+        "payment_count": payment_count,
+        "latest_payment_date": latest_payment["payment_date"] if latest_payment else None,
+        "latest_payment_amount": latest_payment["amount_paid"] if latest_payment else None,
+    }
+
+
+def delete_payment(tid, payment_id):
+    """Delete a payment and recalculate debtor balance."""
+    conn = get_conn(tid)
+    payment = conn.execute("SELECT debtor_id FROM payment_history WHERE id=?", (payment_id,)).fetchone()
+    if not payment:
+        conn.close()
+        return False
+
+    debtor_id = payment["debtor_id"]
+    conn.execute("DELETE FROM payment_history WHERE id=?", (payment_id,))
+    conn.commit()
+
+    # Recalculate balance
+    total_paid = conn.execute(
+        "SELECT COALESCE(SUM(amount_paid),0) FROM payment_history WHERE debtor_id=?",
+        (debtor_id,)
+    ).fetchone()[0]
+
+    debtor = conn.execute("SELECT * FROM debtors WHERE id=?", (debtor_id,)).fetchone()
+    if debtor:
+        remaining = debtor["amount_owed"] - total_paid
+        if remaining <= 0:
+            new_status = "PAID"
+        elif total_paid > 0:
+            new_status = "PARTIALLY_PAID"
+        else:
+            new_status = "DUE"
+
+        last_payment = conn.execute(
+            "SELECT payment_date FROM payment_history WHERE debtor_id=? ORDER BY payment_date DESC LIMIT 1",
+            (debtor_id,)
+        ).fetchone()
+
+        conn.execute(
+            """UPDATE debtors SET total_paid_to_date=?, last_payment_date=?, status=?, is_paid=?
+               WHERE id=?""",
+            (total_paid, last_payment["payment_date"] if last_payment else None,
+             new_status, 1 if new_status == "PAID" else 0, debtor_id)
+        )
+        conn.commit()
+
+    conn.close()
+    return True
+
+
+# ── Reminder History & Management ────────────────────────────────────────────
+
+def add_reminder_sent(tid, debtor_id, method="email", status="sent", message_preview="", reminder_date=None):
+    """Log that a reminder was sent to a debtor."""
+    if reminder_date is None:
+        reminder_date = date.today().isoformat()
+    conn = get_conn(tid)
+    try:
+        conn.execute(
+            """INSERT INTO reminder_history (debtor_id, reminder_date, method, status, message_preview)
+               VALUES (?,?,?,?,?)""",
+            (debtor_id, reminder_date, method, status, message_preview[:500] if message_preview else "")
+        )
+        # Update last_reminded on debtor
+        conn.execute(
+            "UPDATE debtors SET last_reminded=? WHERE id=?",
+            (reminder_date, debtor_id)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise
+
+
+def get_reminder_history(tid, debtor_id, limit=50):
+    """Get all reminders sent to a debtor, newest first."""
+    conn = get_conn(tid)
+    rows = conn.execute(
+        """SELECT * FROM reminder_history WHERE debtor_id=?
+           ORDER BY reminder_date DESC, created_at DESC LIMIT ?""",
+        (debtor_id, limit)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def pause_reminders(tid, debtor_id, pause_until_date):
+    """Pause reminders for a debtor until a specific date."""
+    conn = get_conn(tid)
+    conn.execute(
+        "UPDATE debtors SET reminders_paused_until=? WHERE id=?",
+        (pause_until_date, debtor_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def resume_reminders(tid, debtor_id):
+    """Resume reminders for a debtor (clear pause date)."""
+    conn = get_conn(tid)
+    conn.execute(
+        "UPDATE debtors SET reminders_paused_until=NULL WHERE id=?",
+        (debtor_id,)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_debtors_needing_reminders(tid):
+    """Get all debtors whose next reminder is due (not paused, status not PAID)."""
+    from datetime import datetime as _dt
+    conn = get_conn(tid)
+    rows = conn.execute(
+        """SELECT * FROM debtors
+           WHERE is_paid=0 AND (reminders_paused_until IS NULL OR reminders_paused_until < date('now'))
+           ORDER BY last_reminded ASC, date_of_purchase ASC"""
+    ).fetchall()
+    conn.close()
+
+    # Filter by next_reminder calculation
+    result = []
+    for row in rows:
+        debtor = dict(row)
+        nxt, status = next_reminder(debtor)
+        if status in ("overdue", "due_today"):
+            result.append(debtor)
+    return result
+
+
+def count_overdue_debtors(tid):
+    """Count debtors with overdue reminders."""
+    debtors = get_all_debtors(tid, show_paid=False)
+    count = 0
+    for d in debtors:
+        _, status = next_reminder(d)
+        if status == "overdue":
+            count += 1
+    return count
+
+
+def count_partially_paid_debtors(tid):
+    """Count debtors with partial payments."""
+    conn = get_conn(tid)
+    count = conn.execute(
+        "SELECT COUNT(*) FROM debtors WHERE status='PARTIALLY_PAID'"
+    ).fetchone()[0]
+    conn.close()
+    return count
+
+
+# ── Import History ────────────────────────────────────────────────────────────
+
+def log_debtor_import(tid, source, added, updated, skipped, error_msg=""):
+    """Log a debtor import event."""
+    conn = get_conn(tid)
+    try:
+        conn.execute(
+            """INSERT INTO notification_log (notification_type, recipient, message, status)
+               VALUES (?,?,?,?)""",
+            ("debtor_import", f"added={added}, updated={updated}, skipped={skipped}",
+             f"Import from {source}: {added} added, {updated} updated, {skipped} skipped" + (f". Error: {error_msg}" if error_msg else ""),
+             "success" if not error_msg else "error")
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        conn.close()
+        pass
+
+
+def log_product_import(tid, source, added, updated, skipped, error_msg=""):
+    """Log a product import event."""
+    conn = get_conn(tid)
+    try:
+        conn.execute(
+            """INSERT INTO notification_log (notification_type, recipient, message, status)
+               VALUES (?,?,?,?)""",
+            ("product_import", f"added={added}, updated={updated}, skipped={skipped}",
+             f"Import from {source}: {added} added, {updated} updated, {skipped} skipped" + (f". Error: {error_msg}" if error_msg else ""),
+             "success" if not error_msg else "error")
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        conn.close()
+        pass
+
+
+def get_debtor_import_history(tid, limit=20):
+    """Get recent debtor import events."""
+    conn = get_conn(tid)
+    rows = conn.execute(
+        """SELECT created_at, recipient, message, status FROM notification_log
+           WHERE notification_type='debtor_import'
+           ORDER BY created_at DESC LIMIT ?""",
+        (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_product_import_history(tid, limit=20):
+    """Get recent product import events."""
+    conn = get_conn(tid)
+    rows = conn.execute(
+        """SELECT created_at, recipient, message, status FROM notification_log
+           WHERE notification_type='product_import'
+           ORDER BY created_at DESC LIMIT ?""",
+        (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

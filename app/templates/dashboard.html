@@ -44,7 +44,7 @@
 </div>
 
 <!-- ── Page Title ───────────────────────────────────────────────────────────── -->
-<div class="page-title"><i class="bi bi-speedometer2 me-2"></i>{% if current_user.is_admin and not session.get('impersonate_id') %}Dashboard{% else %}Clientboard{% endif %}</div>
+<div class="page-title"><i class="bi bi-speedometer2 me-2"></i>AUTOSTACK TEST CHANGE 123</div>
 
 <!-- ── Stat cards ───────────────────────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
@@ -83,12 +83,75 @@
   </div>
 </div>
 
+<!-- ── Needs Attention section ────────────────────────────────────────────────── -->
+{% if overdue_count > 0 or partially_paid_count > 0 or stats.low_stock > 0 %}
+<div class="card mb-4" style="border-left: 4px solid #DC2626;">
+  <div class="card-header bg-light">
+    <h6 class="mb-0"><i class="bi bi-exclamation-circle-fill text-danger me-2"></i>Needs Attention</h6>
+  </div>
+  <div class="card-body p-0">
+    <div class="row g-0">
+      {% if overdue_count > 0 %}
+      <div class="col-6 col-md-3 p-3 border-end">
+        <a href="{{ url_for('debtors.index', filter='active') }}" class="text-decoration-none">
+          <div class="text-center">
+            <div class="display-5 text-danger fw-bold">{{ overdue_count }}</div>
+            <div class="small text-muted">Overdue Reminders</div>
+            <div class="small text-muted">↓ Click to view</div>
+          </div>
+        </a>
+      </div>
+      {% endif %}
+
+      {% if partially_paid_count > 0 %}
+      <div class="col-6 col-md-3 p-3 {% if overdue_count > 0 %}border-end{% endif %}">
+        <a href="{{ url_for('debtors.index', filter='active') }}" class="text-decoration-none">
+          <div class="text-center">
+            <div class="display-5 text-info fw-bold">{{ partially_paid_count }}</div>
+            <div class="small text-muted">Partially Paid</div>
+            <div class="small text-muted">↓ Click to view</div>
+          </div>
+        </a>
+      </div>
+      {% endif %}
+
+      {% if stats.low_stock > 0 %}
+      <div class="col-6 col-md-3 p-3 {% if overdue_count > 0 or partially_paid_count > 0 %}border-end{% endif %}">
+        <a href="{{ url_for('inventory.index') }}" class="text-decoration-none">
+          <div class="text-center">
+            <div class="display-5 text-warning fw-bold">{{ stats.low_stock }}</div>
+            <div class="small text-muted">Low Stock Items</div>
+            <div class="small text-muted">↓ Click to view</div>
+          </div>
+        </a>
+      </div>
+      {% endif %}
+
+      {% if stats.out_of_stock > 0 %}
+      <div class="col-6 col-md-3 p-3">
+        <a href="{{ url_for('inventory.index') }}" class="text-decoration-none">
+          <div class="text-center">
+            <div class="display-5 text-danger fw-bold">{{ stats.out_of_stock }}</div>
+            <div class="small text-muted">Out of Stock</div>
+            <div class="small text-muted">↓ Click to view</div>
+          </div>
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- ── Low stock table ──────────────────────────────────────────────────────── -->
 {% if low %}
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span><i class="bi bi-exclamation-triangle me-2"></i>Items Needing Attention</span>
-    <a href="{{ url_for('po.index') }}" class="btn btn-sm btn-warning text-dark fw-bold">View Purchase Orders</a>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('inventory.reorder_required') }}" class="btn btn-sm btn-outline-warning text-dark">View All Reorder Items</a>
+      <a href="{{ url_for('po.index') }}" class="btn btn-sm btn-warning text-dark fw-bold">View Purchase Orders</a>
+    </div>
   </div>
   <div class="card-body p-0">
     <table class="table table-hover mb-0">
