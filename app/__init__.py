@@ -44,15 +44,25 @@ def create_app():
     # Expose enumerate to Jinja2 templates
     app.jinja_env.globals['enumerate'] = enumerate
 
-    # Serve PWA files from root scope
+    # Serve PWA files from root scope with proper headers
     @app.route('/sw.js')
     def sw():
-        return send_from_directory(app.static_folder, 'sw.js',
-                                   mimetype='application/javascript')
+        response = send_from_directory(app.static_folder, 'sw.js',
+                                       mimetype='application/javascript')
+        # Service worker should not be cached heavily (check for updates regularly)
+        response.cache_control.max_age = 3600  # 1 hour
+        response.cache_control.public = True
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
 
     @app.route('/manifest.json')
     def manifest():
-        return send_from_directory(app.static_folder, 'manifest.json',
-                                   mimetype='application/manifest+json')
+        response = send_from_directory(app.static_folder, 'manifest.json',
+                                       mimetype='application/manifest+json')
+        # Manifest should be revalidated frequently
+        response.cache_control.max_age = 3600  # 1 hour
+        response.cache_control.public = True
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
 
     return app

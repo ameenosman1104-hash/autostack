@@ -1,4 +1,4 @@
-const CACHE = 'osbro-v1';
+const CACHE = 'autostack-pwa-v1';
 const SHELL = [
   '/',
   '/static/manifest.json',
@@ -6,17 +6,42 @@ const SHELL = [
   '/static/icons/icon-512.png'
 ];
 
+console.log('[Service Worker] Installing with cache:', CACHE);
+
 self.addEventListener('install', e => {
+  console.log('[Service Worker] Install event fired');
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then(c => {
+        console.log('[Service Worker] Adding shell resources to cache');
+        return c.addAll(SHELL);
+      })
+      .then(() => {
+        console.log('[Service Worker] Skipping waiting');
+        return self.skipWaiting();
+      })
+      .catch(err => {
+        console.error('[Service Worker] Install error:', err);
+      })
   );
 });
 
 self.addEventListener('activate', e => {
+  console.log('[Service Worker] Activate event fired');
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => clients.claim())
+    caches.keys().then(keys => {
+      console.log('[Service Worker] Available caches:', keys);
+      return Promise.all(
+        keys.filter(k => {
+          const shouldDelete = k !== CACHE;
+          if (shouldDelete) console.log('[Service Worker] Deleting old cache:', k);
+          return shouldDelete;
+        }).map(k => caches.delete(k))
+      );
+    }).then(() => {
+      console.log('[Service Worker] Claiming clients');
+      return self.clients.claim();
+    })
   );
 });
 

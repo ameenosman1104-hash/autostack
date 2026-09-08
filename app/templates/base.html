@@ -672,31 +672,76 @@ document.addEventListener('keydown', function(e) {
 <!-- PWA: Install prompt + Service Worker -->
 <script>
 (function(){
+  // Check HTTPS requirement
+  const isHttps = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const domain = window.location.hostname;
+
+  console.log('[PWA] Domain:', domain, '| HTTPS:', isHttps);
+
   // Register service worker
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(function(){});
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(function(reg) {
+        console.log('[PWA] Service worker registered successfully:', reg.scope);
+      })
+      .catch(function(err) {
+        console.error('[PWA] Service worker registration failed:', err);
+      });
+  } else {
+    console.warn('[PWA] Service workers not supported');
   }
 
-  // Show install button when browser fires beforeinstallprompt
-  let deferredPrompt;
+  // Handle install prompt
+  let deferredPrompt = null;
+  const btn = document.getElementById('pwa-install-btn');
+
+  // Listen for beforeinstallprompt event (fired when app is installable)
   window.addEventListener('beforeinstallprompt', function(e) {
+    console.log('[PWA] beforeinstallprompt fired on domain:', domain);
     e.preventDefault();
     deferredPrompt = e;
-    const btn = document.getElementById('pwa-install-btn');
-    if (btn) btn.classList.remove('d-none');
+    // Show the install button
+    if (btn) {
+      btn.classList.remove('d-none');
+      console.log('[PWA] Install button shown');
+    }
   });
 
+  // Handle app already installed
   window.addEventListener('appinstalled', function() {
-    const btn = document.getElementById('pwa-install-btn');
-    if (btn) btn.classList.add('d-none');
+    console.log('[PWA] App installed successfully');
+    if (btn) {
+      btn.classList.add('d-none');
+    }
     deferredPrompt = null;
   });
 
+  // Listen to beforeinstallprompt not firing (for debugging)
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      if (!deferredPrompt && btn) {
+        console.log('[PWA] beforeinstallprompt did not fire. Possible reasons:');
+        console.log('  - App not installable yet');
+        console.log('  - Not HTTPS:', !isHttps);
+        console.log('  - Service worker not ready');
+        console.log('  - Manifest not valid');
+        console.log('  - App already installed');
+      }
+    }, 2000);
+  });
+
+  // Handle install button click
   document.addEventListener('click', function(e) {
     if (e.target && e.target.id === 'pwa-install-btn') {
+      console.log('[PWA] Install button clicked');
       if (deferredPrompt) {
         deferredPrompt.prompt();
-        deferredPrompt.userChoice.then(function(){ deferredPrompt = null; });
+        deferredPrompt.userChoice.then(function(choiceResult) {
+          console.log('[PWA] User choice:', choiceResult.outcome);
+          deferredPrompt = null;
+        });
+      } else {
+        console.error('[PWA] deferredPrompt is null, beforeinstallprompt did not fire');
       }
     }
   });
