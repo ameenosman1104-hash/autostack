@@ -675,150 +675,191 @@ document.addEventListener('keydown', function(e) {
   const domain = window.location.hostname;
   const isHttps = window.location.protocol === 'https:' || domain === 'localhost' || domain === '127.0.0.1';
   const btn = document.getElementById('pwa-install-btn');
+
   let deferredPrompt = null;
+  let swCheckComplete = false;
   let swReady = false;
+  let manifestCheckComplete = false;
   let manifestValid = false;
+  let checksRunning = 0;
 
-  console.log('[PWA] Starting PWA check on domain:', domain);
+  console.log('[PWA] ===== PWA Installation Check Started =====');
+  console.log('[PWA] Domain:', domain);
   console.log('[PWA] HTTPS:', isHttps);
+  console.log('[PWA] Button element found:', !!btn);
 
-  // STEP 1: Validate manifest
+  if (!btn) {
+    console.error('[PWA] ERROR: Install button element not found - cannot proceed');
+    return;
+  }
+
+  // STEP 1: Check if app is ACTUALLY installed (running in standalone mode)
+  function isActuallyInstalled() {
+    const standaloneMatch = window.matchMedia('(display-mode: standalone)').matches;
+    const navStandalone = window.navigator.standalone === true;
+
+    console.log('[PWA] Installation state check:');
+    console.log('  - display-mode: standalone =', standaloneMatch);
+    console.log('  - navigator.standalone =', navStandalone);
+
+    if (standaloneMatch) {
+      console.log('[PWA] *** DETERMINED INSTALLED: display-mode is standalone ***');
+      return true;
+    }
+    if (navStandalone) {
+      console.log('[PWA] *** DETERMINED INSTALLED: navigator.standalone is true ***');
+      return true;
+    }
+    console.log('[PWA] Not installed (normal browser mode)');
+    return false;
+  }
+
+  // Don't proceed if app is already installed
+  if (isActuallyInstalled()) {
+    console.log('[PWA] App is running in PWA mode - hiding button');
+    btn.classList.add('d-none');
+    return;
+  }
+
+  // STEP 2: Validate manifest
+  console.log('[PWA] Fetching manifest...');
   fetch('/manifest.json', { cache: 'no-cache' })
     .then(res => {
-      console.log('[PWA] Manifest fetch status:', res.status, 'Content-Type:', res.headers.get('content-type'));
+      console.log('[PWA] Manifest HTTP status:', res.status);
+      console.log('[PWA] Manifest Content-Type:', res.headers.get('content-type'));
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();
     })
     .then(manifest => {
-      console.log('[PWA] Manifest fetched and valid JSON');
-      console.log('[PWA] Manifest fields: name, start_url, scope, display, icons count:', manifest.icons?.length);
+      console.log('[PWA] ✓ Manifest valid - parsed as JSON');
+      console.log('[PWA] Manifest.name:', manifest.name);
+      console.log('[PWA] Manifest.start_url:', manifest.start_url);
+      console.log('[PWA] Manifest.scope:', manifest.scope);
+      console.log('[PWA] Manifest.display:', manifest.display);
+      console.log('[PWA] Icon count:', manifest.icons?.length || 0);
       manifestValid = true;
-      checkInstallability();
+      manifestCheckComplete = true;
+      updateButton();
     })
     .catch(err => {
-      console.error('[PWA] Manifest validation FAILED:', err.message);
-      console.error('[PWA] Reason: Manifest could not be fetched or parsed as JSON');
+      console.error('[PWA] ✗ Manifest INVALID:', err.message);
       manifestValid = false;
-      checkInstallability();
+      manifestCheckComplete = true;
+      updateButton();
     });
 
-  // STEP 2: Register service worker
+  // STEP 3: Register service worker
   if ('serviceWorker' in navigator) {
+    console.log('[PWA] Registering service worker...');
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
       .then(reg => {
-        console.log('[PWA] Service worker registered successfully');
+        console.log('[PWA] ✓ Service worker registered');
         console.log('[PWA] SW scope:', reg.scope);
         swReady = true;
-        checkInstallability();
+        swCheckComplete = true;
+        updateButton();
       })
       .catch(err => {
-        console.error('[PWA] Service worker registration FAILED:', err.message);
+        console.error('[PWA] ✗ Service worker registration FAILED:', err.message);
         swReady = false;
-        checkInstallability();
+        swCheckComplete = true;
+        updateButton();
       });
   } else {
-    console.error('[PWA] Service workers NOT supported in this browser');
+    console.error('[PWA] Service workers not supported');
     swReady = false;
+    swCheckComplete = true;
+    updateButton();
   }
 
-  // STEP 3: Check if already installed
-  function isAlreadyInstalled() {
-    // Check 1: display-mode standalone (app running as PWA)
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      console.log('[PWA] App is already installed (display-mode: standalone)');
-      return true;
-    }
-    // Check 2: navigator.standalone (iOS Safari)
-    if (window.navigator.standalone === true) {
-      console.log('[PWA] App is already installed (navigator.standalone)');
-      return true;
-    }
-    return false;
-  }
-
-  // STEP 4: Listen for beforeinstallprompt event
+  // STEP 4: Listen for beforeinstallprompt (browser says "I can install this")
   window.addEventListener('beforeinstallprompt', function(e) {
-    console.log('[PWA] beforeinstallprompt event fired - browser can install');
+    console.log('[PWA] *** beforeinstallprompt EVENT FIRED ***');
+    console.log('[PWA] Browser is offering to install the PWA');
     e.preventDefault();
     deferredPrompt = e;
-    checkInstallability();
+    updateButton();
   });
 
-  // STEP 5: Listen for successful installation
+  // STEP 5: Listen for appinstalled (user confirmed installation)
   window.addEventListener('appinstalled', function() {
-    console.log('[PWA] APP INSTALLED successfully');
+    console.log('[PWA] *** APP INSTALLED EVENT FIRED ***');
+    console.log('[PWA] User completed installation');
     deferredPrompt = null;
-    if (btn) btn.classList.add('d-none');
+    btn.classList.add('d-none');
   });
 
-  // STEP 6: Check installability and show/hide button
-  function checkInstallability() {
-    console.log('[PWA] Checking installability...');
+  // STEP 6: Update button visibility based on all checks
+  function updateButton() {
+    console.log('\n[PWA] --- Button Update Check ---');
+    console.log('[PWA] State:');
     console.log('  - HTTPS:', isHttps);
-    console.log('  - Manifest valid:', manifestValid);
-    console.log('  - Service worker ready:', swReady);
+    console.log('  - Manifest ready:', manifestCheckComplete, '| valid:', manifestValid);
+    console.log('  - SW ready:', swCheckComplete, '| registered:', swReady);
     console.log('  - beforeinstallprompt captured:', !!deferredPrompt);
-    console.log('  - Already installed:', isAlreadyInstalled());
 
-    if (!btn) {
-      console.log('[PWA] Install button not found in DOM');
+    // Must wait for all async checks to complete
+    if (!manifestCheckComplete || !swCheckComplete) {
+      console.log('[PWA] Waiting for async checks to complete...');
       return;
     }
 
-    // App already installed - hide button
-    if (isAlreadyInstalled()) {
-      console.log('[PWA] Button HIDDEN: App is already installed');
-      btn.classList.add('d-none');
-      return;
-    }
-
-    // Not HTTPS - cannot install
+    // Must be HTTPS
     if (!isHttps) {
-      console.log('[PWA] Button HIDDEN: Not HTTPS (required for PWA)');
+      console.log('[PWA] → HIDDEN: HTTPS required for PWA installation');
       btn.classList.add('d-none');
       return;
     }
 
-    // Manifest invalid - cannot install
+    // Must have valid manifest
     if (!manifestValid) {
-      console.log('[PWA] Button HIDDEN: Manifest is invalid');
+      console.log('[PWA] → HIDDEN: Manifest is invalid or unreachable');
       btn.classList.add('d-none');
       return;
     }
 
-    // Service worker not ready - cannot install
+    // Must have service worker
     if (!swReady) {
-      console.log('[PWA] Button HIDDEN: Service worker not registered');
+      console.log('[PWA] → HIDDEN: Service worker failed to register');
       btn.classList.add('d-none');
       return;
     }
 
-    // beforeinstallprompt captured - show button
-    if (deferredPrompt) {
-      console.log('[PWA] Button SHOWN: All requirements met and beforeinstallprompt captured');
-      btn.classList.remove('d-none');
-    } else {
-      console.log('[PWA] Button HIDDEN: Waiting for beforeinstallprompt event...');
+    // Must have beforeinstallprompt event
+    if (!deferredPrompt) {
+      console.log('[PWA] → HIDDEN: Waiting for beforeinstallprompt event from browser...');
       btn.classList.add('d-none');
+      return;
     }
+
+    // All checks passed - show button
+    console.log('[PWA] → SHOWN: Ready for installation!');
+    btn.classList.remove('d-none');
   }
 
-  // Check installability after page load
+  // Final check after page load
   window.addEventListener('load', function() {
-    setTimeout(checkInstallability, 1000);
+    console.log('\n[PWA] Page load complete - checking installability');
+    setTimeout(updateButton, 1500);
   });
 
   // Handle install button click
-  document.addEventListener('click', function(e) {
-    if (e.target && e.target.id === 'pwa-install-btn' && deferredPrompt) {
-      console.log('[PWA] Install button clicked - showing browser install prompt');
+  btn.addEventListener('click', function(e) {
+    console.log('[PWA] Install button clicked');
+    if (deferredPrompt) {
+      console.log('[PWA] Showing browser install prompt...');
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then(function(choiceResult) {
         console.log('[PWA] User choice:', choiceResult.outcome);
         deferredPrompt = null;
+        updateButton();
       });
+    } else {
+      console.error('[PWA] ERROR: deferredPrompt is null');
     }
   });
+
+  console.log('[PWA] Script initialized');
 })();
 </script>
 </body>
