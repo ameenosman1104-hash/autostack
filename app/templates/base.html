@@ -697,17 +697,22 @@ document.addEventListener('keydown', function(e) {
   function isActuallyInstalled() {
     const standaloneMatch = window.matchMedia('(display-mode: standalone)').matches;
     const navStandalone = window.navigator.standalone === true;
+    const fullscreenMatch = window.matchMedia('(display-mode: fullscreen)').matches;
+    const minimalUiMatch = window.matchMedia('(display-mode: minimal-ui)').matches;
 
     console.log('[PWA] Installation state check:');
     console.log('  - display-mode: standalone =', standaloneMatch);
+    console.log('  - display-mode: fullscreen =', fullscreenMatch);
+    console.log('  - display-mode: minimal-ui =', minimalUiMatch);
     console.log('  - navigator.standalone =', navStandalone);
+    console.log('  - document.documentElement.getAttribute("data-pwa-mode") =', document.documentElement.getAttribute('data-pwa-mode'));
 
-    if (standaloneMatch) {
-      console.log('[PWA] *** DETERMINED INSTALLED: display-mode is standalone ***');
+    if (standaloneMatch || fullscreenMatch || minimalUiMatch) {
+      console.log('[PWA] *** DETERMINED INSTALLED: display-mode is ' + (standaloneMatch ? 'standalone' : fullscreenMatch ? 'fullscreen' : 'minimal-ui') + ' ***');
       return true;
     }
-    if (navStandalone) {
-      console.log('[PWA] *** DETERMINED INSTALLED: navigator.standalone is true ***');
+    if (navStandalone === true) {
+      console.log('[PWA] *** DETERMINED INSTALLED: navigator.standalone is true (iOS) ***');
       return true;
     }
     console.log('[PWA] Not installed (normal browser mode)');
@@ -755,6 +760,24 @@ document.addEventListener('keydown', function(e) {
       .then(reg => {
         console.log('[PWA] ✓ Service worker registered');
         console.log('[PWA] SW scope:', reg.scope);
+        console.log('[PWA] SW state:', reg.installing ? 'installing' : reg.waiting ? 'waiting' : reg.active ? 'active' : 'unknown');
+
+        // Check if SW is controlling the page
+        if (navigator.serviceWorker.controller) {
+          console.log('[PWA] ✓ Service worker is CONTROLLING this page');
+        } else {
+          console.log('[PWA] ℹ Service worker registered but NOT YET controlling page (will take effect on next visit)');
+        }
+
+        // Wait for service worker to be ready
+        navigator.serviceWorker.ready
+          .then(function() {
+            console.log('[PWA] ✓ navigator.serviceWorker.ready resolved');
+          })
+          .catch(function(err) {
+            console.error('[PWA] ✗ navigator.serviceWorker.ready rejected:', err.message);
+          });
+
         swReady = true;
         swCheckComplete = true;
         updateButton();
@@ -776,6 +799,10 @@ document.addEventListener('keydown', function(e) {
   window.addEventListener('beforeinstallprompt', function(e) {
     console.log('[PWA] *** beforeinstallprompt EVENT FIRED ***');
     console.log('[PWA] Browser is offering to install the PWA');
+    console.log('[PWA] Event details:', {
+      platforms: e.platforms || 'N/A',
+      userChoice: e.userChoice ? 'defined' : 'undefined'
+    });
     e.preventDefault();
     deferredPrompt = e;
     updateButton();
@@ -842,6 +869,19 @@ document.addEventListener('keydown', function(e) {
     console.log('\n[PWA] Page load complete - checking installability');
     setTimeout(updateButton, 1500);
   });
+
+  // Diagnostic: Log if beforeinstallprompt doesn't fire within reasonable time
+  setTimeout(function() {
+    if (!deferredPrompt && manifestCheckComplete && swCheckComplete && isHttps && manifestValid && swReady) {
+      console.warn('[PWA] ⚠️ DIAGNOSTIC: All requirements met but beforeinstallprompt has NOT fired after 5 seconds');
+      console.log('[PWA] This may indicate:');
+      console.log('  - Browser does not recognize the app as installable');
+      console.log('  - Browser has already shown install prompt recently');
+      console.log('  - User already installed the app (check display-mode)');
+      console.log('  - Browser policy restricts PWA installation (e.g., Enterprise Edge)');
+      console.log('[PWA] Try: Clear cache, restart browser, and revisit the app');
+    }
+  }, 5000);
 
   // Handle install button click
   btn.addEventListener('click', function(e) {
