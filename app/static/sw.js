@@ -46,21 +46,59 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Network-first for API/dynamic routes; cache-first for static assets
   const url = new URL(e.request.url);
+
+  // Only handle GET requests; let browser handle others
   if (e.request.method !== 'GET') return;
 
+  // Cache-first for static assets
   if (url.pathname.startsWith('/static/')) {
     e.respondWith(
-      caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      }))
+      caches.match(e.request)
+        .then(cached => {
+          if (cached) {
+            console.log('[SW] Cache hit: ' + url.pathname);
+            return cached;
+          }
+          console.log('[SW] Cache miss, fetching: ' + url.pathname);
+          return fetch(e.request)
+            .then(res => {
+              if (!res || res.status !== 200) {
+                console.log('[SW] Bad response: ' + url.pathname + ' (' + (res ? res.status : 'null') + ')');
+                return res;
+              }
+              const clone = res.clone();
+              caches.open(CACHE).then(c => {
+                c.put(e.request, clone);
+                console.log('[SW] Cached: ' + url.pathname);
+              });
+              return res;
+            })
+            .catch(err => {
+              console.error('[SW] Fetch failed: ' + url.pathname + ' - ' + err.message);
+              throw err;
+            });
+        })
+        .catch(err => {
+          console.error('[SW] Static fetch failed: ' + url.pathname + ' - ' + err.message);
+        })
     );
   } else {
+    // Network-first for dynamic content
     e.respondWith(
-      fetch(e.request).catch(() => caches.match(e.request))
+      fetch(e.request)
+        .then(res => {
+          if (!res || res.status !== 200) return res;
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+          return res;
+        })
+        .catch(err => {
+          console.log('[SW] Network failed: ' + url.pathname + ', trying cache');
+          return caches.match(e.request)
+            .then(cached => cached || new Response('Offline', { status: 503 }))
+            .catch(e => new Response('Service Worker Error', { status: 500 }));
+        })
     );
   }
 });
