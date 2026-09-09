@@ -10,7 +10,7 @@ from ..tenant_db import (get_all_debtors, get_debtor, get_debtor_by_name,
                           add_reminder_sent, get_reminder_history, pause_reminders, resume_reminders,
                           count_overdue_debtors, count_partially_paid_debtors,
                           log_debtor_import, get_debtor_import_history,
-                          calculate_next_reminder, set_manual_reminder_date, set_default_reminder_mode)
+                          calculate_next_reminder, set_custom_interval_reminder, set_default_reminder_mode)
 from datetime import date
 
 debtors_bp = Blueprint("debtors", __name__)
@@ -54,9 +54,11 @@ def index(filter="active"):
     # Add reminder mode indicators to debtors
     for d in rows:
         mode = d.get("reminder_mode", "default")
-        if mode == "custom":
+        if mode == "custom_interval":
+            interval = d.get("reminder_interval_days", default_reminder_days)
+            interval_label = DAYS_TO_LABEL.get(int(interval), f"{interval} days")
             d["reminder_indicator"] = "⏰ Custom"
-            d["reminder_tooltip"] = "Custom reminder period"
+            d["reminder_tooltip"] = f"Custom interval: {interval_label} from purchase"
         else:
             d["reminder_indicator"] = "⏱ Default"
             d["reminder_tooltip"] = f"Default: {default_reminder_days} days from purchase"
@@ -784,25 +786,25 @@ def set_next_reminder(did):
         else:
             return jsonify(ok=False, msg="Failed to set reminder")
 
-    elif mode == "manual":
-        # Set exact manual reminder date (no calculation)
-        manual_date = request.form.get("manual_date", "").strip()
+    elif mode == "custom_interval":
+        # Set custom interval reminder (calculates from purchase date + interval)
+        interval = request.form.get("interval", "").strip()
 
-        if not manual_date:
-            return jsonify(ok=False, msg="Please select a date")
+        if not interval:
+            return jsonify(ok=False, msg="Please select an interval")
 
         try:
-            from datetime import datetime as dt
-            dt.strptime(manual_date, "%Y-%m-%d")
+            interval_days = int(interval)
         except:
-            return jsonify(ok=False, msg="Invalid date format (use YYYY-MM-DD)")
+            return jsonify(ok=False, msg="Invalid interval")
 
-        # Set manual date without calculation
-        next_date = set_manual_reminder_date(tid, did, manual_date)
+        # Set custom interval
+        next_date = set_custom_interval_reminder(tid, did, interval_days)
         if next_date:
-            return jsonify(ok=True, msg=f"Reminder set to {manual_date} (manual date)", next_date=next_date)
+            interval_label = DAYS_TO_LABEL.get(interval_days, f"{interval_days} days")
+            return jsonify(ok=True, msg=f"Reminder set to custom interval: {interval_label}", next_date=next_date)
         else:
-            return jsonify(ok=False, msg="Failed to set reminder date")
+            return jsonify(ok=False, msg="Failed to set reminder")
 
     else:
         return jsonify(ok=False, msg="Invalid mode")

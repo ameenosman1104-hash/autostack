@@ -514,27 +514,35 @@ def calculate_next_reminder(tid, did):
         return None
 
 
-def set_manual_reminder_date(tid, did, manual_date):
-    """Set a manual reminder date for a debtor (no calculation).
+def set_custom_interval_reminder(tid, did, interval_days):
+    """Set a custom interval reminder for a debtor (calculates from purchase date).
 
     Args:
         tid: Tenant ID
         did: Debtor ID
-        manual_date: Date string in YYYY-MM-DD format
+        interval_days: Interval in days (e.g., 7, 14, 21, 28, 42, 56)
 
     Returns:
-        The date that was set, or None if error
+        The calculated next reminder date, or None if error
     """
     try:
-        # Validate date format
-        datetime.strptime(manual_date, "%Y-%m-%d")
+        debtor = get_debtor(tid, did)
+        if not debtor:
+            return None
 
-        # Update debtor to manual mode with exact date
-        update_debtor(tid, did, reminder_mode="manual", next_reminder_date=manual_date)
+        purchase_date = datetime.strptime(debtor["date_of_purchase"], "%Y-%m-%d").date()
+        next_date = purchase_date + timedelta(days=int(interval_days))
+        next_date_str = next_date.isoformat()
 
-        return manual_date
+        # Update debtor with custom interval mode
+        update_debtor(tid, did,
+                     reminder_mode="custom_interval",
+                     next_reminder_date=next_date_str,
+                     reminder_interval_days=int(interval_days))
+
+        return next_date_str
     except Exception as e:
-        print(f"Error setting manual reminder date: {e}")
+        print(f"Error setting custom interval reminder: {e}")
         return None
 
 

@@ -120,7 +120,7 @@
                 {% elif rs == 'due_today' %}<span class="text-warning fw-bold">TODAY</span>
                 {% else %}<span title="{{ d.reminder_tooltip }}">{{ d.next_reminder }}</span><br><span class="badge bg-light text-dark" style="font-size:0.7rem;">{{ d.reminder_indicator }}</span>{% endif %}
               </div>
-              <button class="btn btn-sm btn-outline-secondary" title="Change reminder settings" onclick="showDebtorReminderModal({{ d.id }}, '{{ d.name }}', '{{ d.get('reminder_mode', 'default') }}', {{ d.get('reminder_interval_days', default_reminder_days) }})">
+              <button class="btn btn-sm btn-outline-secondary" title="Change reminder settings" onclick="showDebtorReminderModal({{ d.id }}, '{{ d.name }}', '{{ d.get('reminder_mode', 'default') }}', '{{ d.get('reminder_interval_days', default_reminder_days) }}')">
                 <i class="bi bi-clock" style="font-size:0.75rem;"></i>
               </button>
             </div>
@@ -527,22 +527,23 @@ window.showReminderSettings = function(defaultDays) {
 };
 
 // ── Debtor-Specific Reminder Modal ──────────────────────────────
-window.showDebtorReminderModal = function(did, name, currentMode) {
+window.showDebtorReminderModal = function(did, name, currentMode, currentInterval) {
   document.getElementById('drmDebtorName').textContent = name;
 
   // Pre-select based on current mode
   const useDefaultRadio = document.getElementById('drmUseDefault');
   const setCustomRadio = document.getElementById('drmSetCustom');
 
-  if (currentMode === 'manual') {
+  if (currentMode === 'custom_interval') {
     setCustomRadio.checked = true;
+    document.getElementById('drmCustomInterval').value = currentInterval;
   } else {
     useDefaultRadio.checked = true;
   }
 
-  // Show/hide custom date picker based on selection
+  // Show/hide custom interval dropdown based on selection
   function updateDisplay() {
-    document.getElementById('drmCustomDateGroup').style.display = setCustomRadio.checked ? '' : 'none';
+    document.getElementById('drmCustomIntervalGroup').style.display = setCustomRadio.checked ? '' : 'none';
   }
 
   useDefaultRadio.addEventListener('change', updateDisplay);
@@ -557,13 +558,13 @@ window.showDebtorReminderModal = function(did, name, currentMode) {
     if (useDefaultRadio.checked) {
       data.append('mode', 'default');
     } else {
-      data.append('mode', 'manual');
-      const manualDate = document.getElementById('drmCustomDate').value;
-      if (!manualDate) {
-        alert('Please select a date');
+      data.append('mode', 'custom_interval');
+      const interval = document.getElementById('drmCustomInterval').value;
+      if (!interval) {
+        alert('Please select an interval');
         return;
       }
-      data.append('manual_date', manualDate);
+      data.append('interval', interval);
     }
 
     fetch(`/debtors/${did}/set-next-reminder`, {
@@ -608,20 +609,28 @@ window.showDebtorReminderModal = function(did, name, currentMode) {
             </div>
           </div>
 
-          <!-- Set Custom Date Option -->
+          <!-- Set Custom Interval Option -->
           <div class="form-check mb-3 p-3" style="background: #f8f9fa; border-radius: 6px;">
-            <input class="form-check-input" type="radio" id="drmSetCustom" name="reminderChoice" value="custom">
-            <label class="form-check-label fw-semibold" for="drmSetCustom">Set Custom Reminder Date</label>
+            <input class="form-check-input" type="radio" id="drmSetCustom" name="reminderChoice" value="custom_interval">
+            <label class="form-check-label fw-semibold" for="drmSetCustom">Set Custom Interval</label>
             <div class="text-muted small mt-2" style="margin-left: 1.5rem;">
-              You select the exact next reminder date.
-              <br>This date will NOT change even if the global default changes.
+              Reminder is calculated from Purchase Date + your chosen interval.
+              <br>This interval will NOT change even if the global default changes.
             </div>
           </div>
 
-          <!-- Custom Date Picker -->
-          <div id="drmCustomDateGroup" class="mb-3" style="display:none; margin-left: 1.5rem;">
-            <label class="form-label fw-semibold">Custom Reminder Date</label>
-            <input type="date" id="drmCustomDate" class="form-control">
+          <!-- Custom Interval Dropdown -->
+          <div id="drmCustomIntervalGroup" class="mb-3" style="display:none; margin-left: 1.5rem;">
+            <label class="form-label fw-semibold">Reminder Interval</label>
+            <select id="drmCustomInterval" class="form-select">
+              <option value="">-- Select interval --</option>
+              <option value="7">Every week (7 days)</option>
+              <option value="14">Every 2 weeks (14 days)</option>
+              <option value="21">Every 3 weeks (21 days)</option>
+              <option value="28">Every 4 weeks (28 days)</option>
+              <option value="42">Every 6 weeks (42 days)</option>
+              <option value="56">Every 8 weeks (56 days)</option>
+            </select>
           </div>
         </div>
         <div class="modal-footer border-0">
