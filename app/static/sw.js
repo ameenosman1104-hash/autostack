@@ -1,4 +1,4 @@
-const CACHE = 'autostack-v1';
+const CACHE = 'autostack-pwa-v2';
 const SHELL = [
   '/',
   '/static/manifest.json',
@@ -25,16 +25,39 @@ self.addEventListener('fetch', e => {
 
   if (e.request.url.includes('/static/')) {
     e.respondWith(
-      caches.match(e.request).then(res =>
-        res || fetch(e.request).then(r => {
-          caches.open(CACHE).then(c => c.put(e.request, r.clone()));
-          return r;
-        })
-      )
+      caches.match(e.request).then(cached => {
+        if (cached) return cached;
+
+        return fetch(e.request).then(response => {
+          if (!response || response.status !== 200) {
+            return response;
+          }
+
+          const responseToCache = response.clone();
+
+          caches.open(CACHE).then(cache => {
+            cache.put(e.request, responseToCache);
+          });
+
+          return response;
+        });
+      })
     );
   } else {
     e.respondWith(
-      fetch(e.request).catch(() => caches.match(e.request))
+      fetch(e.request).then(response => {
+        if (!response || response.status !== 200) {
+          return response;
+        }
+
+        const responseToCache = response.clone();
+
+        caches.open(CACHE).then(cache => {
+          cache.put(e.request, responseToCache);
+        });
+
+        return response;
+      }).catch(() => caches.match(e.request))
     );
   }
 });
