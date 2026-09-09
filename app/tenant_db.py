@@ -464,16 +464,17 @@ def update_debtor(tid, did, **kwargs):
     conn.close()
 
 
-def calculate_next_reminder(tid, did, reminder_mode=None, reminder_days=None):
-    """Calculate and save next reminder date for a debtor.
+def calculate_next_reminder(tid, did):
+    """Calculate and save next reminder date for a debtor using DEFAULT mode.
 
-    CRITICAL: Reminder is ALWAYS calculated from purchase_date, not from last_reminded.
+    CRITICAL:
+    - Only recalculates if reminder_mode = "default"
+    - If reminder_mode = "manual", leaves next_reminder_date unchanged
+    - Reminder is calculated from purchase_date + default_interval_days
 
     Args:
         tid: Tenant ID
         did: Debtor ID
-        reminder_mode: "default" or "custom" (if None, keeps existing)
-        reminder_days: Days from purchase date (if None, uses default from settings or existing)
 
     Returns:
         Next reminder date as string (YYYY-MM-DD format) or None if error
@@ -486,36 +487,75 @@ def calculate_next_reminder(tid, did, reminder_mode=None, reminder_days=None):
         if not debtor:
             return None
 
-        # ALWAYS use purchase_date as base - this is the key principle
+        # Only recalculate if using default mode
+        mode = debtor.get("reminder_mode", "default")
+        if mode == "manual":
+            # Manual date set - do NOT recalculate, return existing date
+            return debtor.get("next_reminder_date")
+
+        # Calculate for DEFAULT mode: purchase_date + default_interval
         base_str = debtor["date_of_purchase"]
         base = datetime.strptime(base_str, "%Y-%m-%d").date()
 
-        # Determine interval in days
-        if reminder_days is not None:
-            days = int(reminder_days)
-        else:
-            # Use existing reminder_interval_days or fall back to default setting or 28 (4 weeks)
-            if debtor.get("reminder_interval_days"):
-                days = int(debtor["reminder_interval_days"])
-            else:
-                default_days = get_setting(tid, "default_reminder_days", "28")
-                days = int(default_days or 28)
+        # Get default days from settings
+        default_days = get_setting(tid, "default_reminder_days", "28")
+        days = int(default_days or 28)
 
         # Calculate next reminder date from purchase date + interval
         next_date = base + timedelta(days=days)
         next_date_str = next_date.strftime("%Y-%m-%d")
 
-        # Prepare update values
-        update_vals = {"next_reminder_date": next_date_str, "reminder_interval_days": days}
-        if reminder_mode is not None:
-            update_vals["reminder_mode"] = reminder_mode
-
         # Update debtor with calculated date
-        update_debtor(tid, did, **update_vals)
+        update_debtor(tid, did, next_reminder_date=next_date_str)
 
         return next_date_str
     except Exception as e:
         print(f"Error calculating next reminder: {e}")
+        return None
+
+
+def set_manual_reminder_date(tid, did, manual_date):
+    """Set a manual reminder date for a debtor (no calculation).
+
+    Args:
+        tid: Tenant ID
+        did: Debtor ID
+        manual_date: Date string in YYYY-MM-DD format
+
+    Returns:
+        The date that was set, or None if error
+    """
+    try:
+        # Validate date format
+        datetime.strptime(manual_date, "%Y-%m-%d")
+
+        # Update debtor to manual mode with exact date
+        update_debtor(tid, did, reminder_mode="manual", next_reminder_date=manual_date)
+
+        return manual_date
+    except Exception as e:
+        print(f"Error setting manual reminder date: {e}")
+        return None
+
+
+def set_default_reminder_mode(tid, did):
+    """Set a debtor back to DEFAULT mode (recalculates from purchase date).
+
+    Args:
+        tid: Tenant ID
+        did: Debtor ID
+
+    Returns:
+        The calculated next reminder date, or None if error
+    """
+    try:
+        # Update to default mode
+        update_debtor(tid, did, reminder_mode="default")
+
+        # Recalculate the date
+        return calculate_next_reminder(tid, did)
+    except Exception as e:
+        print(f"Error setting default reminder mode: {e}")
         return None
 
 
