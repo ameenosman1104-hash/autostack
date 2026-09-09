@@ -22,8 +22,11 @@ def _get_slides(tid):
 
 
 @dashboard_bp.route("/")
-@login_required
 def index():
+    # Allow unauthenticated access for PWA installability checks
+    # but redirect to login if not authenticated
+    if not current_user.is_authenticated:
+        return redirect(url_for("auth.login"))
     tid = current_user.tenant_id
     init_tenant_db(tid)
     stats  = get_stats(tid)
