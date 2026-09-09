@@ -7,7 +7,10 @@
       <i class="bi bi-clock me-1"></i>Reminder Settings
     </button>
     <a href="{{ url_for('debtors.import_history') }}" class="btn btn-outline-info"><i class="bi bi-clock-history me-1"></i>Import History</a>
-    {% if has_saved_source %}
+    {% if sync_enabled %}
+    <a href="{{ url_for('debtors.sync_history') }}" class="btn btn-outline-info"><i class="bi bi-diagram-3 me-1"></i>Sync History</a>
+    <button class="btn btn-outline-success" onclick="syncNow()"><i class="bi bi-arrow-repeat me-1"></i>Sync Now</button>
+    {% elif has_saved_source %}
     <a href="{{ url_for('debtors.refresh_source') }}" class="btn btn-outline-info"><i class="bi bi-arrow-clockwise me-1"></i>Refresh</a>
     {% endif %}
     <a href="{{ url_for('debtors.import_debtors') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import</a>
@@ -15,6 +18,23 @@
     <a href="{{ url_for('debtors.add') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Add Debtor</a>
   </div>
 </div>
+
+<!-- Sync Status Bar -->
+{% if sync_enabled and sync_status %}
+<div class="alert alert-info mb-3 py-2 px-3">
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      <i class="bi bi-arrow-repeat me-2"></i>
+      <strong>Real-time Excel/API Sync:</strong> Connected to {{ sync_connection_name }}
+      {% if sync_status.last_synced_at %}
+      · Last synced: {{ sync_status.last_synced_at }}
+      {% else %}
+      · Never synced
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Quick Send Search -->
 <div class="card mb-4" style="border:1.5px solid #6366F1;">
@@ -584,6 +604,31 @@ window.showDebtorReminderModal = function(did, name, currentMode, currentInterva
   };
 
   new bootstrap.Modal(document.getElementById('debtorReminderModal')).show();
+};
+
+// ── Excel/API Sync ──────────────────────────────────────────────────────────
+window.syncNow = function() {
+  const btn = event.target.closest('button');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Syncing...';
+
+  fetch('/debtors/sync-now', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        alert(d.msg);
+        if (!d.partial) {
+          location.reload();
+        }
+      } else {
+        alert('Sync failed: ' + (d.msg || 'Unknown error'));
+      }
+    })
+    .catch(e => alert('Error: ' + e.message))
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync Now';
+    });
 };
 </script>
 

@@ -10,7 +10,9 @@ from ..tenant_db import (get_all_debtors, get_debtor, get_debtor_by_name,
                           add_reminder_sent, get_reminder_history, pause_reminders, resume_reminders,
                           count_overdue_debtors, count_partially_paid_debtors,
                           log_debtor_import, get_debtor_import_history,
-                          calculate_next_reminder, set_custom_interval_reminder, set_default_reminder_mode)
+                          calculate_next_reminder, set_custom_interval_reminder, set_default_reminder_mode,
+                          get_sync_status, get_sync_audit_log)
+from ..services.excel_sync import detect_and_apply_changes
 from datetime import date
 
 debtors_bp = Blueprint("debtors", __name__)
@@ -50,6 +52,9 @@ def index(filter="active"):
     settings   = get_all_settings(tid)
     has_saved_source = bool(settings.get("debtor_import_config", ""))
     default_reminder_days = settings.get("default_reminder_days", "28")
+    sync_cfg = json.loads(settings.get("excel_sync_config", "{}"))
+    sync_enabled = sync_cfg.get("enabled", False)
+    sync_status = get_sync_status(tid) if sync_enabled else None
 
     # Add reminder mode indicators to debtors
     for d in rows:
@@ -69,7 +74,10 @@ def index(filter="active"):
                            partially_paid_count=partially_paid_count,
                            active_count=sum(1 for d in all_rows if not d["is_paid"]),
                            has_saved_source=has_saved_source,
-                           default_reminder_days=default_reminder_days)
+                           default_reminder_days=default_reminder_days,
+                           sync_enabled=sync_enabled,
+                           sync_status=sync_status,
+                           sync_connection_name=sync_cfg.get("connection_name", ""))
 
 
 @debtors_bp.route("/add", methods=["GET", "POST"])
@@ -808,3 +816,100 @@ def set_next_reminder(did):
 
     else:
         return jsonify(ok=False, msg="Invalid mode")
+
+
+# ── Excel/API Synchronization Routes ──────────────────────────────────────────
+
+@debtors_bp.route("/enable-sync", methods=["POST"])
+@login_required
+def enable_sync():
+    """Enable automatic syncing for a saved connection."""
+    tid = current_user.tenant_id
+    connection_name = request.form.get("connection_name", "").strip()
+
+    if not connection_name:
+        return jsonify(ok=False, msg="Please select a connection")
+
+    conns = _get_dbt_connections(tid)
+    cfg = next((c for c in conns if c["name"] == connection_name), None)
+
+    if not cfg:
+        return jsonify(ok=False, msg="Connection not found")
+
+    # Save sync config
+    sync_cfg = {
+        "enabled": True,
+        "connection_name": connection_name,
+        "source": cfg.get("source"),
+        "url": cfg.get("url"),
+        "api_url": cfg.get("api_url"),
+        "api_key": cfg.get("api_key"),
+        "api_path": cfg.get("api_path"),
+        "unique_key_field": request.form.get("unique_key_field", "Invoice No."),
+        "mapping": json.loads(request.form.get("mapping", "{}")),
+    }
+
+    save_setting(tid, "excel_sync_config", json.dumps(sync_cfg))
+    return jsonify(ok=True, msg=f"Sync enabled for '{connection_name}'")
+
+
+@debtors_bp.route("/sync-now", methods=["POST"])
+@login_required
+def sync_now():
+    """Manually trigger synchronization."""
+    tid = current_user.tenant_id
+    settings = get_all_settings(tid)
+    sync_cfg_raw = settings.get("excel_sync_config", "")
+
+    if not sync_cfg_raw:
+        return jsonify(ok=False, msg="No sync connection configured")
+
+    try:
+        cfg = json.loads(sync_cfg_raw)
+    except:
+        return jsonify(ok=False, msg="Sync configuration is corrupted")
+
+    if not cfg.get("enabled"):
+        return jsonify(ok=False, msg="Sync is not enabled")
+
+    # Run sync
+    source = cfg.get("source", "url")
+    source_cfg = {
+        "url": cfg.get("url"),
+        "api_url": cfg.get("api_url"),
+        "api_key": cfg.get("api_key"),
+        "api_path": cfg.get("api_path"),
+    }
+
+    stats = detect_and_apply_changes(
+        tid,
+        source,
+        source_cfg,
+        cfg.get("mapping", {}),
+        cfg.get("unique_key_field", "Invoice No."),
+        external_source="excel_sync"
+    )
+
+    msg = f"✓ Added {stats.get('added', 0)}, Updated {stats.get('updated', 0)}, Removed {stats.get('removed', 0)}"
+    if stats.get("errors"):
+        return jsonify(ok=True, msg=msg, errors=stats["errors"], partial=True)
+    return jsonify(ok=True, msg=msg)
+
+
+@debtors_bp.route("/sync-status")
+@login_required
+def sync_status():
+    """Get sync status."""
+    tid = current_user.tenant_id
+    status = get_sync_status(tid)
+    return jsonify(status)
+
+
+@debtors_bp.route("/sync-history")
+@login_required
+def sync_history():
+    """View sync audit log."""
+    tid = current_user.tenant_id
+    limit = request.args.get("limit", 100, type=int)
+    history = get_sync_audit_log(tid, limit=limit)
+    return render_template("sync_history.html", history=history)

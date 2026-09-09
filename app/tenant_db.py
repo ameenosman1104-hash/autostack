@@ -68,6 +68,18 @@ def get_conn(tenant_id):
         if "reminder_interval_days" not in cols:
             conn.execute("ALTER TABLE debtors ADD COLUMN reminder_interval_days INTEGER DEFAULT 28")
             conn.commit()
+        if "external_key" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN external_key TEXT DEFAULT NULL")
+            conn.commit()
+        if "external_source" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN external_source TEXT DEFAULT NULL")
+            conn.commit()
+        if "last_synced_at" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN last_synced_at TEXT DEFAULT NULL")
+            conn.commit()
+        if "sync_status" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN sync_status TEXT DEFAULT 'manual'")
+            conn.commit()
     except Exception as e:
         print(f"Debtor migration error (may be expected for new DBs): {e}")
         pass
@@ -223,6 +235,17 @@ def init_tenant_db(tenant_id):
             message_preview TEXT DEFAULT '',
             created_at      TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS sync_audit_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            debtor_id       INTEGER,
+            external_key    TEXT,
+            field_name      TEXT,
+            old_value       TEXT,
+            new_value       TEXT,
+            sync_source     TEXT DEFAULT 'manual',
+            sync_action     TEXT DEFAULT 'update',
+            created_at      TEXT DEFAULT (datetime('now'))
         );
         """)
         conn.commit()
@@ -1173,3 +1196,91 @@ def get_product_import_history(tid, limit=20):
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Synchronization and Audit Logging ──────────────────────────────────────────
+
+def log_sync_audit(tid, debtor_id, external_key, field_name, old_value, new_value, sync_source="api", sync_action="update"):
+    """Log a synchronization change to audit trail."""
+    try:
+        conn = get_conn(tid)
+        conn.execute("""
+            INSERT INTO sync_audit_log (debtor_id, external_key, field_name, old_value, new_value, sync_source, sync_action)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (debtor_id, external_key, field_name, str(old_value)[:500], str(new_value)[:500], sync_source, sync_action))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error logging sync audit: {e}")
+
+
+def get_sync_audit_log(tid, limit=100):
+    """Get sync audit history."""
+    try:
+        conn = get_conn(tid)
+        rows = conn.execute("""
+            SELECT id, debtor_id, external_key, field_name, old_value, new_value, sync_source, sync_action, created_at
+            FROM sync_audit_log
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except:
+        return []
+
+
+def get_sync_status(tid):
+    """Get overall sync status for this tenant."""
+    try:
+        conn = get_conn(tid)
+        last_sync = conn.execute("""
+            SELECT MAX(last_synced_at) as last_sync FROM debtors WHERE external_key IS NOT NULL
+        """).fetchone()
+        conn.close()
+        if last_sync and last_sync["last_sync"]:
+            return {"last_synced_at": last_sync["last_sync"], "status": "synced"}
+        return {"last_synced_at": None, "status": "never"}
+    except:
+        return {"last_synced_at": None, "status": "error"}
+
+
+def update_debtor_from_sync(tid, debtor_id, external_key, updates, sync_source="api"):
+    """Update a debtor from sync data and log changes."""
+    try:
+        debtor = get_debtor(tid, debtor_id)
+        if not debtor:
+            return False
+
+        logged_changes = {}
+        for field, new_value in updates.items():
+            old_value = debtor.get(field, "")
+            if str(old_value) != str(new_value):
+                logged_changes[field] = (old_value, new_value)
+                log_sync_audit(tid, debtor_id, external_key, field, old_value, new_value, sync_source, "update")
+
+        if logged_changes:
+            update_debtor(tid, debtor_id, last_synced_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), **updates)
+            return True
+        return False
+    except Exception as e:
+        print(f"Error updating debtor from sync: {e}")
+        return False
+
+
+def mark_debtor_removed_from_source(tid, debtor_id, external_key, sync_source="api"):
+    """Mark a debtor as removed from external source (safe deletion)."""
+    try:
+        conn = get_conn(tid)
+        conn.execute("""
+            UPDATE debtors
+            SET sync_status = 'removed_from_source', last_synced_at = ?
+            WHERE id = ?
+        """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), debtor_id))
+        conn.commit()
+        conn.close()
+        log_sync_audit(tid, debtor_id, external_key, "sync_status", "synced", "removed_from_source", sync_source, "delete_mark")
+        return True
+    except Exception as e:
+        print(f"Error marking debtor as removed: {e}")
+        return False
