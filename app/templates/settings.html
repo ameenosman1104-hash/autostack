@@ -44,12 +44,26 @@
       </div>
       <div class="mb-3">
         <label class="form-label fw-semibold">Sender Email Address</label>
-        <input type="email" name="email_sender" class="form-control" value="{{ s.get('email_sender','') }}" placeholder="yourshop@gmail.com">
+        <input type="email" name="email_sender" class="form-control" value="{{ s.get('email_sender','') }}" placeholder="yourshop@gmail.com" required>
       </div>
       <div class="mb-3">
-        <label class="form-label fw-semibold">Gmail Password</label>
-        <input type="password" name="email_password" class="form-control" value="{{ s.get('email_password','') }}" autocomplete="off">
-        <div class="form-text">Enter your Gmail password. Your password is only stored securely on this server and never shared.</div>
+        <label class="form-label fw-semibold">Gmail App Password</label>
+        <input type="password" name="email_password" class="form-control" autocomplete="off" placeholder="16-character app password" maxlength="20" required>
+        <div class="form-text">
+          <strong>Generate a 16-character App Password:</strong><br>
+          1. Go to <a href="https://myaccount.google.com/security" target="_blank">Google Account Security</a><br>
+          2. Enable 2-Step Verification (if not enabled)<br>
+          3. Go back to Security → App passwords<br>
+          4. Select "Mail" and "Windows Computer"<br>
+          5. Copy the 16-character password and paste it here<br>
+          <span class="text-danger">Note: Password is saved encrypted on server, never shown in plain text</span>
+        </div>
+      </div>
+      <div class="mb-3">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="testEmailConnection()">
+          <i class="bi bi-arrow-repeat me-1"></i>Test Email Connection
+        </button>
+        <span id="testResult" style="margin-left: 10px;"></span>
       </div>
       <div class="mb-0">
         <label class="form-label fw-semibold">Alert Recipients <span class="text-muted fw-normal">(comma separated)</span></label>
@@ -137,5 +151,39 @@
   sel.addEventListener('change', update);
   update();
 })();
+
+window.testEmailConnection = function() {
+  const email = document.querySelector('input[name="email_sender"]').value.trim();
+  const pass = document.querySelector('input[name="email_password"]').value.trim();
+  const result = document.getElementById('testResult');
+
+  if (!email) {
+    result.innerHTML = '<span class="text-danger">❌ Email address required</span>';
+    return;
+  }
+  if (!pass) {
+    result.innerHTML = '<span class="text-danger">❌ App password required</span>';
+    return;
+  }
+
+  result.innerHTML = '<span class="text-muted">⏳ Testing...</span>';
+
+  fetch('/settings/test-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, password: pass })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      result.innerHTML = '<span class="text-success">✅ ' + d.msg + '</span>';
+    } else {
+      result.innerHTML = '<span class="text-danger">❌ ' + d.msg + '</span>';
+    }
+  })
+  .catch(e => {
+    result.innerHTML = '<span class="text-danger">❌ Error: ' + e.message + '</span>';
+  });
+};
 </script>
 {% endblock %}

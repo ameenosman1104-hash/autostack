@@ -58,12 +58,16 @@ def _via_email(tid, debtor, message):
     password  = get_setting(tid, "email_password", "")
     to_email  = _extract_email(debtor.get("email", ""))
 
-    if not sender:   return False, "Sender email not configured."
-    if not password: return False, "Email password not configured."
-    if not to_email: return False, f"No email for {debtor['name']}."
+    if not sender:
+        return False, "Sender email not configured. Check Settings > Email Settings."
+    if not password:
+        return False, "Gmail App Password not configured. Check Settings > Email Settings."
+    if not to_email:
+        return False, f"No email address for {debtor['name']}."
 
     business = get_setting(tid, "business_name", "Inventory Tracker")
     subject  = f"Payment Reminder — {business}"
+
     try:
         server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
         server.starttls()
@@ -76,10 +80,25 @@ def _via_email(tid, debtor, message):
         server.sendmail(sender, to_email, msg.as_string())
         server.quit()
         return True, f"Email sent to {to_email}"
-    except smtplib.SMTPAuthenticationError:
-        return False, "Gmail auth failed — check email and password in Settings."
+
+    except smtplib.SMTPAuthenticationError as e:
+        return False, "Gmail authentication failed. Check that you're using a 16-character App Password, not your regular Gmail password. See Settings > Email Settings for instructions."
+    except smtplib.SMTPException as e:
+        error_str = str(e)
+        if "535" in error_str:  # 535 = auth failed
+            return False, "Gmail authentication failed. Verify your App Password is correct."
+        elif "Connection refused" in error_str:
+            return False, "Cannot connect to Gmail SMTP server. Check your internet connection."
+        else:
+            return False, f"SMTP error: {error_str}"
     except Exception as e:
-        return False, str(e)
+        error_str = str(e)
+        if "timed out" in error_str.lower():
+            return False, "Connection timed out. Check your internet connection."
+        elif "invalid" in error_str.lower() and "@" in to_email:
+            return False, f"Invalid email address: {to_email}"
+        else:
+            return False, f"Email error: {error_str}"
 
 
 def _via_sms(tid, debtor, message):
