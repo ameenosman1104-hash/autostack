@@ -47,9 +47,9 @@
         <input type="email" name="email_sender" class="form-control" value="{{ s.get('email_sender','') }}" placeholder="yourshop@gmail.com">
       </div>
       <div class="mb-3">
-        <label class="form-label fw-semibold">Sender App Password</label>
-        <input type="password" name="email_password" class="form-control" value="{{ s.get('email_password','') }}" autocomplete="new-password">
-        <div class="form-text">Use a Gmail App Password, not your normal Gmail password. <a href="https://myaccount.google.com/apppasswords" target="_blank">Get one here →</a></div>
+        <label class="form-label fw-semibold">Gmail Password</label>
+        <input type="password" name="email_password" class="form-control" value="{{ s.get('email_password','') }}" autocomplete="off">
+        <div class="form-text">Enter your Gmail password. Your password is only stored securely on this server and never shared.</div>
       </div>
       <div class="mb-0">
         <label class="form-label fw-semibold">Alert Recipients <span class="text-muted fw-normal">(comma separated)</span></label>

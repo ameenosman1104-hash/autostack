@@ -77,7 +77,7 @@ def _via_email(tid, debtor, message):
         server.quit()
         return True, f"Email sent to {to_email}"
     except smtplib.SMTPAuthenticationError:
-        return False, "Gmail auth failed — check App Password."
+        return False, "Gmail auth failed — check email and password in Settings."
     except Exception as e:
         return False, str(e)
 
