@@ -469,7 +469,7 @@ def calculate_next_reminder(tid, did):
 
     CRITICAL:
     - Only recalculates if reminder_mode = "default"
-    - If reminder_mode = "manual", leaves next_reminder_date unchanged
+    - If reminder_mode = "manual" or "custom_interval", leaves next_reminder_date unchanged
     - Reminder is calculated from purchase_date + default_interval_days
 
     Args:
@@ -489,8 +489,8 @@ def calculate_next_reminder(tid, did):
 
         # Only recalculate if using default mode
         mode = debtor.get("reminder_mode", "default")
-        if mode == "manual":
-            # Manual date set - do NOT recalculate, return existing date
+        if mode in ("manual", "custom_interval"):
+            # Custom mode set - do NOT recalculate, return existing date
             return debtor.get("next_reminder_date")
 
         # Calculate for DEFAULT mode: purchase_date + default_interval
