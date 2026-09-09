@@ -59,6 +59,9 @@ def get_conn(tenant_id):
         if "total_paid_to_date" not in cols:
             conn.execute("ALTER TABLE debtors ADD COLUMN total_paid_to_date REAL DEFAULT 0")
             conn.commit()
+        if "next_reminder_date" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN next_reminder_date TEXT DEFAULT NULL")
+            conn.commit()
     except Exception as e:
         print(f"Debtor migration error (may be expected for new DBs): {e}")
         pass
@@ -453,6 +456,50 @@ def update_debtor(tid, did, **kwargs):
     conn.execute(f"UPDATE debtors SET {sets} WHERE id=?", vals)
     conn.commit()
     conn.close()
+
+
+def calculate_next_reminder(tid, did, custom_days=None):
+    """Calculate and save next reminder date for a debtor.
+
+    Args:
+        tid: Tenant ID
+        did: Debtor ID
+        custom_days: Optional custom days to use instead of default from settings
+
+    Returns:
+        Next reminder date as string (YYYY-MM-DD format) or None if error
+    """
+    try:
+        conn = get_conn(tid)
+        debtor = conn.execute("SELECT * FROM debtors WHERE id=?", (did,)).fetchone()
+        conn.close()
+
+        if not debtor:
+            return None
+
+        # Get base date (last_reminded or date_of_purchase)
+        base_str = debtor["last_reminded"] if debtor["last_reminded"] else debtor["date_of_purchase"]
+        base = datetime.strptime(base_str, "%Y-%m-%d").date()
+
+        # Determine days to add
+        if custom_days is not None:
+            days = int(custom_days)
+        else:
+            # Use default from settings or debtor's reminder_days or 14 as fallback
+            default_days = get_setting(tid, "default_reminder_days", "14")
+            days = int(debtor.get("reminder_days") or default_days or 14)
+
+        # Calculate next reminder date
+        next_date = base + timedelta(days=days)
+        next_date_str = next_date.strftime("%Y-%m-%d")
+
+        # Update debtor with next_reminder_date
+        update_debtor(tid, did, next_reminder_date=next_date_str)
+
+        return next_date_str
+    except Exception as e:
+        print(f"Error calculating next reminder: {e}")
+        return None
 
 
 def delete_debtor(tid, did):

@@ -5,11 +5,12 @@ from flask_login import login_required, current_user
 from ..tenant_db import (get_all_debtors, get_debtor, get_debtor_by_name,
                           add_debtor, update_debtor, delete_debtor,
                           delete_all_debtors, delete_debtors_by_ids,
-                          next_reminder, save_setting, get_all_settings,
+                          next_reminder, save_setting, get_all_settings, get_setting,
                           add_payment, get_payment_history, get_debtor_payment_summary,
                           add_reminder_sent, get_reminder_history, pause_reminders, resume_reminders,
                           count_overdue_debtors, count_partially_paid_debtors,
-                          log_debtor_import, get_debtor_import_history)
+                          log_debtor_import, get_debtor_import_history,
+                          calculate_next_reminder)
 from datetime import date
 
 debtors_bp = Blueprint("debtors", __name__)
@@ -48,12 +49,14 @@ def index(filter="active"):
 
     settings   = get_all_settings(tid)
     has_saved_source = bool(settings.get("debtor_import_config", ""))
+    default_reminder_days = settings.get("default_reminder_days", "14")
     return render_template("debtors.html", debtors=rows, filter=filter,
                            total_owed=total_owed, due_count=due_count,
                            overdue_count=overdue_count,
                            partially_paid_count=partially_paid_count,
                            active_count=sum(1 for d in all_rows if not d["is_paid"]),
-                           has_saved_source=has_saved_source)
+                           has_saved_source=has_saved_source,
+                           default_reminder_days=default_reminder_days)
 
 
 @debtors_bp.route("/add", methods=["GET", "POST"])
@@ -746,4 +749,30 @@ def send_one(did):
     if ok:
         from datetime import datetime
         update_debtor(tid, did, last_reminded=datetime.now().strftime("%Y-%m-%d"))
+        # Calculate and save next reminder date based on default interval
+        calculate_next_reminder(tid, did)
     return jsonify(ok=ok, msg=msg)
+
+
+@debtors_bp.route("/<int:did>/set-next-reminder", methods=["POST"])
+@login_required
+def set_next_reminder(did):
+    tid = current_user.tenant_id
+    debtor = get_debtor(tid, did)
+    if not debtor:
+        return jsonify(ok=False, msg="Debtor not found")
+
+    days = request.form.get("days", "").strip()
+    if not days or not days.isdigit():
+        return jsonify(ok=False, msg="Invalid days value")
+
+    days = int(days)
+    if days < 1 or days > 365:
+        return jsonify(ok=False, msg="Days must be between 1 and 365")
+
+    # Calculate and update next reminder date with custom days
+    next_date = calculate_next_reminder(tid, did, custom_days=days)
+    if next_date:
+        return jsonify(ok=True, msg=f"Next reminder set to {next_date}", next_date=next_date)
+    else:
+        return jsonify(ok=False, msg="Failed to set next reminder")

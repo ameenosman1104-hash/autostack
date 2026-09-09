@@ -16,6 +16,7 @@ ALL_KEYS = [
     "callmebot_api_key",
     "notification_message",
     "debt_reminder_template",
+    "default_reminder_days",
 ]
 
 
