@@ -218,9 +218,12 @@ _DEBTOR_GUESSES = {
 
 def _debtor_guess(headers):
     result = {}
+    # Filter out empty headers
+    valid_headers = [h for h in headers if h and h.strip()]
+
     for field, guesses in _DEBTOR_GUESSES.items():
         best, best_score = "", 0
-        for h in headers:
+        for h in valid_headers:
             h_lc = h.lower().strip()
             for g in guesses:
                 if g == h_lc:
@@ -276,7 +279,12 @@ def _rows_from_xlsx(raw):
     if not data:
         raise ValueError("Spreadsheet is empty.")
     headers = [str(c) if c is not None else "" for c in data[0]]
-    rows    = [{headers[i]: (str(v) if v is not None else "") for i, v in enumerate(row)} for row in data[1:]]
+    # Filter out completely empty rows
+    rows = []
+    for row in data[1:]:
+        # Skip rows where all values are None or empty
+        if any(v is not None and str(v).strip() for v in row):
+            rows.append({headers[i]: (str(v) if v is not None else "") for i, v in enumerate(row)})
     return headers, rows
 
 def _rows_from_json(data, path=""):
@@ -433,8 +441,16 @@ def import_debtors():
                 })
 
             if not mapped:
-                flash("No valid rows found — make sure the sheet has a Name/Customer Name column.", "danger")
-                return render_template("debtors_import.html", phase="upload", active_tab=source)
+                # If headers found but no data rows, allow proceeding with empty data
+                if headers:
+                    flash("No data rows found. You can add records manually in the next step, or upload a file with data.", "warning")
+                    rows_json = base64.b64encode(json.dumps([]).encode()).decode()
+                    return render_template("debtors_import.html", phase="edit",
+                                           rows=[], rows_json=rows_json,
+                                           freq_options=FREQ_OPTIONS, opts=opts, col=mapping)
+                else:
+                    flash("Could not find column headers. Make sure the first row contains column names.", "danger")
+                    return render_template("debtors_import.html", phase="upload", active_tab=source)
 
             rows_json = base64.b64encode(json.dumps(mapped).encode()).decode()
             flash(f"{len(mapped)} record(s) loaded. Review and edit before importing.", "info")
