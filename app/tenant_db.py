@@ -62,6 +62,12 @@ def get_conn(tenant_id):
         if "next_reminder_date" not in cols:
             conn.execute("ALTER TABLE debtors ADD COLUMN next_reminder_date TEXT DEFAULT NULL")
             conn.commit()
+        if "reminder_mode" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN reminder_mode TEXT DEFAULT 'default'")
+            conn.commit()
+        if "reminder_interval_days" not in cols:
+            conn.execute("ALTER TABLE debtors ADD COLUMN reminder_interval_days INTEGER DEFAULT 28")
+            conn.commit()
     except Exception as e:
         print(f"Debtor migration error (may be expected for new DBs): {e}")
         pass
@@ -458,13 +464,16 @@ def update_debtor(tid, did, **kwargs):
     conn.close()
 
 
-def calculate_next_reminder(tid, did, custom_days=None):
+def calculate_next_reminder(tid, did, reminder_mode=None, reminder_days=None):
     """Calculate and save next reminder date for a debtor.
+
+    CRITICAL: Reminder is ALWAYS calculated from purchase_date, not from last_reminded.
 
     Args:
         tid: Tenant ID
         did: Debtor ID
-        custom_days: Optional custom days to use instead of default from settings
+        reminder_mode: "default" or "custom" (if None, keeps existing)
+        reminder_days: Days from purchase date (if None, uses default from settings or existing)
 
     Returns:
         Next reminder date as string (YYYY-MM-DD format) or None if error
@@ -477,24 +486,32 @@ def calculate_next_reminder(tid, did, custom_days=None):
         if not debtor:
             return None
 
-        # Get base date (last_reminded or date_of_purchase)
-        base_str = debtor["last_reminded"] if debtor["last_reminded"] else debtor["date_of_purchase"]
+        # ALWAYS use purchase_date as base - this is the key principle
+        base_str = debtor["date_of_purchase"]
         base = datetime.strptime(base_str, "%Y-%m-%d").date()
 
-        # Determine days to add
-        if custom_days is not None:
-            days = int(custom_days)
+        # Determine interval in days
+        if reminder_days is not None:
+            days = int(reminder_days)
         else:
-            # Use default from settings or debtor's reminder_days or 14 as fallback
-            default_days = get_setting(tid, "default_reminder_days", "14")
-            days = int(debtor.get("reminder_days") or default_days or 14)
+            # Use existing reminder_interval_days or fall back to default setting or 28 (4 weeks)
+            if debtor.get("reminder_interval_days"):
+                days = int(debtor["reminder_interval_days"])
+            else:
+                default_days = get_setting(tid, "default_reminder_days", "28")
+                days = int(default_days or 28)
 
-        # Calculate next reminder date
+        # Calculate next reminder date from purchase date + interval
         next_date = base + timedelta(days=days)
         next_date_str = next_date.strftime("%Y-%m-%d")
 
-        # Update debtor with next_reminder_date
-        update_debtor(tid, did, next_reminder_date=next_date_str)
+        # Prepare update values
+        update_vals = {"next_reminder_date": next_date_str, "reminder_interval_days": days}
+        if reminder_mode is not None:
+            update_vals["reminder_mode"] = reminder_mode
+
+        # Update debtor with calculated date
+        update_debtor(tid, did, **update_vals)
 
         return next_date_str
     except Exception as e:

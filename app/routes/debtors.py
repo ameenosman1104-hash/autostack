@@ -49,7 +49,18 @@ def index(filter="active"):
 
     settings   = get_all_settings(tid)
     has_saved_source = bool(settings.get("debtor_import_config", ""))
-    default_reminder_days = settings.get("default_reminder_days", "14")
+    default_reminder_days = settings.get("default_reminder_days", "28")
+
+    # Add reminder mode indicators to debtors
+    for d in rows:
+        mode = d.get("reminder_mode", "default")
+        if mode == "custom":
+            d["reminder_indicator"] = "⏰ Custom"
+            d["reminder_tooltip"] = "Custom reminder period"
+        else:
+            d["reminder_indicator"] = "⏱ Default"
+            d["reminder_tooltip"] = f"Default: {default_reminder_days} days from purchase"
+
     return render_template("debtors.html", debtors=rows, filter=filter,
                            total_owed=total_owed, due_count=due_count,
                            overdue_count=overdue_count,
@@ -749,7 +760,7 @@ def send_one(did):
     if ok:
         from datetime import datetime
         update_debtor(tid, did, last_reminded=datetime.now().strftime("%Y-%m-%d"))
-        # Calculate and save next reminder date based on default interval
+        # Recalculate next reminder based on purchase date + interval (does NOT change reminder mode)
         calculate_next_reminder(tid, did)
     return jsonify(ok=ok, msg=msg)
 
@@ -762,17 +773,46 @@ def set_next_reminder(did):
     if not debtor:
         return jsonify(ok=False, msg="Debtor not found")
 
-    days = request.form.get("days", "").strip()
-    if not days or not days.isdigit():
-        return jsonify(ok=False, msg="Invalid days value")
+    mode = request.form.get("mode", "").strip()  # "default" or "custom"
 
-    days = int(days)
-    if days < 1 or days > 365:
-        return jsonify(ok=False, msg="Days must be between 1 and 365")
+    if mode == "default":
+        # Use global default settings
+        next_date = calculate_next_reminder(tid, did, reminder_mode="default")
+        if next_date:
+            return jsonify(ok=True, msg="Reminder reset to use global default", next_date=next_date)
+        else:
+            return jsonify(ok=False, msg="Failed to set reminder")
 
-    # Calculate and update next reminder date with custom days
-    next_date = calculate_next_reminder(tid, did, custom_days=days)
-    if next_date:
-        return jsonify(ok=True, msg=f"Next reminder set to {next_date}", next_date=next_date)
+    elif mode == "custom":
+        # Custom interval or date
+        days = request.form.get("days", "").strip()
+        custom_date = request.form.get("custom_date", "").strip()
+
+        if custom_date:
+            # User specified exact date
+            try:
+                from datetime import datetime as dt
+                dt.strptime(custom_date, "%Y-%m-%d")
+                update_debtor(tid, did, next_reminder_date=custom_date, reminder_mode="custom")
+                return jsonify(ok=True, msg=f"Reminder date set to {custom_date}", next_date=custom_date)
+            except:
+                return jsonify(ok=False, msg="Invalid date format (use YYYY-MM-DD)")
+
+        elif days:
+            # Custom interval from purchase date
+            if not days.isdigit():
+                return jsonify(ok=False, msg="Invalid days value")
+            days = int(days)
+            if days < 1 or days > 365:
+                return jsonify(ok=False, msg="Days must be between 1 and 365")
+
+            next_date = calculate_next_reminder(tid, did, reminder_mode="custom", reminder_days=days)
+            if next_date:
+                return jsonify(ok=True, msg=f"Custom reminder interval set to {days} days", next_date=next_date)
+            else:
+                return jsonify(ok=False, msg="Failed to set reminder")
+        else:
+            return jsonify(ok=False, msg="Please provide either days or a custom date")
+
     else:
-        return jsonify(ok=False, msg="Failed to set next reminder")
+        return jsonify(ok=False, msg="Invalid mode")

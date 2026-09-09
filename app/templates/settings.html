@@ -101,17 +101,20 @@
   <div class="card mb-3">
     <div class="card-header"><i class="bi bi-clock-history me-2"></i>Debtor Reminders</div>
     <div class="card-body">
-      <div class="mb-0">
-        <label class="form-label fw-semibold">Default Reminder Interval</label>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Default Reminder Period</label>
         <select name="default_reminder_days" class="form-select">
-          <option value="7"  {% if s.get('default_reminder_days','14')=='7'  %}selected{% endif %}>1 Week</option>
-          <option value="14" {% if s.get('default_reminder_days','14')=='14' %}selected{% endif %}>2 Weeks</option>
-          <option value="21" {% if s.get('default_reminder_days','14')=='21' %}selected{% endif %}>3 Weeks</option>
-          <option value="28" {% if s.get('default_reminder_days','14')=='28' %}selected{% endif %}>4 Weeks</option>
-          <option value="42" {% if s.get('default_reminder_days','14')=='42' %}selected{% endif %}>6 Weeks</option>
-          <option value="56" {% if s.get('default_reminder_days','14')=='56' %}selected{% endif %}>8 Weeks</option>
+          <option value="7"  {% if s.get('default_reminder_days','28')=='7'  %}selected{% endif %}>1 Week (7 days)</option>
+          <option value="14" {% if s.get('default_reminder_days','28')=='14' %}selected{% endif %}>2 Weeks (14 days)</option>
+          <option value="21" {% if s.get('default_reminder_days','28')=='21' %}selected{% endif %}>3 Weeks (21 days)</option>
+          <option value="28" {% if s.get('default_reminder_days','28')=='28' %}selected{% endif %}>4 Weeks (28 days)</option>
+          <option value="42" {% if s.get('default_reminder_days','28')=='42' %}selected{% endif %}>6 Weeks (42 days)</option>
+          <option value="56" {% if s.get('default_reminder_days','28')=='56' %}selected{% endif %}>8 Weeks (56 days)</option>
         </select>
-        <div class="form-text">When you send a reminder to a debtor, the next reminder date will be automatically calculated using this interval.</div>
+      </div>
+      <div class="card alert alert-info mb-0 py-2 px-3">
+        <strong>How it works:</strong> Reminders are calculated from each debtor's <strong>Purchase Date</strong>.
+        <br><small class="text-muted">Example: Purchase Date Sep 09, 2026 + 4 Weeks = Next Reminder Oct 07, 2026</small>
       </div>
     </div>
   </div>
