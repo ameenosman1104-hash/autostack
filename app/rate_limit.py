@@ -1,66 +1,70 @@
-"""Simple rate limiting for login attempts."""
+"""Rate limiting for login attempts, keyed by username (not IP).
+
+Multi-tenant apps should rate-limit by USERNAME to prevent one user's
+failed attempts from blocking all users behind the same proxy/load balancer.
+
+On Google App Engine, all users appear as the same IP due to the load
+balancer. Rate-limiting by IP would block the entire app after 5 failed
+attempts by any user. Rate-limiting by username is more appropriate.
+"""
 import time
+import logging
 from collections import defaultdict
-from functools import wraps
-from flask import request, jsonify, abort
+from flask import request, abort
 
+logger = logging.getLogger(__name__)
 
-# Store login attempts: {ip: [(timestamp, success), ...]}
-# Keyed by IP address, stores list of (timestamp, was_successful) tuples
+# Store login attempts: {username: [(timestamp, success), ...]}
+# Keyed by username, stores list of (timestamp, was_successful) tuples
 _login_attempts = defaultdict(list)
 
-# Limits: max 5 failed attempts per 15 minutes per IP
+# Limits: max 5 failed attempts per 15 minutes per username
 FAILED_LIMIT = 5
 FAILED_WINDOW = 900  # 15 minutes
 
 
-def get_client_ip():
-    """Get client IP, handling proxies."""
-    if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    return request.remote_addr
+def check_login_rate_limit(username):
+    """Check if username should be rate-limited for login.
 
-
-def check_login_rate_limit():
-    """Check if current client should be rate-limited for login.
+    Args:
+        username: The username attempting to log in
 
     Raises 429 Too Many Requests if limit exceeded.
     """
-    ip = get_client_ip()
     now = time.time()
 
     # Clean old attempts
-    _login_attempts[ip] = [
-        (ts, success) for ts, success in _login_attempts[ip]
+    _login_attempts[username] = [
+        (ts, success) for ts, success in _login_attempts[username]
         if now - ts < FAILED_WINDOW
     ]
 
     # Count failed attempts in window
-    failed = sum(1 for ts, success in _login_attempts[ip] if not success)
+    failed = sum(1 for ts, success in _login_attempts[username] if not success)
 
     if failed >= FAILED_LIMIT:
-        # Too many failures - reject
+        logger.warning(f"Rate limit exceeded for login attempt on username: {username} (too many failed attempts)")
         abort(429)
 
 
-def record_login_attempt(success):
-    """Record a login attempt result (True if successful, False if failed)."""
-    ip = get_client_ip()
+def record_login_attempt(username, success):
+    """Record a login attempt result.
+
+    Args:
+        username: The username that was attempted
+        success: True if login succeeded, False if failed
+    """
     now = time.time()
 
-    _login_attempts[ip].append((now, success))
+    _login_attempts[username].append((now, success))
 
     # Clean very old entries
-    _login_attempts[ip] = [
-        (ts, success) for ts, success in _login_attempts[ip]
+    _login_attempts[username] = [
+        (ts, success) for ts, success in _login_attempts[username]
         if now - ts < FAILED_WINDOW * 2
     ]
 
-
-def rate_limit_login(f):
-    """Decorator to apply rate limiting to login routes."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        check_login_rate_limit()
-        return f(*args, **kwargs)
-    return decorated
+    if not success:
+        logger.info(f"Failed login attempt on username: {username}")
+    else:
+        logger.info(f"Successful login for username: {username}")

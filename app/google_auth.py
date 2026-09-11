@@ -104,19 +104,21 @@ def complete():
     if request.method == "POST":
         # Reuse login throttling for password-confirmed linking.
         from .rate_limit import check_login_rate_limit, record_login_attempt
-        check_login_rate_limit()
         conn = None
         try:
             action = request.form.get("action")
             if action == "link":
-                user = get_user_by_username(request.form.get("username", "").strip())
+                username = request.form.get("username", "").strip()
+                check_login_rate_limit(username)
+                user = get_user_by_username(username)
                 if not user or not user["is_active"] or not check_password_hash(user["password_hash"],request.form.get("password", "")):
-                    record_login_attempt(False)
+                    record_login_attempt(username, False)
                     raise ValueError("Unable to link. Check your AutoStack username and password, and that your account is active.")
                 tid = user["id"]
             elif action == "create":
                 business = request.form.get("business_name", "").strip()
                 username = request.form.get("username", "").strip()
+                check_login_rate_limit(username)
                 if not business or not username or len(business)>150 or len(username)>100:
                     raise ValueError("Enter a business name and username (maximum 150 and 100 characters).")
             else:
@@ -138,6 +140,11 @@ def complete():
                 if not active or not active[0]: raise ValueError("This account is disabled.")
             conn.execute("INSERT INTO google_identities(subject,tenant_id) VALUES(?,?)",(identity["sub"],tid))
             conn.commit()
+            # Record successful account setup/linking via Google
+            if action == "link":
+                record_login_attempt(username, True)
+            elif action == "create":
+                record_login_attempt(username, True)
             return finish_login(get_user_by_id(tid))
         except ValueError as error:
             if conn: conn.rollback()
