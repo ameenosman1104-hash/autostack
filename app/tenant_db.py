@@ -617,10 +617,24 @@ def delete_debtors_by_ids(tid, ids):
 
 
 def next_reminder(debtor):
+    """Calculate reminder status from stored next_reminder_date.
+
+    CRITICAL: Uses the stored next_reminder_date which is either:
+    - Calculated (for DEFAULT mode): purchase_date + global_default_interval
+    - Stored (for CUSTOM mode): user-selected custom interval or date
+
+    Never recalculates; always uses database value.
+    """
     try:
-        base_str = debtor["last_reminded"] if debtor.get("last_reminded") else debtor["date_of_purchase"]
-        base = datetime.strptime(base_str, "%Y-%m-%d").date()
-        nxt  = base + timedelta(days=int(debtor.get("reminder_days", 14)))
+        # Use stored next_reminder_date directly (respects both DEFAULT and CUSTOM modes)
+        if debtor.get("next_reminder_date"):
+            nxt = datetime.strptime(debtor["next_reminder_date"], "%Y-%m-%d").date()
+        else:
+            # Fallback for legacy debtors without next_reminder_date set
+            base_str = debtor["last_reminded"] if debtor.get("last_reminded") else debtor["date_of_purchase"]
+            base = datetime.strptime(base_str, "%Y-%m-%d").date()
+            nxt = base + timedelta(days=int(debtor.get("reminder_days", 14)))
+
         today = date.today()
         if nxt < today:
             return nxt.strftime("%d %b %Y"), "overdue"
@@ -628,7 +642,8 @@ def next_reminder(debtor):
             return "Today", "due_today"
         else:
             return nxt.strftime("%d %b %Y"), "ok"
-    except Exception:
+    except Exception as e:
+        print(f"Error calculating next_reminder: {e}")
         return "—", "ok"
 
 
