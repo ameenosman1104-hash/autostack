@@ -16,6 +16,13 @@ class LaunchSafety(unittest.TestCase):
             "TESTING": "1"
         })
         cls.env.start()
+
+        # Reload modules after patching environment
+        import sys
+        for mod in list(sys.modules.keys()):
+            if mod.startswith('app'):
+                del sys.modules[mod]
+
         from app import create_app
         from app import tenant_db, main_db
         cls.db = tenant_db
@@ -132,5 +139,62 @@ class LaunchSafety(unittest.TestCase):
         self.login()
         self.main.update_tenant(self.tid,is_active=0)
         self.assertEqual(self.client.get("/debtors/").status_code,302)
+
+    def google_callback(self, verified=True):
+        from unittest.mock import MagicMock
+        provider=MagicMock()
+        provider.authorize_access_token.return_value={"id_token":"test-token", "userinfo":{"sub":self.username,"email":self.username+"@example.com","email_verified":verified}}
+        with patch.dict(self.app.config, GOOGLE_CLIENT_ID="test", GOOGLE_CLIENT_SECRET="test", GOOGLE_REDIRECT_URI="https://example.com/auth/google/callback"), patch("app.google_auth.provider",return_value=provider):
+            return self.client.get("/auth/google/callback")
+
+    def google_form(self):
+        self.google_callback()
+        page=self.client.get("/auth/google/complete").get_data(as_text=True)
+        return re.search(r'name="csrf_token" value="([^"]+)"',page).group(1)
+
+    def test_google_configuration_and_unverified_identity(self):
+        with patch.dict(self.app.config, GOOGLE_CLIENT_ID="", GOOGLE_CLIENT_SECRET="", GOOGLE_REDIRECT_URI=""):
+            self.assertNotIn("Continue with Google",self.client.get("/login").get_data(as_text=True))
+            self.assertEqual(self.client.get("/auth/google").status_code,302)
+        self.google_callback(False)
+        with self.client.session_transaction() as session:
+            self.assertNotIn("google_pending",session)
+            self.assertNotIn("_user_id",session)
+
+    def test_google_link_requires_password_and_preserves_blocking(self):
+        token=self.google_form()
+        data={"csrf_token":token,"action":"link","username":self.username,"password":"incorrect"}
+        self.assertEqual(self.client.post("/auth/google/complete",data=data).status_code,200)
+        with self.client.session_transaction() as session:self.assertNotIn("_user_id",session)
+        data["password"]="test-password-123"
+        self.assertEqual(self.client.post("/auth/google/complete",data=data).status_code,302)
+        with self.client.session_transaction() as session:
+            self.assertEqual(int(session["_user_id"]),self.tid)
+            session.clear()
+        self.main.update_tenant(self.tid,is_active=0)
+        self.google_callback()
+        with self.client.session_transaction() as session:self.assertNotIn("_user_id",session)
+
+    def test_google_new_account_and_csrf(self):
+        token=self.google_form()
+        data={"action":"create","username":self.username+"new","business_name":"New shop"}
+        self.assertEqual(self.client.post("/auth/google/complete",data=data).status_code,400)
+        data["csrf_token"]=token
+        self.assertEqual(self.client.post("/auth/google/complete",data=data).status_code,302)
+        user=self.main.get_user_by_username(data["username"])
+        self.assertIsNotNone(user)
+        with self.client.session_transaction() as session:
+            self.assertEqual(int(session["_user_id"]),user["id"])
+            session.clear()
+        self.google_callback()
+        with self.client.session_transaction() as session:self.assertEqual(int(session["_user_id"]),user["id"])
+
+    def test_google_expired_setup_and_invalid_state(self):
+        with self.client.session_transaction() as session:
+            session["google_pending"]={"sub":"expired","email":"test@example.com","expires":0}
+        self.assertEqual(self.client.get("/auth/google/complete").status_code,302)
+        with patch.dict(self.app.config, GOOGLE_CLIENT_ID="test", GOOGLE_CLIENT_SECRET="test", GOOGLE_REDIRECT_URI="https://example.com/auth/google/callback"):
+            self.assertEqual(self.client.get("/auth/google/callback?code=fake&state=invalid").status_code,302)
+        with self.client.session_transaction() as session:self.assertNotIn("_user_id",session)
 
 if __name__ == "__main__":unittest.main()

@@ -38,6 +38,8 @@
     input:focus-visible,button:focus-visible,a:focus-visible { outline:3px solid #60a5fa; outline-offset:3px; }
     button { width:100%; min-height:48px; border:0; border-radius:8px; background:#2563eb; color:#fff; font:inherit; font-weight:650; cursor:pointer; }
     button:hover { background:#1d4ed8; }
+    .google-signin { display:block; text-align:center; border:1px solid #cbd5e1; border-radius:8px; padding:11px; margin:0 0 20px; color:#1e293b; text-decoration:none; font-weight:600; }
+    .google-signin:hover { background:#f1f5f9; }
     .register { text-align:center; font-size:14px; margin:24px 0 0; padding-top:22px; border-top:1px solid #e2e8f0; color:#64748b; }
     .register a { color:#1d4ed8; font-weight:650; }
     .alert { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:8px; padding:12px; margin-bottom:18px; overflow-wrap:anywhere; }
@@ -73,6 +75,10 @@
             <div class="alert" role="alert">{{ msg }}</div>
           {% endfor %}
         {% endwith %}
+        {% if google_login_enabled %}
+        <a class="google-signin" href="{{ url_for('google_auth.start') }}">Continue with Google</a>
+        <p class="login-sub" style="text-align:center">or use your AutoStack account</p>
+        {% endif %}
         <form method="POST">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="field"><label for="username">Username</label><input id="username" type="text" name="username" placeholder="Enter your username" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>

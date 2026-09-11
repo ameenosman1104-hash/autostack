@@ -21,6 +21,8 @@ def create_app():
 
     from .main_db import init_main_db
     init_main_db()
+    from .google_auth import init_google
+    init_google(app)
 
     from .auth    import auth_bp
     from .admin   import admin_bp
