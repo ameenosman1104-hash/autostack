@@ -50,24 +50,33 @@ def init_tenant_db(tenant_id):
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 def get_setting(tid, key, default=""):
+    from app.credential_store import decrypt_value
     conn = get_conn(tid)
     row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     conn.close()
-    return row["value"] if row else default
+    value = row["value"] if row else default
+    return decrypt_value(value) if value else value
 
 
 def save_setting(tid, key, value):
+    from app.credential_store import encrypt_value, should_encrypt_key
     conn = get_conn(tid)
-    conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (key, str(value)))
+    # Encrypt if it's a sensitive key and has a value
+    if should_encrypt_key(key) and value:
+        value = encrypt_value(str(value))
+    else:
+        value = str(value)
+    conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (key, value))
     conn.commit()
     conn.close()
 
 
 def get_all_settings(tid):
+    from app.credential_store import decrypt_value
     conn = get_conn(tid)
     rows = conn.execute("SELECT key, value FROM settings").fetchall()
     conn.close()
-    return {r["key"]: r["value"] for r in rows}
+    return {r["key"]: decrypt_value(r["value"]) if r["value"] else r["value"] for r in rows}
 
 
 # ── Products ──────────────────────────────────────────────────────────────────

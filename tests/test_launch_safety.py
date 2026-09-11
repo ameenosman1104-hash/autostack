@@ -10,7 +10,11 @@ class LaunchSafety(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
-        cls.env = patch.dict(os.environ, {"AUTOSTACK_DATA_DIR": cls.temp.name, "SECRET_KEY": "test-only-key-not-for-production"})
+        cls.env = patch.dict(os.environ, {
+            "AUTOSTACK_DATA_DIR": cls.temp.name,
+            "SECRET_KEY": "test-only-key-not-for-production",
+            "TESTING": "1"
+        })
         cls.env.start()
         from app import create_app
         from app import tenant_db, main_db

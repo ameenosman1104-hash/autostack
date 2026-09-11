@@ -223,6 +223,28 @@ def migrate_tenant_db(tenant_id, db_path):
 
         current_version = get_schema_version(conn)
 
+        # Migration 3: Encrypt existing plaintext credentials (after schema migrations)
+        if current_version < 3:
+            conn.execute("BEGIN")
+            try:
+                from app.credential_store import encrypt_value, should_encrypt_key, is_encrypted
+
+                # Get all settings that need encryption
+                rows = conn.execute("SELECT key, value FROM settings").fetchall()
+                for row in rows:
+                    key = row[0]
+                    value = row[1]
+
+                    if should_encrypt_key(key) and value and not is_encrypted(value):
+                        encrypted = encrypt_value(value)
+                        conn.execute("UPDATE settings SET value=? WHERE key=?", (encrypted, key))
+
+                mark_migration_applied(conn, 3, "Encrypt plaintext credentials")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 3 failed: {e}")
+
         # Migration 1: Create reminder_dispatch ledger for duplicate prevention
         if current_version < 1:
             conn.execute("BEGIN")
