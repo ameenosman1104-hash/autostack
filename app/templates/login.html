@@ -3,49 +3,85 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Login — Autostack</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta name="description" content="AutoStack helps businesses track stock, manage outstanding customer balances, and organise payment follow-ups in one place.">
+  <title>AutoStack — Stock &amp; Debtor Management</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1e293b">
   <style>
-    body { background:#1E293B; min-height:100vh; display:flex; align-items:center; justify-content:center; }
-    .login-card { background:#fff; border-radius:12px; padding:2.5rem; width:100%; max-width:400px; box-shadow:0 8px 32px rgba(0,0,0,.3); }
-    .login-logo { color:#3B82F6; font-size:2rem; font-weight:800; }
-    .login-sub  { color:#64748B; font-size:.85rem; }
-    .btn-login  { background:#3B82F6; border:none; font-weight:600; padding:.65rem; }
-    .btn-login:hover { background:#2563EB; }
-    .form-control:focus { border-color:#3B82F6; box-shadow:0 0 0 .2rem rgba(59,130,246,.25); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#172234; color:#fff; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.6; }
+    a { color:inherit; }
+    .page { max-width:1180px; margin:auto; padding:32px 40px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .brand { display:flex; align-items:center; gap:12px; font-size:24px; font-weight:800; letter-spacing:-.8px; }
+    .brand img { width:48px; height:48px; border-radius:8px; }
+    .brand span span { color:#22c55e; }
+    .header-link { color:#d4deeb; font-size:14px; text-underline-offset:5px; }
+    main { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr); gap:72px; align-items:center; padding:64px 0; }
+    .eyebrow { color:#86efac; text-transform:uppercase; letter-spacing:2px; font-size:12px; font-weight:700; }
+    h1 { font-size:clamp(34px,4.1vw,54px); line-height:1.12; letter-spacing:-1.7px; margin:20px 0; max-width:600px; }
+    .intro { color:#c4d0df; font-size:17px; max-width:530px; margin:0 0 28px; }
+    .features { list-style:none; padding:0; margin:0; display:grid; gap:20px; }
+    .features li { display:flex; align-items:flex-start; gap:14px; }
+    .feature-icon { color:#86efac; background:#223c3d; border:1px solid #365554; border-radius:10px; width:38px; height:38px; display:grid; place-items:center; flex-shrink:0; font-weight:700; }
+    .features strong { font-size:15px; }
+    .features p { margin:3px 0 0; color:#b6c4d6; font-size:14px; }
+    .workflow { border-top:1px solid #344256; margin-top:30px; padding-top:20px; color:#c4d0df; font-size:13px; }
+    .workflow strong { color:#fff; display:block; margin-bottom:5px; }
+    .login-card { background:#fff; color:#1e293b; border-radius:20px; padding:36px; box-shadow:0 20px 60px #080f1b40; }
+    .card-label { color:#167440; font-size:12px; text-transform:uppercase; font-weight:700; letter-spacing:1.4px; }
+    h2 { margin:8px 0; font-size:28px; letter-spacing:-.7px; }
+    .login-sub { color:#64748b; font-size:14px; margin:0 0 26px; }
+    label { display:block; font-size:14px; font-weight:600; margin-bottom:7px; }
+    input { width:100%; min-height:48px; border:1px solid #cbd5e1; border-radius:8px; padding:12px; font:inherit; font-size:15px; background:#f8fafc; color:#1e293b; }
+    .field { margin-bottom:20px; }
+    input:focus-visible,button:focus-visible,a:focus-visible { outline:3px solid #60a5fa; outline-offset:3px; }
+    button { width:100%; min-height:48px; border:0; border-radius:8px; background:#2563eb; color:#fff; font:inherit; font-weight:650; cursor:pointer; }
+    button:hover { background:#1d4ed8; }
+    .register { text-align:center; font-size:14px; margin:24px 0 0; padding-top:22px; border-top:1px solid #e2e8f0; color:#64748b; }
+    .register a { color:#1d4ed8; font-weight:650; }
+    .alert { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:8px; padding:12px; margin-bottom:18px; overflow-wrap:anywhere; }
+    footer { border-top:1px solid #344256; padding-top:20px; display:flex; justify-content:space-between; gap:12px; color:#aab9cc; font-size:12px; }
+    @media(max-width:800px) { .page { padding:24px; } main { gap:36px; padding:40px 0; grid-template-columns:1fr; } .login-card { max-width:520px; width:100%; } h1 { max-width:620px; } }
+    @media(max-width:440px) { .page { padding:20px; } .login-card { padding:26px 22px; } .brand { font-size:21px; } .header-link { font-size:13px; } h1 { font-size:36px; } footer { flex-direction:column; } }
   </style>
 </head>
 <body>
-  <div class="login-card">
-    <div class="text-center mb-4">
-      <img src="{{ url_for('static', filename='logo.svg') }}" alt="Autostack" style="height:80px; margin-bottom:1rem;">
-      <div class="login-sub">Sign in to your portal</div>
-    </div>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for cat, msg in messages %}
-        <div class="alert alert-danger py-2">{{ msg }}</div>
-      {% endfor %}
-    {% endwith %}
-
-    <form method="POST">
-      <div class="mb-3">
-        <label class="form-label fw-semibold">Username</label>
-        <input type="text" name="username" class="form-control" placeholder="Enter username" autofocus required>
-      </div>
-      <div class="mb-4">
-        <label class="form-label fw-semibold">Password</label>
-        <input type="password" name="password" class="form-control" placeholder="Enter password" required>
-      </div>
-      <button type="submit" class="btn btn-primary btn-login w-100 text-white">Sign In</button>
-    </form>
-
-    <div class="text-center mt-3" style="font-size:.88rem;">
-      Don't have an account? <a href="{{ url_for('auth.register') }}" class="text-primary fw-semibold">Create one</a>
-    </div>
-    <div class="text-center mt-2" style="color:#94A3B8;font-size:.75rem;">
-      Autostack &copy; 2026
-    </div>
+  <div class="page">
+    <header>
+      <div class="brand"><img src="{{ url_for('static', filename='logo.svg') }}" alt=""><span>Auto<span>Stack</span></span></div>
+      <a class="header-link" href="#sign-in">Sign in to your account</a>
+    </header>
+    <main>
+      <section aria-labelledby="overview-title">
+        <div class="eyebrow">Stock &amp; debtor management</div>
+        <h1 id="overview-title">Know your stock.<br>Stay on top of what’s owed.</h1>
+        <p class="intro">Keep stock levels, customer balances, and payment follow-ups organised in one place. Built for tyre shops and growing businesses.</p>
+        <ul class="features">
+          <li><span class="feature-icon" aria-hidden="true">▦</span><div><strong>See what needs restocking</strong><p>Track quantities, set minimum levels, and spot low-stock items.</p></div></li>
+          <li><span class="feature-icon" aria-hidden="true">R</span><div><strong>Manage debtors &amp; collections</strong><p>Keep customer balances, payment records, and reminder dates together.</p></div></li>
+          <li><span class="feature-icon" aria-hidden="true">↗</span><div><strong>Bring your existing data with you</strong><p>Import stock and debtors from CSV or Excel spreadsheets.</p></div></li>
+        </ul>
+        <div class="workflow"><strong>Fits alongside your existing software</strong>Export your data → Import into AutoStack → See what needs attention</div>
+      </section>
+      <section class="login-card" id="sign-in" aria-labelledby="login-title">
+        <div class="card-label">Your business workspace</div>
+        <h2 id="login-title">Welcome back</h2>
+        <p class="login-sub">Sign in to manage your stock and collections.</p>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for cat, msg in messages %}
+            <div class="alert" role="alert">{{ msg }}</div>
+          {% endfor %}
+        {% endwith %}
+        <form method="POST">
+          <div class="field"><label for="username">Username</label><input id="username" type="text" name="username" placeholder="Enter your username" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+          <div class="field"><label for="password">Password</label><input id="password" type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required></div>
+          <button type="submit">Sign in</button>
+        </form>
+        <p class="register">New to AutoStack? <a href="{{ url_for('auth.register') }}">Create an account</a></p>
+      </section>
+    </main>
+    <footer><span>AutoStack · Business management made clear</span><span>Stock tracking · Debtors · Payment follow-ups</span></footer>
   </div>
 </body>
 </html>
