@@ -58,11 +58,17 @@ def _via_email(tid, debtor, message):
     password  = get_setting(tid, "email_password", "")
     to_email  = _extract_email(debtor.get("email", ""))
 
+    # Diagnostic logging (NO PASSWORD LOGGING)
+    print(f"[DEBT-NOTIFIER] Loaded sender: {sender}, password exists: {bool(password)}, to_email: {to_email}")
+
     if not sender:
+        print(f"[DEBT-NOTIFIER] FAIL: No sender email configured")
         return False, "Sender email not configured. Check Settings > Email Settings."
     if not password:
+        print(f"[DEBT-NOTIFIER] FAIL: No password configured")
         return False, "Gmail App Password not configured. Check Settings > Email Settings."
     if not to_email:
+        print(f"[DEBT-NOTIFIER] FAIL: No email for debtor {debtor['name']}")
         return False, f"No email address for {debtor['name']}."
 
     business = get_setting(tid, "business_name", "Inventory Tracker")

@@ -157,16 +157,10 @@ window.testEmailConnection = function() {
   const pass = document.querySelector('input[name="email_password"]').value.trim();
   const result = document.getElementById('testResult');
 
-  if (!email) {
-    result.innerHTML = '<span class="text-danger">❌ Email address required</span>';
-    return;
-  }
-  if (!pass) {
-    result.innerHTML = '<span class="text-danger">❌ App password required</span>';
-    return;
-  }
+  // Note: email and password can be empty - the backend will try database values
+  // This allows testing after saving settings without re-entering the password
 
-  result.innerHTML = '<span class="text-muted">⏳ Testing...</span>';
+  result.innerHTML = '<span class="text-muted">⏳ Testing connection...</span>';
 
   fetch('/settings/test-email', {
     method: 'POST',
