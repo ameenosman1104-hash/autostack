@@ -1,14 +1,16 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Connect Google — AutoStack</title>
-<style>*{box-sizing:border-box}body{background:#172234;color:#1e293b;font:16px/1.5 system-ui;margin:0;padding:24px}.card{max-width:520px;margin:32px auto;background:white;padding:28px;border-radius:16px}h1{font-size:26px}label{display:block;margin-top:14px}input,button{width:100%;font:inherit;padding:12px;border-radius:8px;border:1px solid #cbd5e1}button{background:#2563eb;color:white;margin-top:18px;cursor:pointer}.alert{background:#fef2f2;color:#991b1b;padding:12px}.muted{color:#64748b;overflow-wrap:anywhere}a{color:#1d4ed8}hr{border:0;border-top:1px solid #e2e8f0;margin:28px 0}</style></head>
-<body><main class="card"><h1>Connect your Google account</h1><p class="muted">Verified email: {{ google_email }}</p>
+<style>*{box-sizing:border-box}body{background:#172234;color:#1e293b;font:16px/1.5 system-ui;margin:0;padding:24px}.card{max-width:520px;margin:32px auto;background:white;padding:28px;border-radius:16px}h1{font-size:26px}label{display:block;margin-top:14px}input,button{width:100%;font:inherit;padding:12px;border-radius:8px;border:1px solid #cbd5e1}button{background:#2563eb;color:white;margin-top:18px;cursor:pointer}.alert{background:#fef2f2;color:#991b1b;padding:12px}.muted{color:#64748b;overflow-wrap:anywhere}a{color:#1d4ed8}hr{border:0;border-top:1px solid #e2e8f0;margin:28px 0}.note{background:#f0fdf4;color:#166534;padding:12px;border-radius:8px;font-size:14px}</style></head>
+<body><main class="card"><h1>Link Google to AutoStack</h1><p class="muted">Google account: {{ google_email }}</p>
+<p class="note">You only need to link your Google account once. After that, you can sign in instantly with just one click.</p>
 {% for category,message in get_flashed_messages(with_categories=true) %}<p class="alert" role="alert">{{ message }}</p>{% endfor %}
-<h2>Already use AutoStack?</h2><p>Confirm your existing login once to keep your stock, debtors, and settings together.</p>
+<h2>Already use AutoStack?</h2><p>Confirm your AutoStack login once to connect it with Google. Future sign-ins with this Google account will go straight to your dashboard.</p>
 <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="link">
 <label for="existing">AutoStack username</label><input id="existing" name="username" autocomplete="username" required>
-<label for="password">AutoStack password</label><input id="password" name="password" type="password" autocomplete="current-password" required><button>Link existing account</button></form>
-<hr><h2>New to AutoStack?</h2><p>Create your business workspace. You’ll use Google to sign in.</p>
+<label for="password">AutoStack password</label><input id="password" name="password" type="password" autocomplete="current-password" required><button>Link account</button></form>
+<hr><h2>New to AutoStack?</h2><p>Create your business workspace and connect it with Google. After this first-time setup, you will use Google to sign in on future visits.</p>
 <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create">
 <label for="business">Business name</label><input id="business" name="business_name" maxlength="150" autocomplete="organization" required>
-<label for="new-user">Choose an AutoStack username</label><input id="new-user" name="username" maxlength="100" autocomplete="username" required><button>Create account with Google</button></form>
-<p><a href="{{ url_for('auth.login') }}">Back to sign in</a></p></main></body></html>
+<label for="new-user">Choose an AutoStack username</label><input id="new-user" name="username" maxlength="100" autocomplete="username" required><button>Create account</button></form>
+<p style="font-size:14px;color:#64748b;margin-top:20px">Note: Google handles your Google account password on Google's sign-in page. AutoStack never sees or stores your Google password.</p>
+<p><a href="{{ url_for("auth.login") }}">Back to sign in</a></p></main></body></html>

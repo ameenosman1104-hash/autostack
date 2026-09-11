@@ -197,4 +197,47 @@ class LaunchSafety(unittest.TestCase):
             self.assertEqual(self.client.get("/auth/google/callback?code=fake&state=invalid").status_code,302)
         with self.client.session_transaction() as session:self.assertNotIn("_user_id",session)
 
+    def test_google_returning_user_skips_linking_form(self):
+        from unittest.mock import MagicMock
+        google_sub = "returning-user-google-sub"
+
+        # Step 1: Create an account and link Google (first-time flow)
+        token = self.google_form()
+        data = {"csrf_token": token, "action": "create", "username": "returninguser", "business_name": "Returning Shop"}
+        self.assertEqual(self.client.post("/auth/google/complete", data=data).status_code, 302)
+
+        # Verify user is now linked
+        user = self.main.get_user_by_username("returninguser")
+        self.assertIsNotNone(user)
+
+        # Step 2: Logout
+        with self.client.session_transaction() as session:
+            session.clear()
+
+        # Step 3: Return user clicks "Continue with Google" with the SAME Google account
+        # They should go DIRECTLY to dashboard, NOT to the linking form
+        provider = MagicMock()
+        provider.authorize_access_token.return_value = {
+            "id_token": "test-token",
+            "userinfo": {
+                "sub": self.username,  # Same Google sub as initial creation
+                "email": self.username + "@example.com",
+                "email_verified": True
+            }
+        }
+
+        with patch.dict(self.app.config, GOOGLE_CLIENT_ID="test", GOOGLE_CLIENT_SECRET="test", GOOGLE_REDIRECT_URI="https://example.com/auth/google/callback"), \
+             patch("app.google_auth.provider", return_value=provider):
+            # Call the callback - should redirect to dashboard, not to google_complete.html
+            response = self.client.get("/auth/google/callback", follow_redirects=False)
+
+        # Should be a 302 redirect to dashboard (not to google_complete)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, "/")  # Redirects to dashboard
+
+        # Verify user is logged in
+        with self.client.session_transaction() as session:
+            self.assertIn("_user_id", session)
+            self.assertEqual(int(session["_user_id"]), user["id"])
+
 if __name__ == "__main__":unittest.main()
