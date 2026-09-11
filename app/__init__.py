@@ -10,7 +10,9 @@ login_manager.login_message_category = "warning"
 
 def create_app():
     app = Flask(__name__)
-    app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+    from .session_key import load_session_key
+    app.secret_key = load_session_key()
+    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 
     login_manager.init_app(app)
 

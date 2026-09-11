@@ -1,5 +1,5 @@
 import csv, io, base64, json
-import requests as req_lib
+from ..services import safe_http as req_lib
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from ..tenant_db import (get_all_debtors, get_debtor, get_debtor_by_name,
@@ -152,7 +152,8 @@ def delete(did):
 def record_payment(did):
     """Record a payment against a debtor's debt."""
     try:
-        amount = float(request.form.get("amount", 0) or 0)
+        from ..validation import payment_amount
+        amount = payment_amount(request.form.get("amount", 0))
         payment_date = request.form.get("payment_date", date.today().isoformat())
         payment_method = request.form.get("payment_method", "cash")
         notes = request.form.get("notes", "").strip()

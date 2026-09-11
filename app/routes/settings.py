@@ -25,8 +25,19 @@ ALL_KEYS = [
 def index():
     tid = current_user.tenant_id
     if request.method == "POST":
+        from ..validation import reminder_interval
+        try:
+            reminder_interval(request.form.get("default_reminder_days", "28"))
+        except ValueError:
+            flash("Reminder interval must be between 1 and 365 days.", "danger")
+            return redirect(url_for("settings.index"))
         for key in ALL_KEYS:
             value = request.form.get(key, "")
+            if key == "email_password":
+                value = value.strip()
+                if not value or set(value) <= set("*•●"):
+                    continue
+                value = value.replace(" ", "")
             save_setting(tid, key, value)
             # Log (without exposing password)
             if key == "email_password" and value:

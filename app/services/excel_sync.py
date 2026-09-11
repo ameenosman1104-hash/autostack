@@ -1,6 +1,6 @@
 """Excel/API/URL synchronization service for real-time debtor updates."""
 
-import requests as req_lib
+from . import safe_http as req_lib
 import json
 from datetime import datetime, date
 from decimal import Decimal

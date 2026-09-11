@@ -1,5 +1,5 @@
 import csv, io, base64, json
-import requests as req_lib
+from ..services import safe_http as req_lib
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from ..tenant_db import (get_all_products, get_deleted_products, get_product, get_product_by_code,

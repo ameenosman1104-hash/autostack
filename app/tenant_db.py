@@ -511,6 +511,7 @@ def calculate_next_reminder(tid, did):
             return None
 
         # Only recalculate if using default mode
+        debtor = dict(debtor)
         mode = debtor.get("reminder_mode", "default")
         if mode in ("manual", "custom_interval"):
             # Custom mode set - do NOT recalculate, return existing date
@@ -553,6 +554,8 @@ def set_custom_interval_reminder(tid, did, interval_days):
         if not debtor:
             return None
 
+        from .validation import reminder_interval
+        interval_days = reminder_interval(interval_days)
         purchase_date = datetime.strptime(debtor["date_of_purchase"], "%Y-%m-%d").date()
         next_date = purchase_date + timedelta(days=int(interval_days))
         next_date_str = next_date.isoformat()
@@ -917,8 +920,11 @@ def auto_create_po_if_needed(tid, triggered_products=None):
 
 def add_payment(tid, debtor_id, amount_paid, payment_date=None, payment_method="cash", notes="", recorded_by=""):
     """Record a payment against a debtor. Automatically updates debtor status and balance."""
+    from .validation import payment_amount
+    amount_paid = payment_amount(amount_paid)
     if payment_date is None:
         payment_date = date.today().isoformat()
+    date.fromisoformat(payment_date)
     conn = get_conn(tid)
     try:
         conn.execute(
