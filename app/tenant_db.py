@@ -16,243 +16,35 @@ def _db_path(tenant_id):
 
 
 def get_conn(tenant_id):
+    db_path = _db_path(tenant_id)
     try:
-        db_path = _db_path(tenant_id)
+        # Only apply migrations to file-based databases, not :memory:
+        if not db_path.startswith(":memory:"):
+            from app.db_migrations import migrate_tenant_db
+            try:
+                migrate_tenant_db(tenant_id, db_path)
+            except RuntimeError as e:
+                print(f"[WARNING] Migration issue: {e}")
+                raise
+
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-    except:
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-    # migrate missing columns added after initial release
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()]
-        if "min_level_manual" not in cols:
-            conn.execute("ALTER TABLE products ADD COLUMN min_level_manual INTEGER DEFAULT 0")
-            conn.commit()
-        if "updated_at" not in cols:
-            conn.execute("ALTER TABLE products ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
-            conn.commit()
-        if "extra_data" not in cols:
-            conn.execute("ALTER TABLE products ADD COLUMN extra_data TEXT DEFAULT '{}'")
-            conn.commit()
-        if "deleted" not in cols:
-            conn.execute("ALTER TABLE products ADD COLUMN deleted INTEGER DEFAULT 0")
-            conn.execute("ALTER TABLE products ADD COLUMN deleted_at TEXT DEFAULT NULL")
-            conn.commit()
+        return conn
+
     except Exception as e:
-        print(f"Migration error (may be expected for new DBs): {e}")
-        pass
-    # migrate debtor columns for collections tracking
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(debtors)").fetchall()]
-        if "status" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN status TEXT DEFAULT 'DUE'")
-            conn.commit()
-        if "reminders_paused_until" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN reminders_paused_until TEXT DEFAULT NULL")
-            conn.commit()
-        if "last_payment_date" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN last_payment_date TEXT DEFAULT NULL")
-            conn.commit()
-        if "total_paid_to_date" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN total_paid_to_date REAL DEFAULT 0")
-            conn.commit()
-        if "next_reminder_date" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN next_reminder_date TEXT DEFAULT NULL")
-            conn.commit()
-        if "reminder_mode" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN reminder_mode TEXT DEFAULT 'default'")
-            conn.commit()
-        if "reminder_interval_days" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN reminder_interval_days INTEGER DEFAULT 28")
-            conn.commit()
-        if "external_key" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN external_key TEXT DEFAULT NULL")
-            conn.commit()
-        if "external_source" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN external_source TEXT DEFAULT NULL")
-            conn.commit()
-        if "last_synced_at" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN last_synced_at TEXT DEFAULT NULL")
-            conn.commit()
-        if "sync_status" not in cols:
-            conn.execute("ALTER TABLE debtors ADD COLUMN sync_status TEXT DEFAULT 'manual'")
-            conn.commit()
-    except Exception as e:
-        print(f"Debtor migration error (may be expected for new DBs): {e}")
-        pass
-    # ensure new tables exist (for databases created before these were added)
-    try:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS sales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER,
-            product_code TEXT DEFAULT '', product_name TEXT DEFAULT '',
-            qty_sold REAL DEFAULT 0, sale_price REAL DEFAULT 0,
-            total_amount REAL DEFAULT 0, notes TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS stock_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER,
-            product_code TEXT DEFAULT '', product_name TEXT DEFAULT '',
-            change_type TEXT DEFAULT '', qty_before REAL DEFAULT 0,
-            qty_after REAL DEFAULT 0, change_by REAL DEFAULT 0,
-            notes TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS suppliers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
-            phone TEXT DEFAULT '', email TEXT DEFAULT '', address TEXT DEFAULT '',
-            lead_time_days INTEGER DEFAULT 0, payment_terms TEXT DEFAULT '',
-            notes TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now'))
-        );
-        """)
-        conn.commit()
-    except:
-        pass
-    return conn
+        print(f"Failed to connect to database {db_path}: {e}")
+        raise
 
 
 def init_tenant_db(tenant_id):
+    """Initialize database schema for tenant. Migrations are now handled by db_migrations."""
     try:
         conn = get_conn(tenant_id)
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS products (
-            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-            code                 TEXT UNIQUE NOT NULL,
-            name                 TEXT NOT NULL,
-            category             TEXT DEFAULT '',
-            unit                 TEXT DEFAULT 'PCS',
-            current_stock        REAL DEFAULT 0,
-            reorder_level        REAL DEFAULT 0,
-            min_level_manual     INTEGER DEFAULT 0,
-            max_stock            REAL DEFAULT 0,
-            last_cost_price      REAL DEFAULT 0,
-            previous_cost_price  REAL DEFAULT 0,
-            supplier             TEXT DEFAULT '',
-            created_at           TEXT DEFAULT (datetime('now')),
-            updated_at           TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS settings (
-            key   TEXT PRIMARY KEY,
-            value TEXT DEFAULT ''
-        );
-        CREATE TABLE IF NOT EXISTS notification_log (
-            id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            notification_type TEXT,
-            recipient         TEXT,
-            message           TEXT,
-            status            TEXT,
-            created_at        TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS debtors (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            name             TEXT NOT NULL,
-            phone            TEXT DEFAULT '',
-            email            TEXT DEFAULT '',
-            amount_owed      REAL DEFAULT 0,
-            date_of_purchase TEXT NOT NULL,
-            notify_method    TEXT DEFAULT 'email',
-            reminder_days    INTEGER DEFAULT 14,
-            notes            TEXT DEFAULT '',
-            products_owed    TEXT DEFAULT '',
-            is_paid          INTEGER DEFAULT 0,
-            last_reminded    TEXT DEFAULT '',
-            created_at       TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS purchase_orders (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            po_number   TEXT UNIQUE NOT NULL,
-            order_date  TEXT DEFAULT (datetime('now')),
-            status      TEXT DEFAULT 'DRAFT',
-            notes       TEXT DEFAULT '',
-            created_at  TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS purchase_order_items (
-            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-            po_id               INTEGER NOT NULL,
-            product_code        TEXT,
-            product_name        TEXT,
-            unit                TEXT DEFAULT 'PCS',
-            current_stock       REAL DEFAULT 0,
-            reorder_level       REAL DEFAULT 0,
-            order_quantity      REAL DEFAULT 0,
-            previous_cost_price REAL DEFAULT 0,
-            estimated_total     REAL DEFAULT 0,
-            FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS sales (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id   INTEGER,
-            product_code TEXT DEFAULT '',
-            product_name TEXT DEFAULT '',
-            qty_sold     REAL DEFAULT 0,
-            sale_price   REAL DEFAULT 0,
-            total_amount REAL DEFAULT 0,
-            notes        TEXT DEFAULT '',
-            created_at   TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS stock_history (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id   INTEGER,
-            product_code TEXT DEFAULT '',
-            product_name TEXT DEFAULT '',
-            change_type  TEXT DEFAULT '',
-            qty_before   REAL DEFAULT 0,
-            qty_after    REAL DEFAULT 0,
-            change_by    REAL DEFAULT 0,
-            notes        TEXT DEFAULT '',
-            created_at   TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS suppliers (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            name           TEXT NOT NULL,
-            phone          TEXT DEFAULT '',
-            email          TEXT DEFAULT '',
-            address        TEXT DEFAULT '',
-            lead_time_days INTEGER DEFAULT 0,
-            payment_terms  TEXT DEFAULT '',
-            notes          TEXT DEFAULT '',
-            created_at     TEXT DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS payment_history (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            debtor_id       INTEGER NOT NULL,
-            amount_paid     REAL DEFAULT 0,
-            payment_date    TEXT NOT NULL,
-            payment_method  TEXT DEFAULT 'cash',
-            notes           TEXT DEFAULT '',
-            recorded_by     TEXT DEFAULT '',
-            created_at      TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS reminder_history (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            debtor_id       INTEGER NOT NULL,
-            reminder_date   TEXT NOT NULL,
-            method          TEXT DEFAULT 'email',
-            status          TEXT DEFAULT 'sent',
-            message_preview TEXT DEFAULT '',
-            created_at      TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS sync_audit_log (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            debtor_id       INTEGER,
-            external_key    TEXT,
-            field_name      TEXT,
-            old_value       TEXT,
-            new_value       TEXT,
-            sync_source     TEXT DEFAULT 'manual',
-            sync_action     TEXT DEFAULT 'update',
-            created_at      TEXT DEFAULT (datetime('now'))
-        );
-        """)
-        conn.commit()
         conn.close()
     except Exception as e:
         print(f"init_tenant_db error: {e}")
-        pass
+        raise
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
