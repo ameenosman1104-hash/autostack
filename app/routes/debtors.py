@@ -778,44 +778,52 @@ def send_one(did):
 @debtors_bp.route("/<int:did>/set-next-reminder", methods=["POST"])
 @login_required
 def set_next_reminder(did):
-    tid = current_user.tenant_id
-    debtor = get_debtor(tid, did)
-    if not debtor:
-        return jsonify(ok=False, msg="Debtor not found")
+    try:
+        tid = current_user.tenant_id
+        debtor = get_debtor(tid, did)
+        if not debtor:
+            return jsonify(ok=False, msg="Debtor not found")
 
-    mode = request.form.get("mode", "").strip()
+        mode = request.form.get("mode", "").strip()
 
-    if mode == "default":
-        # Reset to use global default (recalculates from purchase date)
-        next_date = set_default_reminder_mode(tid, did)
-        if next_date:
-            default_days = get_setting(tid, "default_reminder_days", "28")
-            return jsonify(ok=True, msg=f"Reminder set to use default ({default_days} days from purchase date)", next_date=next_date)
+        if mode == "default":
+            # Reset to use global default (recalculates from purchase date)
+            next_date = set_default_reminder_mode(tid, did)
+            if next_date:
+                default_days = get_setting(tid, "default_reminder_days", "28")
+                return jsonify(ok=True, msg=f"Reminder set to use default ({default_days} days from purchase date)", next_date=next_date)
+            else:
+                return jsonify(ok=False, msg="Failed to set reminder")
+
+        elif mode == "custom_interval":
+            # Set custom interval reminder (calculates from purchase date + interval)
+            interval = request.form.get("interval", "").strip()
+
+            if not interval:
+                return jsonify(ok=False, msg="Please select an interval")
+
+            try:
+                interval_days = int(interval)
+            except:
+                return jsonify(ok=False, msg="Invalid interval")
+
+            # Set custom interval
+            next_date = set_custom_interval_reminder(tid, did, interval_days)
+            if next_date:
+                interval_label = DAYS_TO_LABEL.get(interval_days, f"{interval_days} days")
+                return jsonify(ok=True, msg=f"Reminder set to custom interval: {interval_label}", next_date=next_date)
+            else:
+                return jsonify(ok=False, msg="Failed to set reminder")
+
         else:
-            return jsonify(ok=False, msg="Failed to set reminder")
+            return jsonify(ok=False, msg="Invalid mode")
 
-    elif mode == "custom_interval":
-        # Set custom interval reminder (calculates from purchase date + interval)
-        interval = request.form.get("interval", "").strip()
-
-        if not interval:
-            return jsonify(ok=False, msg="Please select an interval")
-
-        try:
-            interval_days = int(interval)
-        except:
-            return jsonify(ok=False, msg="Invalid interval")
-
-        # Set custom interval
-        next_date = set_custom_interval_reminder(tid, did, interval_days)
-        if next_date:
-            interval_label = DAYS_TO_LABEL.get(interval_days, f"{interval_days} days")
-            return jsonify(ok=True, msg=f"Reminder set to custom interval: {interval_label}", next_date=next_date)
-        else:
-            return jsonify(ok=False, msg="Failed to set reminder")
-
-    else:
-        return jsonify(ok=False, msg="Invalid mode")
+    except Exception as e:
+        import traceback
+        error_msg = f"Error setting reminder: {str(e)}"
+        print(f"ERROR in set_next_reminder: {error_msg}")
+        traceback.print_exc()
+        return jsonify(ok=False, msg=error_msg), 500
 
 
 # ── Excel/API Synchronization Routes ──────────────────────────────────────────
