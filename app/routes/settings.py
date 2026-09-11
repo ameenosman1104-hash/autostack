@@ -17,6 +17,7 @@ ALL_KEYS = [
     "notification_message",
     "debt_reminder_template",
     "default_reminder_days",
+    "reminders_enabled",
 ]
 
 
@@ -117,3 +118,28 @@ def test_email():
     except Exception as e:
         print(f"[TEST-EMAIL] Exception: {e}")
         return jsonify(ok=False, msg=f"Error: {str(e)}")
+
+
+@settings_bp.route("/send-reminders", methods=["POST"])
+@login_required
+def send_reminders():
+    """Manually trigger reminder dispatch for this business."""
+    tid = current_user.tenant_id
+
+    try:
+        from ..reminder_scheduler import check_and_send_reminders
+        stats = check_and_send_reminders(tid)
+
+        if isinstance(stats.get("skipped"), str):
+            return jsonify(ok=False, msg=stats["skipped"])
+
+        message = f"Sent {stats['sent']} reminder(s)"
+        if stats["failed"] > 0:
+            message += f", {stats['failed']} failed"
+        if stats["errors"]:
+            message += f"\nErrors: {'; '.join(stats['errors'][:3])}"
+
+        return jsonify(ok=True, msg=message, stats=stats)
+
+    except Exception as e:
+        return jsonify(ok=False, msg=f"Error sending reminders: {str(e)}")

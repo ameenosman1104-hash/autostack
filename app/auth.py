@@ -3,6 +3,7 @@ from flask_login import login_user, logout_user, login_required, UserMixin, curr
 from werkzeug.security import check_password_hash
 from . import login_manager
 from .main_db import get_user_by_id, get_user_by_username
+from .rate_limit import rate_limit_login, record_login_attempt
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -30,6 +31,7 @@ def load_user(uid):
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
+@rate_limit_login
 def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -37,11 +39,14 @@ def login():
         user_data = get_user_by_username(username)
         if user_data and check_password_hash(user_data["password_hash"], password):
             if not user_data["is_active"]:
+                record_login_attempt(False)
                 flash("Account disabled. Contact your administrator.", "danger")
                 return render_template("login.html")
             user = User(user_data)
             login_user(user)
+            record_login_attempt(True)
             return redirect(url_for("dashboard.index"))
+        record_login_attempt(False)
         flash("Invalid username or password.", "danger")
     return render_template("login.html")
 
