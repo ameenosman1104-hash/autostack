@@ -3,7 +3,7 @@ import sqlite3, os
 from werkzeug.security import generate_password_hash
 
 # Use file-based database for persistence
-db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "main.db")
+db_path = os.path.join(os.environ.get("AUTOSTACK_DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")), "main.db")
 os.makedirs(os.path.dirname(db_path), exist_ok=True)
 MAIN_DB = db_path
 

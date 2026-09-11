@@ -22,10 +22,10 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(uid):
     data = get_user_by_id(int(uid))
-    if not data:
+    if not data or not data["is_active"]:
         return None
     # Restore impersonation from session
-    data["impersonate_id"] = session.get("impersonate_id")
+    data["impersonate_id"] = session.get("impersonate_id") if data["is_admin"] else None
     return User(data)
 
 

@@ -2,7 +2,7 @@
 import sqlite3, os
 from datetime import datetime, date, timedelta
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "tenants")
+DATA_DIR = os.path.join(os.environ.get("AUTOSTACK_DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")), "tenants")
 
 
 def _db_path(tenant_id):
@@ -431,7 +431,7 @@ def get_stats(tid):
         ).fetchone()[0]
         out   = conn.execute(f"SELECT COUNT(*) FROM products WHERE {f} AND current_stock <= 0").fetchone()[0]
         debtors = conn.execute("SELECT COUNT(*) FROM debtors WHERE is_paid=0").fetchone()[0]
-        owed    = conn.execute("SELECT COALESCE(SUM(amount_owed),0) FROM debtors WHERE is_paid=0").fetchone()[0]
+        owed    = conn.execute("SELECT COALESCE(SUM(MAX(0,amount_owed-COALESCE(total_paid_to_date,0))),0) FROM debtors WHERE is_paid=0").fetchone()[0]
         conn.close()
         return {"total": total, "low_stock": low, "out_of_stock": out,
                 "active_debtors": debtors, "total_owed": owed}
@@ -440,6 +440,14 @@ def get_stats(tid):
 
 
 # ── Debtors ───────────────────────────────────────────────────────────────────
+
+def outstanding_balance(debtor):
+    """Legacy amount_owed remains the original debt; never rewrite historical amounts."""
+    from decimal import Decimal
+    if debtor.get("is_paid"):
+        return 0.0
+    return float(max(Decimal("0"), Decimal(str(debtor.get("amount_owed") or 0)) - Decimal(str(debtor.get("total_paid_to_date") or 0))))
+
 
 def get_all_debtors(tid, show_paid=False):
     conn = get_conn(tid)
@@ -488,54 +496,23 @@ def update_debtor(tid, did, **kwargs):
 
 
 def calculate_next_reminder(tid, did):
-    """Calculate and save next reminder date for a debtor using DEFAULT mode.
-
-    CRITICAL:
-    - Only recalculates if reminder_mode = "default"
-    - If reminder_mode = "manual" or "custom_interval", leaves next_reminder_date unchanged
-    - Reminder is calculated from purchase_date + default_interval_days
-
-    Args:
-        tid: Tenant ID
-        did: Debtor ID
-
-    Returns:
-        Next reminder date as string (YYYY-MM-DD format) or None if error
-    """
-    try:
-        conn = get_conn(tid)
-        debtor = conn.execute("SELECT * FROM debtors WHERE id=?", (did,)).fetchone()
-        conn.close()
-
-        if not debtor:
-            return None
-
-        # Only recalculate if using default mode
-        debtor = dict(debtor)
-        mode = debtor.get("reminder_mode", "default")
-        if mode in ("manual", "custom_interval"):
-            # Custom mode set - do NOT recalculate, return existing date
-            return debtor.get("next_reminder_date")
-
-        # Calculate for DEFAULT mode: purchase_date + default_interval
-        base_str = debtor["date_of_purchase"]
-        base = datetime.strptime(base_str, "%Y-%m-%d").date()
-
-        # Get default days from settings
-        default_days = get_setting(tid, "default_reminder_days", "28")
-        days = int(default_days or 28)
-
-        # Calculate next reminder date from purchase date + interval
-        next_date = base + timedelta(days=days)
-        next_date_str = next_date.strftime("%Y-%m-%d")
-
-        # Update debtor with calculated date
-        update_debtor(tid, did, next_reminder_date=next_date_str)
-
-        return next_date_str
-    except Exception as e:
-        print(f"Error calculating next reminder: {e}")
+    """Keep the purchase-date anchor; advance only after a recorded successful send."""
+    from .validation import reminder_interval
+    debtor = get_debtor(tid, did)
+    if not debtor:
         return None
+    if debtor.get("reminder_mode") in ("manual", "custom"):
+        return debtor.get("next_reminder_date")
+    days = reminder_interval(debtor.get("reminder_interval_days", 28) if debtor.get("reminder_mode") == "custom_interval" else get_setting(tid,"default_reminder_days","28"))
+    base = date.fromisoformat(debtor["date_of_purchase"])
+    next_date = base + timedelta(days=days)
+    if debtor.get("last_reminded"):
+        last = date.fromisoformat(debtor["last_reminded"][:10])
+        if last >= next_date:
+            next_date = base + timedelta(days=((last-base).days // days + 1) * days)
+    value = next_date.isoformat()
+    update_debtor(tid,did,next_reminder_date=value)
+    return value
 
 
 def set_custom_interval_reminder(tid, did, interval_days):
@@ -823,7 +800,7 @@ def get_debt_aging(tid):
     from datetime import date, timedelta
     conn  = get_conn(tid)
     rows  = conn.execute(
-        "SELECT amount_owed, date_of_purchase FROM debtors WHERE is_paid=0"
+        "SELECT MAX(0,amount_owed-COALESCE(total_paid_to_date,0)) AS amount_owed, date_of_purchase FROM debtors WHERE is_paid=0"
     ).fetchall()
     conn.close()
     today = date.today()
@@ -919,50 +896,32 @@ def auto_create_po_if_needed(tid, triggered_products=None):
 # ── Payment History & Collections ────────────────────────────────────────────
 
 def add_payment(tid, debtor_id, amount_paid, payment_date=None, payment_method="cash", notes="", recorded_by=""):
-    """Record a payment against a debtor. Automatically updates debtor status and balance."""
     from .validation import payment_amount
     amount_paid = payment_amount(amount_paid)
-    if payment_date is None:
-        payment_date = date.today().isoformat()
+    payment_date = payment_date or date.today().isoformat()
     date.fromisoformat(payment_date)
     conn = get_conn(tid)
     try:
-        conn.execute(
-            """INSERT INTO payment_history (debtor_id, amount_paid, payment_date, payment_method, notes, recorded_by)
-               VALUES (?,?,?,?,?,?)""",
-            (debtor_id, amount_paid, payment_date, payment_method, notes, recorded_by)
-        )
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM debtors WHERE id=?", (debtor_id,)).fetchone()
+        if not row:
+            raise ValueError("Debtor not found")
+        debtor = dict(row)
+        if amount_paid > outstanding_balance(debtor):
+            raise ValueError("Payment exceeds the outstanding balance")
+        total_paid = round(float(debtor.get("total_paid_to_date") or 0) + amount_paid, 2)
+        remaining = round(float(debtor["amount_owed"]) - total_paid, 2)
+        conn.execute("INSERT INTO payment_history (debtor_id,amount_paid,payment_date,payment_method,notes,recorded_by) VALUES (?,?,?,?,?,?)",
+                     (debtor_id,amount_paid,payment_date,payment_method,notes,recorded_by))
+        conn.execute("UPDATE debtors SET total_paid_to_date=?,last_payment_date=?,status=?,is_paid=? WHERE id=?",
+                     (total_paid,payment_date,"PAID" if remaining <= 0 else "PARTIALLY_PAID",int(remaining <= 0),debtor_id))
         conn.commit()
-
-        # Update debtor: recalculate total_paid_to_date and update last_payment_date
-        total_paid = conn.execute(
-            "SELECT COALESCE(SUM(amount_paid),0) FROM payment_history WHERE debtor_id=?",
-            (debtor_id,)
-        ).fetchone()[0]
-
-        debtor = get_debtor(tid, debtor_id)
-        if debtor:
-            remaining = debtor["amount_owed"] - total_paid
-            # Determine new status
-            if remaining <= 0:
-                new_status = "PAID"
-            elif total_paid > 0:
-                new_status = "PARTIALLY_PAID"
-            else:
-                new_status = "DUE"
-
-            conn.execute(
-                """UPDATE debtors SET total_paid_to_date=?, last_payment_date=?, status=?, is_paid=?
-                   WHERE id=?""",
-                (total_paid, payment_date, new_status, 1 if new_status == "PAID" else 0, debtor_id)
-            )
-            conn.commit()
-        conn.close()
         return True
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        conn.close()
         raise
+    finally:
+        conn.close()
 
 
 def get_payment_history(tid, debtor_id):

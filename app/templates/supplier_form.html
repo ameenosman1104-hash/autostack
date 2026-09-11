@@ -3,6 +3,7 @@
 <div class="page-title"><i class="bi bi-truck me-2"></i>{{ action }} Supplier</div>
 
 <form method="POST" style="max-width:640px;">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="card mb-3">
     <div class="card-header">Supplier Details</div>
     <div class="card-body">

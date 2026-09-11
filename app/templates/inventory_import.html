@@ -14,6 +14,7 @@
   <div class="d-flex flex-wrap gap-2">
     {% for c in connections %}
     <form method="POST" action="{{ url_for('inventory.import_csv') }}" class="d-inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="phase"      value="upload">
       <input type="hidden" name="use_saved"  value="{{ c.name }}">
       <input type="hidden" name="source"     value="{{ c.source }}">
@@ -55,6 +56,7 @@
         </ul>
 
         <form method="POST" enctype="multipart/form-data" action="{{ url_for('inventory.import_csv') }}" id="importForm">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="phase"  value="upload">
           <input type="hidden" name="source" id="sourceInput" value="{{ active }}">
 
@@ -208,6 +210,7 @@
 {% elif phase == "map" %}
 <!-- ── Step 2: Map columns ── -->
 <form method="POST" action="{{ url_for('inventory.import_csv') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="phase"        value="review">
   <input type="hidden" name="csv_b64"      value="{{ csv_b64 }}">
   <input type="hidden" name="date_format"  value="{{ opts.date_format }}">
@@ -293,6 +296,7 @@
 </div>
 
 <form method="POST" action="{{ url_for('inventory.import_csv') }}" id="editForm">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="phase"        value="confirm">
   <input type="hidden" name="rows_json"    value="{{ rows_json }}">
   <input type="hidden" name="dup_handling" value="{{ opts.dup_handling if opts is defined else 'skip' }}">

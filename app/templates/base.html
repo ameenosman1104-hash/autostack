@@ -4,6 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Autostack</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>
+  // Existing same-origin AJAX actions use the same CSRF token as HTML forms.
+  const autoStackFetch = window.fetch.bind(window);
+  window.fetch = function(input, options = {}) {
+    const url = new URL(input instanceof Request ? input.url : input, location.href);
+    const method = (options.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (url.origin === location.origin && !['GET','HEAD','OPTIONS'].includes(method)) {
+      options = {...options, headers: new Headers(options.headers || (input instanceof Request ? input.headers : {}))};
+      options.headers.set('X-CSRFToken', document.querySelector('meta[name="csrf-token"]').content);
+    }
+    return autoStackFetch(input, options);
+  };
+  </script>
   <meta name="description" content="Autostack – Smart inventory management for your business.">
   <meta name="theme-color" content="#22C55E">
   <meta name="mobile-web-app-capable" content="yes">

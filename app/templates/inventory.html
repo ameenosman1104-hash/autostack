@@ -122,6 +122,7 @@
           <td class="text-center">
             <a href="{{ url_for('inventory.edit', pid=p.id) }}" class="btn btn-sm btn-outline-secondary me-1" title="Edit"><i class="bi bi-pencil"></i></a>
             <form method="POST" action="{{ url_for('inventory.delete', pid=p.id) }}" class="d-inline" onsubmit="return confirm('Delete this product?')">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
             </form>
           </td>

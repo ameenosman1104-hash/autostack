@@ -127,6 +127,7 @@
             <i class="bi bi-exclamation-triangle me-2"></i>
             <strong>Reminders paused</strong> until {{ debtor.reminders_paused_until }}
             <form method="POST" action="{{ url_for('debtors.resume_reminders_endpoint', did=debtor.id) }}" class="d-inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-warning btn-sm ms-2">Resume Now</button>
             </form>
           </div>
@@ -242,6 +243,7 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <form method="POST" action="{{ url_for('debtors.record_payment', did=debtor.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="modal-header">
           <h5 class="modal-title">Record Payment</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -287,6 +289,7 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <form method="POST" action="{{ url_for('debtors.pause_reminders_endpoint', did=debtor.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="modal-header">
           <h5 class="modal-title">Pause Reminders</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

@@ -2,7 +2,7 @@ import re, smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from ..tenant_db import get_setting
+from ..tenant_db import get_setting, outstanding_balance
 
 DEFAULT_TEMPLATE = (
     "Hi {name},\n\n"
@@ -18,12 +18,12 @@ DEFAULT_TEMPLATE = (
 def _build_message(tid, debtor):
     business  = get_setting(tid, "business_name", "Our Business")
     date_str  = datetime.strptime(debtor["date_of_purchase"], "%Y-%m-%d").strftime("%d %b %Y")
-    amount    = f"R {debtor['amount_owed']:,.2f}"
+    amount    = f"R {outstanding_balance(debtor):,.2f}"
     products  = (debtor.get("products_owed") or "").strip()
     notes     = (debtor.get("notes") or "").strip()
     products_line = f"Products:      {products}\n" if products else ""
 
-    template = get_setting(tid, "debtors_message_template", "").strip() or DEFAULT_TEMPLATE
+    template = get_setting(tid, "debt_reminder_template", "").strip() or DEFAULT_TEMPLATE
     template = template.replace("{Products Owed}", "{products_line}")
     template = template.replace("{products owed}", "{products_line}")
 
@@ -35,7 +35,12 @@ def _build_message(tid, debtor):
 
 
 def send_reminder(tid, debtor):
-    message = _build_message(tid, debtor)
+    if outstanding_balance(debtor) <= 0:
+        return False, "No outstanding balance; reminder not sent."
+    try:
+        message = _build_message(tid, debtor)
+    except (ValueError, KeyError):
+        return False, "Invalid reminder template or purchase date. Check Settings."
     method  = debtor.get("notify_method", "email")
     if method == "email":
         return _via_email(tid, debtor, message)

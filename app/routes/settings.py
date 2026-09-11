@@ -32,6 +32,8 @@ def index():
             flash("Reminder interval must be between 1 and 365 days.", "danger")
             return redirect(url_for("settings.index"))
         for key in ALL_KEYS:
+            if key not in request.form:
+                continue
             value = request.form.get(key, "")
             if key == "email_password":
                 value = value.strip()
@@ -44,6 +46,13 @@ def index():
                 print(f"[SETTINGS] Saved {key} (length: {len(value)} chars)")
             elif key == "email_sender" and value:
                 print(f"[SETTINGS] Saved {key}: {value}")
+        from ..tenant_db import get_all_debtors, calculate_next_reminder
+        for debtor in get_all_debtors(tid):
+            if debtor.get("reminder_mode", "default") == "default":
+                try:
+                    calculate_next_reminder(tid, debtor["id"])
+                except ValueError:
+                    flash("A debtor has an invalid purchase date; its reminder was not changed.", "warning")
         flash("Settings saved.", "success")
         return redirect(url_for("settings.index"))
     settings = get_all_settings(tid)

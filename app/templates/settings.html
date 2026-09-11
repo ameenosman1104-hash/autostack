@@ -3,6 +3,7 @@
 <div class="page-title"><i class="bi bi-gear me-2"></i>Settings</div>
 
 <form method="POST" style="max-width:640px;">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   <!-- General -->
   <div class="card mb-3">

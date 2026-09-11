@@ -55,6 +55,7 @@
             </a>
             <form method="POST" action="{{ url_for('suppliers.delete', sid=s.id) }}"
                   onsubmit="return confirm('Delete {{ s.name }}?');" style="display:inline;">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
             </form>
           </td>

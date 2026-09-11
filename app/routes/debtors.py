@@ -13,6 +13,7 @@ from ..tenant_db import (get_all_debtors, get_debtor, get_debtor_by_name,
                           calculate_next_reminder, set_custom_interval_reminder, set_default_reminder_mode,
                           get_sync_status, get_sync_audit_log)
 from ..services.excel_sync import detect_and_apply_changes
+from ..tenant_db import outstanding_balance
 from datetime import date
 
 debtors_bp = Blueprint("debtors", __name__)
@@ -38,13 +39,15 @@ def index(filter="active"):
     else:
         rows = all_rows
 
+    for d in all_rows:
+        d["remaining_balance"] = outstanding_balance(d)
     for d in rows:
         nxt, status = next_reminder(d)
         d["next_reminder"] = nxt
         d["reminder_status"] = status
         d["freq_label"] = DAYS_TO_LABEL.get(int(d.get("reminder_days", 14)), f"{d.get('reminder_days')} days")
 
-    total_owed = sum(d["amount_owed"] for d in all_rows if not d["is_paid"])
+    total_owed = sum(outstanding_balance(d) for d in all_rows)
     due_count  = sum(1 for d in rows if d.get("reminder_status") in ("overdue", "due_today"))
     overdue_count = sum(1 for d in rows if d.get("reminder_status") == "overdue")
     partially_paid_count = count_partially_paid_debtors(tid)

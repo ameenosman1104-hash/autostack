@@ -4,6 +4,7 @@
 <div class="card" style="max-width:500px;">
   <div class="card-body">
     <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="mb-3">
         <label class="form-label fw-semibold">Business Name</label>
         <input type="text" name="business_name" class="form-control" value="{{ tenant.business_name }}" required>

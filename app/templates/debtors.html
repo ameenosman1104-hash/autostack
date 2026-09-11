@@ -118,7 +118,7 @@
           <td class="fw-semibold editable-cell" data-field="name" data-raw="{{ d.name }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.name }}</td>
           <td class="small editable-cell" data-field="products_owed" data-raw="{{ d.products_owed or '' }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.products_owed or '—' }}</td>
           <td class="small editable-cell" data-field="email" data-raw="{{ d.email or '' }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.email or d.phone or '—' }}</td>
-          <td class="text-end fw-semibold text-danger editable-cell" data-field="amount_owed" data-type="number" data-raw="{{ d.amount_owed }}" data-endpoint="/debtors/{{ d.id }}/update-field">R {{ "%.2f"|format(d.amount_owed) }}</td>
+          <td class="text-end fw-semibold text-danger" title="Remaining balance. Edit the original amount in debtor details.">R {{ "%.2f"|format(d.remaining_balance) }}</td>
           <td class="text-center small editable-cell" data-field="date_of_purchase" data-type="date" data-raw="{{ d.date_of_purchase }}" data-endpoint="/debtors/{{ d.id }}/update-field">{{ d.date_of_purchase }}</td>
           <td class="text-center">
             {% if d.status == 'PAID' %}
@@ -150,10 +150,11 @@
               <a href="{{ url_for('debtors.detail', did=d.id) }}" class="btn btn-outline-info" title="View details"><i class="bi bi-eye"></i></a>
               <a href="{{ url_for('debtors.edit', did=d.id) }}" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>
               {% if not d.is_paid %}
-                <button type="button" class="btn btn-outline-success" title="Record payment" onclick="showPaymentQuickRecord({{ d.id }}, '{{ d.name }}', {{ d.amount_owed }})"><i class="bi bi-cash-coin"></i></button>
+                <button type="button" class="btn btn-outline-success" title="Record payment" onclick='showPaymentQuickRecord({{ d.id }}, {{ d.name|tojson }}, {{ d.remaining_balance }})'><i class="bi bi-cash-coin"></i></button>
                 <button class="btn btn-outline-primary" title="Send reminder" onclick="sendReminder({{ d.id }}, this)"><i class="bi bi-envelope"></i></button>
               {% endif %}
               <form method="POST" action="{{ url_for('debtors.delete', did=d.id) }}" class="d-inline" onsubmit="return confirm('Delete?')">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
               </form>
             </div>
@@ -231,6 +232,7 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <form id="quickPaymentForm" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="modal-header">
           <h5 class="modal-title">Record Payment - <span id="qpName"></span></h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -641,6 +643,7 @@ window.syncNow = function() {
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form id="debtorReminderForm">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="modal-body">
           <p class="text-muted mb-4">Configure reminder for <span id="drmDebtorName" class="fw-semibold"></span></p>
 

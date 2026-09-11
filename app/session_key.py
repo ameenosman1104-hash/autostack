@@ -6,7 +6,7 @@ from pathlib import Path
 def load_session_key():
     if os.environ.get("SECRET_KEY"):
         return os.environ["SECRET_KEY"]
-    path = Path(__file__).resolve().parent.parent / "data" / ".session_key"
+    path = Path(os.environ.get("AUTOSTACK_DATA_DIR", Path(__file__).resolve().parent.parent / "data")) / ".session_key"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

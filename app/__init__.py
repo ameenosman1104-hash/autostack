@@ -14,6 +14,9 @@ def create_app():
     app.secret_key = load_session_key()
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 
+    from flask_wtf.csrf import CSRFProtect
+    CSRFProtect(app)
+    app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
     login_manager.init_app(app)
 
     from .main_db import init_main_db
@@ -65,6 +68,16 @@ def create_app():
         response.cache_control.max_age = 3600  # 1 hour
         response.cache_control.public = True
         response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
+
+    @app.after_request
+    def protect_private_responses(response):
+        from flask import request
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        if request.endpoint != "static":
+            response.headers["Cache-Control"] = "no-store, private"
         return response
 
     return app
