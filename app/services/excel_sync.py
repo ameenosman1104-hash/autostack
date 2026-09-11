@@ -22,8 +22,31 @@ def fetch_source_data(source_type, config):
             if not url:
                 return None, None
 
-            resp = req_lib.get(url, timeout=15, headers={"User-Agent": "AutoStack-Sync/1.0"})
+            # Security: Validate URL
+            if not url.lower().startswith("https://"):
+                raise ValueError("URL must use HTTPS (not HTTP)")
+
+            # Prevent HTTPS-to-HTTP redirects
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.url import parse_url
+            session = req_lib.Session()
+            adapter = HTTPAdapter()
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+
+            resp = session.get(url, timeout=15, headers={"User-Agent": "AutoStack-Sync/1.0"},
+                             allow_redirects=True)
+
+            # Check final URL is still HTTPS after redirects
+            if not resp.url.lower().startswith("https://"):
+                raise ValueError("URL was redirected to HTTP (insecure)")
+
             resp.raise_for_status()
+
+            # Check response size (max 50MB)
+            content_length = resp.headers.get('Content-Length')
+            if content_length and int(content_length) > 50 * 1024 * 1024:
+                raise ValueError("Response too large (max 50MB)")
 
             # Parse as JSON or CSV
             if "json" in resp.headers.get("Content-Type", ""):
@@ -214,13 +237,26 @@ def detect_and_apply_changes(tid, source_type, config, mapping, unique_key_field
                 updates["date_of_purchase"] = parse_value(purchase_date, "date")
 
             due_date = row.get(mapping.get("due_date", ""), "")
+            if due_date:
+                updates["due_date"] = parse_value(due_date, "date")
 
-            # Calculate balance if we have amount fields
+            # Handle amount fields carefully to avoid double-subtraction
+            # amount_owed in the spreadsheet is the ORIGINAL INVOICE AMOUNT (never changes once recorded)
+            # amount_paid is cumulative payments from external system
+            # We store amount_owed only for NEW debtors; for updates, we track payments separately
             amount_owed = row.get(mapping.get("amount_owed", ""), "0")
             amount_paid = row.get(mapping.get("amount_paid", ""), "0")
-            if amount_owed or amount_paid:
-                balance = calculate_balance(amount_owed, amount_paid)
-                updates["amount_owed"] = f"{balance:.2f}"
+
+            if external_key in existing_debtors:
+                # For existing debtors, NEVER update amount_owed (it's the historical invoice amount)
+                # If amount_paid changed in external system, we would create a payment record
+                # But this requires careful handling to avoid counting the same payment twice
+                # For now, only update if this is the first sync or if explicitly requested
+                pass
+            else:
+                # For NEW debtors, store the original invoice amount
+                if amount_owed:
+                    updates["amount_owed"] = parse_value(amount_owed, "amount")
 
             # Check if this is a new or existing debtor
             if external_key in existing_debtors:

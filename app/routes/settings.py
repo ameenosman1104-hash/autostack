@@ -93,12 +93,15 @@ def test_email():
 
     try:
         import smtplib
+        import ssl
         smtp_host = settings.get("email_smtp_host", "smtp.gmail.com")
         smtp_port = int(settings.get("email_smtp_port", "587"))
 
         print(f"[TEST-EMAIL] Connecting to {smtp_host}:{smtp_port}")
+        # Create secure SSL context that verifies certificates
+        context = ssl.create_default_context()
         server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
-        server.starttls()
+        server.starttls(context=context)
         print(f"[TEST-EMAIL] Authenticating as {email}")
         server.login(email, password)
         server.quit()

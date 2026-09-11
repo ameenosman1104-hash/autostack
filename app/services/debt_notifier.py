@@ -80,8 +80,11 @@ def _via_email(tid, debtor, message):
     subject  = f"Payment Reminder — {business}"
 
     try:
+        import ssl
+        # Create secure SSL context that verifies certificates
+        context = ssl.create_default_context()
         server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
-        server.starttls()
+        server.starttls(context=context)
         server.login(sender, password)
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
