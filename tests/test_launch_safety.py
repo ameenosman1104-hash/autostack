@@ -197,6 +197,37 @@ class LaunchSafety(unittest.TestCase):
             self.assertEqual(self.client.get("/auth/google/callback?code=fake&state=invalid").status_code,302)
         with self.client.session_transaction() as session:self.assertNotIn("_user_id",session)
 
+    def test_login_username_field_always_empty(self):
+        """Verify username field is never pre-populated by AutoStack."""
+        # Test 1: Fresh login page (GET request)
+        page = self.client.get("/login").get_data(as_text=True)
+        self.assertNotIn('name="username" value="', page, "Username field should have no value attribute on GET")
+        self.assertNotIn('name="username" value=\'"', page, "Username field should have no value attribute on GET")
+
+        # Test 2: After failed login (POST with wrong password)
+        page = self.client.get("/login").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        response = self.client.post("/login", data={
+            "csrf_token": token,
+            "username": "test@example.com",
+            "password": "wrongpassword"
+        })
+        page = response.get_data(as_text=True)
+        self.assertNotIn('value="test@example.com"', page, "Username field should be empty after failed login")
+        self.assertNotIn('value="wrongusername"', page, "Username field should not contain any username after failed login")
+
+        # Test 3: After disabled account attempt
+        self.main.update_tenant(self.tid, is_active=0)
+        page = self.client.get("/login").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        response = self.client.post("/login", data={
+            "csrf_token": token,
+            "username": self.username,
+            "password": "test-password-123"
+        })
+        page = response.get_data(as_text=True)
+        self.assertNotIn(f'value="{self.username}"', page, "Username field should be empty even after disabled account login attempt")
+
     def test_google_returning_user_skips_linking_form(self):
         from unittest.mock import MagicMock
         google_sub = "returning-user-google-sub"
