@@ -1,6 +1,5 @@
 """Encrypt/decrypt sensitive credentials stored in database."""
 import os
-import base64
 from cryptography.fernet import Fernet
 
 
@@ -15,11 +14,14 @@ _test_key_cache = None
 
 
 def get_encryption_key():
-    """Get encryption key from environment or raise error if not configured.
+    """Get encryption key from environment or file.
 
-    For production, set AUTOSTACK_ENCRYPTION_KEY environment variable to a 32-byte
-    value encoded as base64, or set AUTOSTACK_ENCRYPTION_KEY_FILE to path of file
-    containing the key.
+    Fernet.generate_key() returns base64-encoded bytes ready for use.
+    Store and retrieve as-is without re-encoding.
+
+    For production, set AUTOSTACK_ENCRYPTION_KEY environment variable to the
+    base64 string from Fernet.generate_key(), or AUTOSTACK_ENCRYPTION_KEY_FILE
+    to path of file containing the key (one line, no encoding).
 
     For testing, uses a cached test key so decryption works consistently.
     """
@@ -29,18 +31,38 @@ def get_encryption_key():
     key_str = os.environ.get("AUTOSTACK_ENCRYPTION_KEY")
     if key_str:
         try:
-            return base64.urlsafe_b64decode(key_str)
+            # Key should be base64-encoded bytes as a string
+            # Fernet expects bytes, so encode if we got a string
+            if isinstance(key_str, str):
+                key_bytes = key_str.encode("utf-8")
+            else:
+                key_bytes = key_str
+
+            # Validate that it's a valid Fernet key
+            Fernet(key_bytes)  # This will raise if invalid
+            return key_bytes
         except Exception as e:
-            raise RuntimeError(f"Invalid AUTOSTACK_ENCRYPTION_KEY format: {e}")
+            raise RuntimeError(
+                f"Invalid AUTOSTACK_ENCRYPTION_KEY: {e}\n"
+                "Expected output from Fernet.generate_key(), stored as a string in environment."
+            )
 
     # Check key file
     key_file = os.environ.get("AUTOSTACK_ENCRYPTION_KEY_FILE")
-    if key_file and os.path.exists(key_file):
+    if key_file:
+        if not os.path.exists(key_file):
+            raise RuntimeError(f"Encryption key file not found: {key_file}")
         try:
             with open(key_file, "rb") as f:
-                return base64.urlsafe_b64decode(f.read().strip())
+                key_bytes = f.read().strip()
+            # Validate that it's a valid Fernet key
+            Fernet(key_bytes)
+            return key_bytes
         except Exception as e:
-            raise RuntimeError(f"Failed to read encryption key from {key_file}: {e}")
+            raise RuntimeError(
+                f"Failed to read or validate encryption key from {key_file}: {e}\n"
+                "File should contain output from Fernet.generate_key() (one line, no wrapping)."
+            )
 
     # Test mode: use cached key or generate one
     if os.environ.get("TESTING"):
@@ -49,8 +71,9 @@ def get_encryption_key():
         return _test_key_cache
 
     raise RuntimeError(
-        "Encryption key not configured. Set AUTOSTACK_ENCRYPTION_KEY or "
-        "AUTOSTACK_ENCRYPTION_KEY_FILE environment variable for production use."
+        "Encryption key not configured. Set AUTOSTACK_ENCRYPTION_KEY (as base64 string) or "
+        "AUTOSTACK_ENCRYPTION_KEY_FILE (as path to key file). "
+        "Generate key with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
     )
 
 
@@ -66,7 +89,10 @@ def encrypt_value(plaintext):
 
 
 def decrypt_value(ciphertext):
-    """Decrypt a value if it's marked as encrypted, otherwise return as-is."""
+    """Decrypt a value if it's marked as encrypted, otherwise return as-is.
+
+    Raises RuntimeError if decryption fails - never silently returns None.
+    """
     if not ciphertext or not isinstance(ciphertext, str):
         return ciphertext
 
@@ -79,9 +105,16 @@ def decrypt_value(ciphertext):
         encrypted = ciphertext[4:].encode("utf-8")
         decrypted = cipher.decrypt(encrypted)
         return decrypted.decode("utf-8")
+    except RuntimeError:
+        # Re-raise key configuration errors
+        raise
     except Exception as e:
-        # Return encrypted value if decryption fails (key not available, corrupted, etc)
-        return None
+        # Raise on decrypt failure - don't silently return None
+        raise RuntimeError(
+            f"Failed to decrypt credential: {e}\n"
+            "This usually means the encryption key has changed or is unavailable.\n"
+            "Encrypted value: {ciphertext[:50]}..."
+        )
 
 
 def is_encrypted(value):
@@ -95,15 +128,22 @@ def should_encrypt_key(key):
 
 
 def generate_key_file(path):
-    """Generate a new encryption key and save to file. Returns the key."""
+    """Generate a new encryption key and save to file. Returns the key bytes.
+
+    The key is stored as-is (base64 bytes from Fernet.generate_key()),
+    never re-encoded.
+    """
     key = Fernet.generate_key()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    # Write with restricted permissions
+
+    # Write key as-is (it's already base64-encoded by Fernet.generate_key())
     with open(path, "wb") as f:
-        f.write(base64.urlsafe_b64encode(key))
+        f.write(key)
+
     # Restrict file permissions on Unix-like systems
     try:
         os.chmod(path, 0o600)
     except:
         pass
+
     return key

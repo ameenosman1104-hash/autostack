@@ -274,17 +274,45 @@ def get_debtor_by_name(tid, name):
     return dict(row) if row else None
 
 
-def add_debtor(tid, name, phone, email, amount_owed, date_of_purchase,
-               notify_method, reminder_days, notes, products_owed=""):
+def add_debtor(tid, name=None, phone=None, email=None, amount_owed=None,
+               date_of_purchase=None, notify_method=None, reminder_days=None,
+               notes=None, products_owed="", **kwargs):
+    """Add a new debtor. Accepts both positional and keyword arguments.
+
+    Keyword arguments can also include sync metadata: external_key, external_source,
+    reminder_mode, reminder_interval_days, next_reminder_date, etc.
+    """
     conn = get_conn(tid)
-    conn.execute(
-        """INSERT INTO debtors (name,phone,email,amount_owed,date_of_purchase,
-           notify_method,reminder_days,notes,products_owed) VALUES (?,?,?,?,?,?,?,?,?)""",
-        (name, phone, email, amount_owed, date_of_purchase,
-         notify_method, reminder_days, notes, products_owed)
-    )
-    conn.commit()
-    conn.close()
+
+    # Build insert with all provided columns
+    columns = ["name", "phone", "email", "amount_owed", "date_of_purchase",
+               "notify_method", "reminder_days", "notes", "products_owed"]
+    values = [name, phone, email, amount_owed, date_of_purchase,
+              notify_method, reminder_days, notes, products_owed]
+
+    # Add any extra kwargs that correspond to database columns
+    extra_cols = {"external_key", "external_source", "reminder_mode",
+                  "reminder_interval_days", "next_reminder_date", "last_payment_date",
+                  "total_paid_to_date", "is_paid", "status", "reminders_paused_until",
+                  "last_reminded", "sync_status", "due_date", "sync_snapshot", "sync_pending"}
+
+    for key in sorted(extra_cols):
+        if key in kwargs:
+            columns.append(key)
+            values.append(kwargs[key])
+
+    # Create parameterized insert
+    placeholders = ",".join("?" * len(columns))
+    column_list = ",".join(columns)
+
+    try:
+        conn.execute(
+            f"INSERT INTO debtors ({column_list}) VALUES ({placeholders})",
+            values
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def update_debtor(tid, did, **kwargs):

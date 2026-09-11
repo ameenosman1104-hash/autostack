@@ -7,7 +7,11 @@ from pathlib import Path
 
 
 def backup_database(db_path):
-    """Create a timestamped backup of a database file before migration."""
+    """Create a timestamped backup using SQLite backup API.
+
+    Uses SQLite's official backup API to ensure WAL files are included.
+    Verifies restoration before returning backup path.
+    """
     if not os.path.exists(db_path):
         return None
 
@@ -18,9 +22,35 @@ def backup_database(db_path):
     backup_path = os.path.join(backup_dir, f"{Path(db_path).stem}__{timestamp}.db")
 
     try:
-        shutil.copy2(db_path, backup_path)
+        # Use SQLite backup API for atomic, consistent backup including WAL data
+        source = sqlite3.connect(db_path)
+        backup = sqlite3.connect(backup_path)
+
+        # Perform backup
+        with backup:
+            source.backup(backup)
+
+        source.close()
+        backup.close()
+
+        # Verify backup integrity
+        verify_backup = sqlite3.connect(backup_path)
+        result = verify_backup.execute("PRAGMA integrity_check").fetchone()[0]
+        verify_backup.close()
+
+        if result != "ok":
+            os.remove(backup_path)
+            raise RuntimeError(f"Backup verification failed: {result}")
+
         return backup_path
+
     except Exception as e:
+        # Clean up failed backup
+        if os.path.exists(backup_path):
+            try:
+                os.remove(backup_path)
+            except:
+                pass
         raise RuntimeError(f"Backup failed for {db_path}: {e}")
 
 
@@ -223,28 +253,6 @@ def migrate_tenant_db(tenant_id, db_path):
 
         current_version = get_schema_version(conn)
 
-        # Migration 3: Encrypt existing plaintext credentials (after schema migrations)
-        if current_version < 3:
-            conn.execute("BEGIN")
-            try:
-                from app.credential_store import encrypt_value, should_encrypt_key, is_encrypted
-
-                # Get all settings that need encryption
-                rows = conn.execute("SELECT key, value FROM settings").fetchall()
-                for row in rows:
-                    key = row[0]
-                    value = row[1]
-
-                    if should_encrypt_key(key) and value and not is_encrypted(value):
-                        encrypted = encrypt_value(value)
-                        conn.execute("UPDATE settings SET value=? WHERE key=?", (encrypted, key))
-
-                mark_migration_applied(conn, 3, "Encrypt plaintext credentials")
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                raise RuntimeError(f"Migration 3 failed: {e}")
-
         # Migration 1: Create reminder_dispatch ledger for duplicate prevention
         if current_version < 1:
             conn.execute("BEGIN")
@@ -286,6 +294,52 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 2 failed: {e}")
+
+        # Migration 3: Add missing product columns for existing databases
+        if current_version < 3:
+            conn.execute("BEGIN")
+            try:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
+
+                # Add all missing product columns
+                if "updated_at" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
+                if "extra_data" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN extra_data TEXT DEFAULT '{}'")
+                if "deleted" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN deleted INTEGER DEFAULT 0")
+                if "deleted_at" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN deleted_at TEXT DEFAULT NULL")
+                if "min_level_manual" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN min_level_manual INTEGER DEFAULT 0")
+
+                mark_migration_applied(conn, 3, "Add product columns for existing databases")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 3 failed: {e}")
+
+        # Migration 4: Encrypt existing plaintext credentials
+        if current_version < 4:
+            conn.execute("BEGIN")
+            try:
+                from app.credential_store import encrypt_value, should_encrypt_key, is_encrypted
+
+                # Get all settings that need encryption
+                rows = conn.execute("SELECT key, value FROM settings").fetchall()
+                for row in rows:
+                    key = row[0]
+                    value = row[1]
+
+                    if should_encrypt_key(key) and value and not is_encrypted(value):
+                        encrypted = encrypt_value(value)
+                        conn.execute("UPDATE settings SET value=? WHERE key=?", (encrypted, key))
+
+                mark_migration_applied(conn, 4, "Encrypt plaintext credentials")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 4 failed: {e}")
 
         conn.close()
         return backup_path
