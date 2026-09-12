@@ -28,6 +28,13 @@ def create_app():
     from .excel_oauth import init_excel_oauth
     init_excel_oauth(app)
 
+    # Start background auto-sync worker
+    try:
+        from .services.auto_sync import start_background_sync
+        start_background_sync(app)
+    except Exception as e:
+        print(f"[WARNING] Auto-sync worker failed to start: {e}")
+
     from .auth    import auth_bp
     from .admin   import admin_bp
     from .routes.dashboard      import dashboard_bp
