@@ -22,6 +22,9 @@
       <i class="bi bi-arrow-clockwise me-1"></i>Refresh
     </button>
     {% endif %}
+    <button class="btn btn-outline-success" onclick="syncStockNow()" title="Fetch latest data from connected source">
+      <i class="bi bi-arrow-repeat me-1"></i>Sync Now
+    </button>
     <a href="{{ url_for('inventory.import_csv') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import CSV</a>
     <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#defaultMinModal">
       <i class="bi bi-sliders me-1"></i>Set Default Min Level
@@ -513,5 +516,59 @@ async function doAutoSync() {
 // Check silently every 30 seconds — only reloads if something actually changed
 setInterval(_silentSync, 30 * 1000);
 {% endif %}
+
+// Sync Now button for unified data sources or saved URL source
+async function syncStockNow() {
+  const btn = event.target.closest('button');
+  const originalHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Syncing...';
+
+  try {
+    // Try unified data sources first
+    const listResp = await fetch('/api/data-sources/list');
+    const listData = await listResp.json();
+
+    if (listData.sources && listData.sources.length > 0) {
+      // Use unified data source
+      const sourceId = listData.sources[0].id;
+      const sourceName = listData.sources[0].name;
+
+      const syncResp = await fetch('/api/data-sources/sync-now', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({source_id: sourceId})
+      });
+
+      const syncResult = await syncResp.json();
+
+      if (syncResult.status === 'success') {
+        alert(`✓ SYNC COMPLETE!\n\nSource: ${sourceName}\nAdded: ${syncResult.added}\nUpdated: ${syncResult.updated}\n\nRefreshing page...`);
+        setTimeout(() => location.reload(), 500);
+      } else {
+        alert(`❌ Sync failed:\n${syncResult.error || 'Unknown error'}`);
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
+    } else {
+      // Fall back to saved URL source
+      const syncResp = await fetch('/inventory/sync-source', {method: 'POST'});
+      const syncData = await syncResp.json();
+
+      if (syncData.ok) {
+        alert(`✓ SYNC COMPLETE!\nAdded: ${syncData.added}\nUpdated: ${syncData.updated}\nSkipped: ${syncData.skipped}\n\nRefreshing page...`);
+        setTimeout(() => location.reload(), 500);
+      } else {
+        alert(`❌ Sync failed:\n${syncData.msg || 'Unknown error'}\n\nGo to Import CSV to connect a source.`);
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
+    }
+  } catch (err) {
+    alert(`❌ Error: ${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
+  }
+}
 </script>
 {% endblock %}
