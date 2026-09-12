@@ -57,18 +57,20 @@ def connect_source():
 
     name = data.get("name", "").strip()
     source_type = data.get("source_type", "").strip()
+    destination = data.get("destination", "debtors").strip()
     config = data.get("config", {})
     column_mapping = data.get("column_mapping", {})
     unique_key_field = data.get("unique_key_field", "Invoice No.")
+    matching_identifier = data.get("matching_identifier", "auto").strip()
 
-    if not name or not source_type:
-        return jsonify({"error": "name and source_type required"}), 400
+    if not name or not source_type or destination not in ("stock", "debtors"):
+        return jsonify({"error": "name, source_type, and valid destination required"}), 400
 
     try:
         from ..services.data_sources import create_data_source
 
         pairing_token, source_id = create_data_source(
-            tid, name, source_type, config, column_mapping, unique_key_field
+            tid, name, source_type, config, column_mapping, unique_key_field, destination, matching_identifier
         )
 
         response = {
@@ -97,13 +99,19 @@ def list_sources():
     try:
         from ..services.data_sources import list_data_sources, get_unresolved_conflicts
 
-        sources = list_data_sources(tid)
+        # Support filtering by destination: /api/data-sources/list?destination=stock or debtors
+        destination = request.args.get("destination", "").strip()
+        if destination and destination not in ("stock", "debtors"):
+            return jsonify({"error": "Invalid destination"}), 400
+
+        sources = list_data_sources(tid, destination=destination if destination else None)
         conflicts = get_unresolved_conflicts(tid)
 
         return jsonify({
             "sources": sources,
             "conflicts": conflicts,
-            "conflict_count": len(conflicts)
+            "conflict_count": len(conflicts),
+            "destination_filter": destination if destination else "all"
         }), 200
 
     except Exception as e:
@@ -114,21 +122,27 @@ def list_sources():
 @bp.route("/api/data-sources/sync-now", methods=["POST"])
 @login_required
 def sync_now():
-    """Trigger immediate sync for a data source."""
+    """Trigger immediate sync for a data source (stock or debtors)."""
     tid = current_user.tenant_id
     data = request.get_json() or {}
     source_id = data.get("source_id")
+    destination = data.get("destination")  # Optional: stock or debtors
 
     if not source_id:
         return jsonify({"error": "source_id required"}), 400
 
     try:
-        from ..services.data_sources import get_data_source
-        from ..services.excel_sync import fetch_source_data, detect_and_apply_changes
+        from ..services.data_sources import get_data_source, update_sync_status
+        from ..services.excel_sync import (fetch_source_data, detect_and_apply_changes,
+                                          detect_and_apply_stock_changes)
 
         source = get_data_source(tid, source_id)
         if not source:
             return jsonify({"error": "Source not found"}), 404
+
+        # Use source's destination if not explicitly provided
+        if not destination:
+            destination = source.get("destination", "debtors")
 
         source_type = source["source_type"]
         config = source["config"]
@@ -157,17 +171,25 @@ def sync_now():
                     transformed_row[col_name] = value
                 snapshot_transformed.append(transformed_row)
 
-            stats = detect_and_apply_changes(
-                tid, source_type, config, mapping, unique_key,
-                snapshot_data=snapshot_transformed,
-                external_source=f"{source_type}:{source_id}"
-            )
+            # Use appropriate sync function based on destination
+            if destination == "stock":
+                stats = detect_and_apply_stock_changes(
+                    tid, source_type, config, mapping, unique_key,
+                    snapshot_data=snapshot_transformed,
+                    external_source=f"{source_type}:{source_id}"
+                )
+            else:  # debtors (default)
+                stats = detect_and_apply_changes(
+                    tid, source_type, config, mapping, unique_key,
+                    snapshot_data=snapshot_transformed,
+                    external_source=f"{source_type}:{source_id}"
+                )
 
-            from ..services.data_sources import update_sync_status
             update_sync_status(tid, source_id, "success")
 
             return jsonify({
                 "status": "success",
+                "destination": destination,
                 "synced_rows": len(snapshot_transformed),
                 "added": stats.get("added", 0),
                 "updated": stats.get("updated", 0),

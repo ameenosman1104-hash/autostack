@@ -512,6 +512,37 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 8 failed: {e}")
 
+        # Migration 9: Add destination field to separate Stock/Debtors connections
+        if get_schema_version(conn) < 9:
+            try:
+                conn.execute("PRAGMA foreign_keys=OFF")
+
+                # Add destination column to data_source_connections
+                try:
+                    conn.execute("""
+                        ALTER TABLE data_source_connections
+                        ADD COLUMN destination TEXT DEFAULT 'debtors'
+                    """)
+                except sqlite3.OperationalError:
+                    # Column may already exist from previous migration attempt
+                    pass
+
+                # Ensure matching_identifier column exists for both stock and debtors
+                try:
+                    conn.execute("""
+                        ALTER TABLE data_source_connections
+                        ADD COLUMN matching_identifier TEXT DEFAULT 'auto'
+                    """)
+                except sqlite3.OperationalError:
+                    pass
+
+                conn.execute("PRAGMA foreign_keys=ON")
+                mark_migration_applied(conn, 9, "Add destination field for Stock/Debtors separation")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 9 failed: {e}")
+
         conn.close()
         return backup_path
 

@@ -58,7 +58,7 @@ def validate_local_file_config(config):
     return True
 
 
-def create_data_source(tid, name, source_type, config, column_mapping=None, unique_key_field="Invoice No."):
+def create_data_source(tid, name, source_type, config, column_mapping=None, unique_key_field="Invoice No.", destination="debtors", matching_identifier="auto"):
     """Create a new data source connection (local, hosted, or API)."""
     from ..tenant_db import get_conn
     from ..main_db import get_conn as get_main_conn
@@ -78,20 +78,25 @@ def create_data_source(tid, name, source_type, config, column_mapping=None, uniq
     else:
         raise ValueError(f"Unsupported source type: {source_type}")
 
+    if destination not in ("stock", "debtors"):
+        raise ValueError("destination must be 'stock' or 'debtors'")
+
     conn = get_conn(tid)
     try:
         conn.execute("""
             INSERT INTO data_source_connections
             (name, source_type, config, column_mapping, unique_key_field,
-             pairing_token_hash, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'active')
+             pairing_token_hash, status, destination, matching_identifier)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
         """, (
             name,
             source_type,
             json.dumps(config),
             json.dumps(column_mapping or {}),
             unique_key_field,
-            token_hash
+            token_hash,
+            destination,
+            matching_identifier
         ))
         conn.commit()
 
@@ -119,19 +124,30 @@ def create_data_source(tid, name, source_type, config, column_mapping=None, uniq
         raise
 
 
-def list_data_sources(tid):
-    """List all active data source connections."""
+def list_data_sources(tid, destination=None):
+    """List all active data source connections, optionally filtered by destination."""
     from ..tenant_db import get_conn
 
     conn = get_conn(tid)
     try:
-        rows = conn.execute("""
-            SELECT id, name, source_type, status, last_sync_at,
-                   last_sync_status, last_sync_error
-            FROM data_source_connections
-            WHERE status = 'active'
-            ORDER BY updated_at DESC
-        """).fetchall()
+        if destination:
+            if destination not in ("stock", "debtors"):
+                raise ValueError("destination must be 'stock' or 'debtors'")
+            rows = conn.execute("""
+                SELECT id, name, source_type, status, last_sync_at,
+                       last_sync_status, last_sync_error, destination, file_path, worksheet_name
+                FROM data_source_connections
+                WHERE status = 'active' AND destination = ?
+                ORDER BY updated_at DESC
+            """, (destination,)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT id, name, source_type, status, last_sync_at,
+                       last_sync_status, last_sync_error, destination, file_path, worksheet_name
+                FROM data_source_connections
+                WHERE status = 'active'
+                ORDER BY updated_at DESC
+            """).fetchall()
         conn.close()
 
         return [{
@@ -141,9 +157,12 @@ def list_data_sources(tid):
             "status": row[3],
             "last_sync_at": row[4],
             "last_sync_status": row[5],
-            "last_sync_error": row[6]
+            "last_sync_error": row[6],
+            "destination": row[7],
+            "file_path": row[8],
+            "worksheet_name": row[9]
         } for row in rows]
-    except:
+    except Exception as e:
         conn.close()
         return []
 
@@ -162,6 +181,14 @@ def get_data_source(tid, source_id):
         if not row:
             return None
 
+        # Get destination safely - may not exist in older schemas
+        destination = None
+        matching_identifier = None
+        if len(row) > 19:
+            destination = row[19] or "debtors"
+        if len(row) > 20:
+            matching_identifier = row[20] or "auto"
+
         return {
             "id": row[0],
             "name": row[1],
@@ -175,7 +202,9 @@ def get_data_source(tid, source_id):
             "last_sync_error": row[9],
             "sync_interval_seconds": row[10],
             "file_path": row[12],
-            "worksheet_name": row[13]
+            "worksheet_name": row[13],
+            "destination": destination or "debtors",
+            "matching_identifier": matching_identifier or "auto"
         }
     except:
         conn.close()

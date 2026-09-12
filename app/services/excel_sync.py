@@ -300,3 +300,80 @@ def detect_and_apply_changes(tid, source_type, config, mapping, unique_key_field
             stats["removed"] += 1
 
     return stats
+
+
+def detect_and_apply_stock_changes(tid, source_type, config, mapping, unique_key_field,
+                                   external_source="api", snapshot_data=None):
+    """
+    Detect changes in external source and apply them to stock (products).
+
+    Args:
+        tid: Tenant ID
+        source_type: "url" or "api" or "local_file"
+        config: Source config dict
+        mapping: Column mapping dict (maps source columns to product fields)
+        unique_key_field: Column name to use as unique key (Product Code, SKU, etc.)
+        external_source: Source identifier for audit log
+        snapshot_data: Pre-loaded snapshot data (skips fetch if provided)
+
+    Returns:
+        Dict with stats: {"added": N, "updated": N, "errors": [...]}
+    """
+    from ..tenant_db import (get_all_products, get_product_by_code, add_product,
+                             update_product)
+
+    stats = {"added": 0, "updated": 0, "errors": []}
+
+    # Use provided snapshot data or fetch from source
+    if snapshot_data is not None:
+        rows = snapshot_data
+    else:
+        headers, rows = fetch_source_data(source_type, config)
+        if rows is None:
+            stats["errors"].append(f"Failed to fetch from {source_type} source")
+            return stats
+
+    if not rows:
+        stats["errors"].append("No data received from source")
+        return stats
+
+    # Get existing products by code
+    existing_products = {}
+    all_products = get_all_products(tid)
+    for p in all_products:
+        code = p.get("code")
+        if code:
+            existing_products[code] = p
+
+    # Process each row from external source
+    for row in rows:
+        try:
+            # Get the unique key value from this row
+            unique_key_value = str(row.get(unique_key_field, "")).strip()
+            if not unique_key_value:
+                stats["errors"].append(f"Row missing {unique_key_field} - skipped")
+                continue
+
+            # Extract mapped fields (name is commonly mapped)
+            product_name = row.get(mapping.get("name", "name")) or unique_key_value
+
+            if unique_key_value in existing_products:
+                # Update existing product with mapped data
+                update_kwargs = {}
+                for source_field, target_field in mapping.items():
+                    if source_field in row and source_field != "code":
+                        update_kwargs[target_field] = row[source_field]
+
+                if update_kwargs:
+                    product_id = existing_products[unique_key_value]["id"]
+                    update_product(tid, product_id, **update_kwargs)
+                    stats["updated"] += 1
+            else:
+                # Add new product - use code and name at minimum
+                add_product(tid, unique_key_value, product_name)
+                stats["added"] += 1
+
+        except Exception as e:
+            stats["errors"].append(f"Row error: {str(e)}")
+
+    return stats
