@@ -42,7 +42,7 @@ def index(filter="active"):
     for d in all_rows:
         d["remaining_balance"] = outstanding_balance(d)
     for d in rows:
-        nxt, status = next_reminder(d)
+        nxt, status = next_reminder(d, tid)
         d["next_reminder"] = nxt
         d["reminder_status"] = status
         d["freq_label"] = DAYS_TO_LABEL.get(int(d.get("reminder_days", 14)), f"{d.get('reminder_days')} days")
@@ -67,6 +67,9 @@ def index(filter="active"):
             interval_label = DAYS_TO_LABEL.get(int(interval), f"{interval} days")
             d["reminder_indicator"] = "⏰ Custom"
             d["reminder_tooltip"] = f"Custom interval: {interval_label} from purchase"
+        elif mode in ("manual", "custom"):
+            d["reminder_indicator"] = "⏰ Custom"
+            d["reminder_tooltip"] = "Custom reminder date"
         else:
             d["reminder_indicator"] = "⏱ Default"
             d["reminder_tooltip"] = f"Default: {default_reminder_days} days from purchase"
@@ -193,7 +196,7 @@ def detail(did):
     summary = get_debtor_payment_summary(tid, did)
     payments = get_payment_history(tid, did)
     reminders = get_reminder_history(tid, did, limit=20)
-    nxt, status = next_reminder(debtor)
+    nxt, status = next_reminder(debtor, tid)
 
     return render_template("debtors_detail.html",
                           debtor=debtor,

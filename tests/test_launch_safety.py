@@ -51,6 +51,31 @@ class LaunchSafety(unittest.TestCase):
         self.assertEqual(result.status_code,302)
         return token
 
+    def test_reminder_display_ignores_stale_interval_cache(self):
+        self.db.save_setting(self.tid, "default_reminder_days", "28")
+        self.db.update_debtor(self.tid, self.did, reminder_mode="custom_interval",
+                              reminder_interval_days=7, next_reminder_date="2026-09-23")
+        self.assertEqual(self.db.next_reminder(self.db.get_debtor(self.tid,self.did),self.tid)[0], "16 Sep 2026")
+        token=self.login()
+        self.assertIn("16 Sep 2026", self.client.get("/debtors/").get_data(as_text=True))
+        result=self.client.post(f"/debtors/{self.did}/set-next-reminder",data={"csrf_token":token,"mode":"custom_interval","interval":"21"})
+        self.assertEqual(result.json["next_date"], "2026-09-30")
+        self.assertIn("30 Sep 2026", self.client.get("/debtors/").get_data(as_text=True))
+        self.db.save_setting(self.tid,"default_reminder_days","42")
+        self.assertIn("30 Sep 2026", self.client.get("/debtors/").get_data(as_text=True))
+        result=self.client.post(f"/debtors/{self.did}/set-next-reminder",data={"csrf_token":token,"mode":"default"})
+        self.assertEqual(result.json["next_date"], "2026-10-21")
+        self.assertIn("21 Oct 2026",self.client.get("/debtors/").get_data(as_text=True))
+        self.db.update_debtor(self.tid,self.did,reminder_mode="manual",next_reminder_date="2026-09-18")
+        page=self.client.get("/debtors/").get_data(as_text=True)
+        self.assertIn("18 Sep 2026",page)
+        self.assertIn("Custom reminder date",page)
+
+    def test_custom_save_advances_past_successful_send(self):
+        self.db.update_debtor(self.tid,self.did,last_reminded="2026-09-25")
+        self.assertEqual(self.db.set_custom_interval_reminder(self.tid,self.did,7),"2026-09-30")
+        self.assertEqual(self.db.calculate_next_reminder(self.tid,self.did),"2026-09-30")
+
     def test_partial_payment_consistent(self):
         self.db.add_payment(self.tid,self.did,250,recorded_by="test")
         debtor = self.db.get_debtor(self.tid,self.did)

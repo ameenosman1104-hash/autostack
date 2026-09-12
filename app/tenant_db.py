@@ -324,22 +324,27 @@ def update_debtor(tid, did, **kwargs):
     conn.close()
 
 
-def calculate_next_reminder(tid, did):
-    """Keep the purchase-date anchor; advance only after a recorded successful send."""
+def reminder_date(debtor, default_days):
+    """Resolve the saved schedule, never treating a cached date as an interval."""
     from .validation import reminder_interval
-    debtor = get_debtor(tid, did)
-    if not debtor:
-        return None
     if debtor.get("reminder_mode") in ("manual", "custom"):
         return debtor.get("next_reminder_date")
-    days = reminder_interval(debtor.get("reminder_interval_days", 28) if debtor.get("reminder_mode") == "custom_interval" else get_setting(tid,"default_reminder_days","28"))
+    days = reminder_interval(debtor.get("reminder_interval_days") if debtor.get("reminder_mode") == "custom_interval" else default_days)
     base = date.fromisoformat(debtor["date_of_purchase"])
     next_date = base + timedelta(days=days)
     if debtor.get("last_reminded"):
         last = date.fromisoformat(debtor["last_reminded"][:10])
         if last >= next_date:
             next_date = base + timedelta(days=((last-base).days // days + 1) * days)
-    value = next_date.isoformat()
+    return next_date.isoformat()
+
+
+def calculate_next_reminder(tid, did):
+    """Persist the same date used by the table and reminder scheduler."""
+    debtor = get_debtor(tid, did)
+    if not debtor:
+        return None
+    value = reminder_date(debtor, get_setting(tid, "default_reminder_days", "28"))
     update_debtor(tid,did,next_reminder_date=value)
     return value
 
@@ -362,9 +367,8 @@ def set_custom_interval_reminder(tid, did, interval_days):
 
         from .validation import reminder_interval
         interval_days = reminder_interval(interval_days)
-        purchase_date = datetime.strptime(debtor["date_of_purchase"], "%Y-%m-%d").date()
-        next_date = purchase_date + timedelta(days=int(interval_days))
-        next_date_str = next_date.isoformat()
+        schedule = dict(debtor, reminder_mode="custom_interval", reminder_interval_days=interval_days)
+        next_date_str = reminder_date(schedule, 28)
 
         # Update debtor with custom interval mode
         update_debtor(tid, did,
@@ -425,24 +429,14 @@ def delete_debtors_by_ids(tid, ids):
     return count
 
 
-def next_reminder(debtor):
-    """Calculate reminder status from stored next_reminder_date.
-
-    CRITICAL: Uses the stored next_reminder_date which is either:
-    - Calculated (for DEFAULT mode): purchase_date + global_default_interval
-    - Stored (for CUSTOM mode): user-selected custom interval or date
-
-    Never recalculates; always uses database value.
-    """
+def next_reminder(debtor, tid=None):
+    """Display the resolved schedule; exact manual dates remain authoritative."""
     try:
-        # Use stored next_reminder_date directly (respects both DEFAULT and CUSTOM modes)
-        if debtor.get("next_reminder_date"):
-            nxt = datetime.strptime(debtor["next_reminder_date"], "%Y-%m-%d").date()
-        else:
-            # Fallback for legacy debtors without next_reminder_date set
-            base_str = debtor["last_reminded"] if debtor.get("last_reminded") else debtor["date_of_purchase"]
-            base = datetime.strptime(base_str, "%Y-%m-%d").date()
-            nxt = base + timedelta(days=int(debtor.get("reminder_days", 14)))
+        default_days = get_setting(tid, "default_reminder_days", "28") if tid is not None else 28
+        value = reminder_date(debtor, default_days)
+        if not value:
+            return "—", "unscheduled"
+        nxt = date.fromisoformat(value)
 
         today = date.today()
         if nxt < today:
@@ -453,7 +447,7 @@ def next_reminder(debtor):
             return nxt.strftime("%d %b %Y"), "ok"
     except Exception as e:
         print(f"Error calculating next_reminder: {e}")
-        return "—", "ok"
+        return "—", "unscheduled"
 
 
 # ── Notifications ─────────────────────────────────────────────────────────────
@@ -916,7 +910,7 @@ def get_debtors_needing_reminders(tid):
     result = []
     for row in rows:
         debtor = dict(row)
-        nxt, status = next_reminder(debtor)
+        nxt, status = next_reminder(debtor, tid)
         if status in ("overdue", "due_today"):
             result.append(debtor)
     return result
@@ -927,7 +921,7 @@ def count_overdue_debtors(tid):
     debtors = get_all_debtors(tid, show_paid=False)
     count = 0
     for d in debtors:
-        _, status = next_reminder(d)
+        _, status = next_reminder(d, tid)
         if status == "overdue":
             count += 1
     return count
