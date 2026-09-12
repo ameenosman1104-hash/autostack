@@ -362,6 +362,37 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 5 failed: {e}")
 
+        # Migration 6: Add live_excel_connections table for Excel sync
+        if current_version < 6:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS live_excel_connections (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        connection_name TEXT NOT NULL,
+                        workbook_id TEXT NOT NULL,
+                        worksheet_name TEXT NOT NULL,
+                        table_name TEXT,
+                        access_token TEXT NOT NULL,
+                        refresh_token TEXT,
+                        expires_at INTEGER,
+                        graph_user_id TEXT NOT NULL,
+                        column_mapping TEXT,
+                        unique_key_field TEXT,
+                        last_sync_at TEXT,
+                        last_sync_status TEXT DEFAULT 'pending',
+                        last_sync_error TEXT,
+                        sync_interval_seconds INTEGER DEFAULT 15,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                mark_migration_applied(conn, 6, "Add live_excel_connections table")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 6 failed: {e}")
+
         conn.close()
         return backup_path
 

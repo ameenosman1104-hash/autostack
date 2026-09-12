@@ -25,6 +25,8 @@ def create_app():
     init_google(app)
     from .gmail_oauth import init_gmail_oauth
     init_gmail_oauth(app)
+    from .excel_oauth import init_excel_oauth
+    init_excel_oauth(app)
 
     from .auth    import auth_bp
     from .admin   import admin_bp
