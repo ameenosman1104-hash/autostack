@@ -690,4 +690,45 @@ window.syncNow = function() {
   </div>
 </div>
 
+<script>
+function syncNow() {
+  const btn = event.target.closest('button');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Syncing...';
+
+  fetch('/api/data-sources/list', {method: 'GET'})
+    .then(r => r.json())
+    .then(data => {
+      if (!data.sources || data.sources.length === 0) {
+        alert('No data sources connected. Go to Settings to connect a file or API.');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync Now';
+        return;
+      }
+
+      const sourceId = data.sources[0].id;
+      return fetch('/api/data-sources/sync-now', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({source_id: sourceId})
+      }).then(r => r.json());
+    })
+    .then(result => {
+      if (result.status === 'success') {
+        alert(`✓ Sync complete!\nAdded: ${result.added}\nUpdated: ${result.updated}\nRemoved: ${result.removed}`);
+        location.reload();
+      } else if (result.error) {
+        alert(`Error: ${result.error}`);
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync Now';
+    })
+    .catch(err => {
+      alert(`Failed to sync: ${err.message}`);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync Now';
+    });
+}
+</script>
+
 {% endblock %}

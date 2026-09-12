@@ -55,9 +55,16 @@ def index(filter="active"):
     settings   = get_all_settings(tid)
     has_saved_source = bool(settings.get("debtor_import_config", ""))
     default_reminder_days = settings.get("default_reminder_days", "28")
-    sync_cfg = json.loads(settings.get("excel_sync_config", "{}"))
-    sync_enabled = sync_cfg.get("enabled", False)
-    sync_status = get_sync_status(tid) if sync_enabled else None
+
+    # Check for new unified data sources
+    from ..services.data_sources import list_data_sources
+    data_sources = list_data_sources(tid)
+    sync_enabled = len(data_sources) > 0
+    sync_status = None
+    sync_connection_name = None
+    if sync_enabled and data_sources:
+        sync_connection_name = data_sources[0]["name"]
+        sync_status = {"last_synced_at": data_sources[0].get("last_sync_at")}
 
     # Add reminder mode indicators to debtors
     for d in rows:
@@ -83,7 +90,7 @@ def index(filter="active"):
                            default_reminder_days=default_reminder_days,
                            sync_enabled=sync_enabled,
                            sync_status=sync_status,
-                           sync_connection_name=sync_cfg.get("connection_name", ""))
+                           sync_connection_name=sync_connection_name)
 
 
 @debtors_bp.route("/add", methods=["GET", "POST"])
