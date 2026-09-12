@@ -100,6 +100,18 @@ def upload_snapshot():
         }
         mapping = conn_data["column_mapping"]
 
+        # Transform snapshot: file_snapshot.py returns rows with field names (invoice, name, email)
+        # but detect_and_apply_changes expects rows with column names from the mapping.
+        # Inverse-map field names back to column names.
+        snapshot_transformed = []
+        for row in snapshot:
+            transformed_row = {}
+            for field, value in row.items():
+                # Find which column name this field maps to
+                col_name = mapping.get(field, field)
+                transformed_row[col_name] = value
+            snapshot_transformed.append(transformed_row)
+
         # Apply changes to debtors
         stats = detect_and_apply_changes(
             tid,
@@ -107,7 +119,7 @@ def upload_snapshot():
             config,
             mapping,
             conn_data["unique_key_field"],
-            snapshot_data=snapshot,
+            snapshot_data=snapshot_transformed,
             external_source=f"local_file:{connection_id}"
         )
 
