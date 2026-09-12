@@ -5,8 +5,66 @@ from datetime import datetime
 _SYNC_LOCK = threading.Lock()
 _LAST_SYNC = {}
 
+def sync_data_source(tid, source_id):
+    """Sync a single data source (hosted URL or API). Not for local files."""
+    from ..tenant_db import get_conn
+    from ..services.data_sources import get_data_source, update_sync_status
+    from ..services.excel_sync import fetch_source_data, detect_and_apply_changes
+
+    try:
+        source = get_data_source(tid, source_id)
+        if not source or source["source_type"] == "local_file":
+            return {"status": "skipped", "reason": "Local files are connector-managed"}
+
+        source_type = source["source_type"]
+        config = source["config"]
+        mapping = source["column_mapping"]
+        unique_key = source["unique_key_field"]
+
+        # Fetch from source
+        headers, rows = fetch_source_data(source_type, config)
+        if rows is None:
+            msg = f"Failed to fetch from {source_type}"
+            update_sync_status(tid, source_id, "error", msg)
+            return {"status": "error", "message": msg}
+
+        if not rows:
+            update_sync_status(tid, source_id, "success")
+            return {"status": "success", "synced_rows": 0, "added": 0, "updated": 0, "removed": 0}
+
+        # Transform field names to column names
+        snapshot_transformed = []
+        for row in rows:
+            transformed_row = {}
+            for field, value in row.items():
+                col_name = mapping.get(field, field)
+                transformed_row[col_name] = value
+            snapshot_transformed.append(transformed_row)
+
+        # Detect and apply changes
+        stats = detect_and_apply_changes(
+            tid, source_type, config, mapping, unique_key,
+            snapshot_data=snapshot_transformed,
+            external_source=f"{source_type}:{source_id}"
+        )
+
+        update_sync_status(tid, source_id, "success")
+        return {
+            "status": "success",
+            "synced_rows": len(snapshot_transformed),
+            "added": stats.get("added", 0),
+            "updated": stats.get("updated", 0),
+            "removed": stats.get("removed", 0),
+            "errors": stats.get("errors", [])
+        }
+
+    except Exception as e:
+        update_sync_status(tid, source_id, "error", str(e))
+        return {"status": "error", "message": str(e)}
+
+
 def auto_sync_debtors(tid):
-    """Run automatic sync for a tenant's source. Thread-safe, prevents overlapping runs."""
+    """Run automatic sync for all data sources (hosted URL and API). Local files handled by connector."""
     with _SYNC_LOCK:
         now = time.time()
         last = _LAST_SYNC.get(tid, 0)
@@ -18,77 +76,29 @@ def auto_sync_debtors(tid):
         _LAST_SYNC[tid] = now
 
     try:
-        from ..tenant_db import get_all_settings, get_conn, update_sync_status
-        from ..services.excel_sync import fetch_source_data, detect_and_apply_changes
+        from ..tenant_db import get_conn
+        from ..services.data_sources import list_data_sources
 
-        settings = get_all_settings(tid)
+        # Get all active data sources
+        sources = list_data_sources(tid)
+        if not sources:
+            return {"status": "no_sources", "message": "No data sources configured"}
 
-        # Check if manual import source is configured
-        raw_cfg = settings.get("debtor_import_config", "")
-        raw_map = settings.get("debtor_import_mapping", "")
-
-        if not raw_cfg:
-            return {"status": "no_source", "message": "No import source configured"}
-
-        try:
-            cfg = json.loads(raw_cfg)
-            mapping = json.loads(raw_map) if raw_map else {}
-        except:
-            return {"status": "error", "message": "Corrupted import configuration"}
-
-        # Re-detect email column if not in mapping
-        source_type = cfg.get("source", "url")
-
-        # Fetch from source
-        headers, rows = fetch_source_data(source_type, cfg)
-
-        if rows is None:
-            return {"status": "error", "message": f"Failed to fetch from {source_type}"}
-
-        # Auto-detect email column if missing from mapping
-        if "email" not in mapping and headers:
-            email_guesses = ["email", "e-mail", "email address", "mail", "contact email"]
-            for h in headers:
-                if h and h.lower() in email_guesses:
-                    mapping["email"] = h
-                    # Save updated mapping
-                    from ..tenant_db import save_setting
-                    save_setting(tid, "debtor_import_mapping", json.dumps(mapping))
-                    break
-
-        # Run sync
-        unique_key = cfg.get("unique_key", "Invoice No.")
-        stats = detect_and_apply_changes(
-            tid,
-            source_type,
-            cfg,
-            mapping,
-            unique_key,
-            external_source="auto_sync"
-        )
-
-        # Update sync status
-        conn = get_conn(tid)
-        try:
-            conn.execute("""
-                UPDATE debtors
-                SET last_synced_at = datetime('now')
-                WHERE id IN (
-                    SELECT id FROM debtors WHERE external_source = 'auto_sync' LIMIT 1
-                )
-            """)
-            conn.commit()
-        except:
-            pass
-        conn.close()
+        results = []
+        for source in sources:
+            if source["source_type"] != "local_file":
+                result = sync_data_source(tid, source["id"])
+                results.append({
+                    "source_id": source["id"],
+                    "source_name": source["name"],
+                    **result
+                })
 
         return {
             "status": "success",
-            "synced_at": datetime.now().isoformat(),
-            "added": stats.get("added", 0),
-            "updated": stats.get("updated", 0),
-            "removed": stats.get("removed", 0),
-            "errors": stats.get("errors", [])
+            "sources_synced": len([r for r in results if r.get("status") == "success"]),
+            "sources_failed": len([r for r in results if r.get("status") == "error"]),
+            "results": results
         }
 
     except Exception as e:

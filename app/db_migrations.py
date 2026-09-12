@@ -451,6 +451,67 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 7 failed: {e}")
 
+        # Migration 8: Unified data source connections for local, hosted URL, and API sources
+        if current_version < 8:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS data_source_connections (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        source_type TEXT NOT NULL,
+                        status TEXT DEFAULT 'active',
+                        config TEXT NOT NULL,
+                        column_mapping TEXT DEFAULT '{}',
+                        unique_key_field TEXT DEFAULT 'Invoice No.',
+                        last_sync_at TEXT,
+                        last_sync_status TEXT DEFAULT 'pending',
+                        last_sync_error TEXT,
+                        sync_interval_seconds INTEGER DEFAULT 15,
+                        pairing_token_hash TEXT,
+                        device_id TEXT,
+                        device_name TEXT,
+                        file_path TEXT,
+                        worksheet_name TEXT,
+                        file_mtime_ns INTEGER,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS data_source_changes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        connection_id INTEGER NOT NULL,
+                        debtor_id INTEGER NOT NULL,
+                        change_type TEXT NOT NULL,
+                        old_values TEXT,
+                        new_values TEXT,
+                        applied_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (connection_id) REFERENCES data_source_connections(id) ON DELETE CASCADE,
+                        FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS data_source_conflicts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        connection_id INTEGER NOT NULL,
+                        debtor_id INTEGER NOT NULL,
+                        invoice_id TEXT NOT NULL,
+                        autostack_values TEXT NOT NULL,
+                        source_values TEXT NOT NULL,
+                        resolution TEXT,
+                        resolved_at TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (connection_id) REFERENCES data_source_connections(id) ON DELETE CASCADE,
+                        FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
+                    )
+                """)
+                mark_migration_applied(conn, 8, "Add unified data source connections for all three types")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 8 failed: {e}")
+
         conn.close()
         return backup_path
 
