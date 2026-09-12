@@ -9,8 +9,9 @@
     <a href="{{ url_for('debtors.import_history') }}" class="btn btn-outline-info"><i class="bi bi-clock-history me-1"></i>Import History</a>
     {% if sync_enabled %}
     <a href="{{ url_for('debtors.sync_history') }}" class="btn btn-outline-info"><i class="bi bi-diagram-3 me-1"></i>Sync History</a>
+    {% endif %}
     <button class="btn btn-outline-success" onclick="syncNow()"><i class="bi bi-arrow-repeat me-1"></i>Sync Now</button>
-    {% elif has_saved_source %}
+    {% if has_saved_source %}
     <a href="{{ url_for('debtors.refresh_source') }}" class="btn btn-outline-info"><i class="bi bi-arrow-clockwise me-1"></i>Refresh</a>
     {% endif %}
     <a href="{{ url_for('debtors.import_debtors') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import</a>
@@ -691,43 +692,50 @@ window.syncNow = function() {
 </div>
 
 <script>
-function syncNow() {
+async function syncNow() {
   const btn = event.target.closest('button');
   btn.disabled = true;
+  const originalHTML = btn.innerHTML;
   btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Syncing...';
 
-  fetch('/api/data-sources/list', {method: 'GET'})
-    .then(r => r.json())
-    .then(data => {
-      if (!data.sources || data.sources.length === 0) {
-        alert('No data sources connected. Go to Settings to connect a file or API.');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync Now';
-        return;
-      }
+  try {
+    // Get list of data sources
+    const listResp = await fetch('/api/data-sources/list');
+    const listData = await listResp.json();
 
-      const sourceId = data.sources[0].id;
-      return fetch('/api/data-sources/sync-now', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({source_id: sourceId})
-      }).then(r => r.json());
-    })
-    .then(result => {
-      if (result.status === 'success') {
-        alert(`✓ Sync complete!\nAdded: ${result.added}\nUpdated: ${result.updated}\nRemoved: ${result.removed}`);
-        location.reload();
-      } else if (result.error) {
-        alert(`Error: ${result.error}`);
-      }
+    if (!listData.sources || listData.sources.length === 0) {
+      alert('❌ No data sources connected.\n\nTo set up automatic syncing:\n1. Go to Settings\n2. Add a Local File, Hosted URL, or API connection\n3. Come back here and click "Sync Now"');
       btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync Now';
-    })
-    .catch(err => {
-      alert(`Failed to sync: ${err.message}`);
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sync Now';
+      btn.innerHTML = originalHTML;
+      return;
+    }
+
+    const sourceId = listData.sources[0].id;
+    const sourceName = listData.sources[0].name;
+
+    // Trigger sync
+    const syncResp = await fetch('/api/data-sources/sync-now', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source_id: sourceId})
     });
+
+    const syncResult = await syncResp.json();
+
+    if (syncResult.status === 'success') {
+      const msg = `✓ SYNC COMPLETE!\n\nSource: ${sourceName}\nAdded: ${syncResult.added}\nUpdated: ${syncResult.updated}\nRemoved: ${syncResult.removed}\n\nRefreshing page...`;
+      alert(msg);
+      setTimeout(() => location.reload(), 500);
+    } else if (syncResult.error) {
+      alert(`❌ Sync Error:\n${syncResult.error}\n\nNote: For local files, make sure the connector is running:\npython connector/local_file_connector.py --start`);
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }
+  } catch (err) {
+    alert(`❌ Failed to sync:\n${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
+  }
 }
 </script>
 
