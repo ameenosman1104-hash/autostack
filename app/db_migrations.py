@@ -393,6 +393,64 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 6 failed: {e}")
 
+        # Migration 7: Add local file connection tables for device pairing and conflict tracking
+        if current_version < 7:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS local_file_connections (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        worksheet_name TEXT,
+                        pairing_token_hash TEXT NOT NULL UNIQUE,
+                        device_id TEXT,
+                        device_name TEXT,
+                        status TEXT DEFAULT 'active',
+                        column_mapping TEXT DEFAULT '{}',
+                        unique_key_field TEXT DEFAULT 'Invoice No.',
+                        last_sync_at TEXT,
+                        last_sync_status TEXT DEFAULT 'pending',
+                        last_sync_error TEXT,
+                        file_mtime_ns INTEGER,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS local_file_changes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        connection_id INTEGER NOT NULL,
+                        debtor_id INTEGER NOT NULL,
+                        change_type TEXT NOT NULL,
+                        old_values TEXT,
+                        new_values TEXT,
+                        applied_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (connection_id) REFERENCES local_file_connections(id) ON DELETE CASCADE,
+                        FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS local_file_conflicts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        connection_id INTEGER NOT NULL,
+                        debtor_id INTEGER NOT NULL,
+                        invoice_id TEXT NOT NULL,
+                        autostack_values TEXT NOT NULL,
+                        source_values TEXT NOT NULL,
+                        resolution TEXT,
+                        resolved_at TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (connection_id) REFERENCES local_file_connections(id) ON DELETE CASCADE,
+                        FOREIGN KEY (debtor_id) REFERENCES debtors(id) ON DELETE CASCADE
+                    )
+                """)
+                mark_migration_applied(conn, 7, "Add local file connection and conflict tables")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 7 failed: {e}")
+
         conn.close()
         return backup_path
 

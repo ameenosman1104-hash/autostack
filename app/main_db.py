@@ -31,6 +31,14 @@ def init_main_db():
                 is_active    INTEGER DEFAULT 1,
                 created_at   TEXT DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS local_file_pairing_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                connection_id INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+            );
         """)
         # Create default admin if none exists
         exists = conn.execute("SELECT id FROM tenants WHERE is_admin=1").fetchone()

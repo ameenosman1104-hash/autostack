@@ -159,17 +159,18 @@ def calculate_status(balance, due_date, is_paid=False):
 
 
 def detect_and_apply_changes(tid, source_type, config, mapping, unique_key_field,
-                             external_source="api"):
+                             external_source="api", snapshot_data=None):
     """
     Detect changes in external source and apply them to debtors.
 
     Args:
         tid: Tenant ID
-        source_type: "url" or "api"
+        source_type: "url" or "api" or "local_file"
         config: Source config dict
         mapping: Column mapping dict
         unique_key_field: Column name to use as unique key (Invoice No., ID, etc.)
         external_source: Source identifier for audit log
+        snapshot_data: Pre-loaded snapshot data (skips fetch if provided)
 
     Returns:
         Dict with stats: {"added": N, "updated": N, "removed": N, "errors": [...]}
@@ -180,11 +181,15 @@ def detect_and_apply_changes(tid, source_type, config, mapping, unique_key_field
 
     stats = {"added": 0, "updated": 0, "removed": 0, "errors": []}
 
-    # Fetch fresh data from source
-    headers, rows = fetch_source_data(source_type, config)
-    if rows is None:
-        stats["errors"].append(f"Failed to fetch from {source_type} source")
-        return stats
+    # Use provided snapshot data or fetch from source
+    if snapshot_data is not None:
+        rows = snapshot_data
+    else:
+        # Fetch fresh data from source
+        headers, rows = fetch_source_data(source_type, config)
+        if rows is None:
+            stats["errors"].append(f"Failed to fetch from {source_type} source")
+            return stats
 
     if not rows:
         stats["errors"].append("No data received from source")

@@ -46,6 +46,7 @@ def create_app():
     from .routes.help           import help_bp
     from .routes.reports        import reports_bp
     from .routes.recycle_bin    import recycle_bp
+    from .routes.local_file_sync_api import bp as local_file_sync_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp,       url_prefix="/admin")
@@ -58,6 +59,7 @@ def create_app():
     app.register_blueprint(help_bp)
     app.register_blueprint(reports_bp,     url_prefix="/reports")
     app.register_blueprint(recycle_bp,     url_prefix="/recycle-bin")
+    app.register_blueprint(local_file_sync_bp)
 
     # Expose enumerate to Jinja2 templates
     app.jinja_env.globals['enumerate'] = enumerate
