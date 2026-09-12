@@ -68,7 +68,7 @@
       </div>
       <div class="mb-3">
         <label class="form-label fw-semibold">Sender Email Address</label>
-        <input type="email" name="email_sender" class="form-control" value="{{ s.get('email_sender','') }}" placeholder="yourshop@gmail.com" required>
+        <input type="email" name="email_sender" class="form-control" value="{{ s.get('email_sender','') }}" placeholder="yourshop@gmail.com" id="emailSender">
       </div>
       <div class="mb-3">
         <label class="form-label fw-semibold">Gmail App Password</label>
@@ -167,6 +167,20 @@
 </form>
 
 <script>
+// Form submission validation
+document.querySelector('form').addEventListener('submit', function(e) {
+  const smtpSettings = document.getElementById('smtpSettings');
+  const emailSender = document.getElementById('emailSender');
+
+  // If SMTP section is visible and email_sender is empty, require it
+  if (smtpSettings && !smtpSettings.classList.contains('d-none') && !emailSender.value.trim()) {
+    e.preventDefault();
+    alert('Please enter a sender email address in SMTP settings, or connect Gmail to send without SMTP.');
+    emailSender.focus();
+    return false;
+  }
+});
+
 (function(){
   const sel    = document.getElementById('notifMethod');
   const email  = document.getElementById('sec-email');
