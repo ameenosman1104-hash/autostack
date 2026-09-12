@@ -33,19 +33,29 @@
   <div class="card mb-3 method-section" id="sec-email">
     <div class="card-header"><i class="bi bi-envelope me-2"></i>Email Settings</div>
     <div class="card-body">
-      <!-- Gmail OAuth Section -->
+      <!-- Gmail OAuth Section (Recommended) -->
       {% if gmail_oauth_enabled %}
       <div class="mb-4 p-3" style="background:#f0f7ff; border-radius:8px; border-left:4px solid #0066cc;">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <div>
-            <label class="form-label fw-semibold mb-0">Gmail Connection</label>
-            <div class="form-text mt-1">Send reminders directly via Gmail API (no App Password needed)</div>
+            <label class="form-label fw-semibold mb-0">Gmail Connection <span class="badge bg-success ms-2">Recommended</span></label>
+            <div class="form-text mt-1">Secure, simple setup. Send reminders via Gmail API (no App Password needed)</div>
           </div>
           <div id="gmailStatusBadge"></div>
         </div>
         <div id="gmailStatusArea"></div>
       </div>
       {% endif %}
+
+      <!-- SMTP Settings (Advanced/Optional) -->
+      <div class="mb-3">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#smtpSettings" aria-expanded="false" aria-controls="smtpSettings" id="smtpToggle">
+          <i class="bi bi-chevron-right me-1"></i>Advanced: SMTP Settings (Optional)
+        </button>
+        <div class="form-text mt-2">Use traditional SMTP with Gmail App Password instead of Gmail OAuth</div>
+      </div>
+
+      <div class="collapse" id="smtpSettings">
       <div class="row g-3 mb-3">
         <div class="col-8">
           <label class="form-label fw-semibold">SMTP Host</label>
@@ -83,7 +93,9 @@
         </button>
         <span id="testResult" style="margin-left: 10px;"></span>
       </div>
-      <div class="mb-0">
+      </div><!-- End SMTP Settings collapse -->
+
+      <div class="mb-3">
         <label class="form-label fw-semibold">Alert Recipients <span class="text-muted fw-normal">(comma separated)</span></label>
         <input type="text" name="email_recipients" class="form-control" value="{{ s.get('email_recipients','') }}" placeholder="owner@email.com, manager@email.com">
       </div>
@@ -202,6 +214,8 @@ window.testEmailConnection = function() {
 (function() {
   const statusArea = document.getElementById('gmailStatusArea');
   const statusBadge = document.getElementById('gmailStatusBadge');
+  const smtpSettings = document.getElementById('smtpSettings');
+  const smtpToggle = document.getElementById('smtpToggle');
 
   if (!statusArea) return; // Gmail OAuth not enabled
 
@@ -220,6 +234,9 @@ window.testEmailConnection = function() {
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="testGmailConnection()">Test Connection</button>
           </form>
         `;
+        // Gmail is connected - hide SMTP section
+        if (smtpSettings) smtpSettings.classList.add('d-none');
+        if (smtpToggle) smtpToggle.classList.add('d-none');
       } else {
         statusBadge.innerHTML = '<span class="badge bg-secondary">Not Connected</span>';
         statusArea.innerHTML = `
@@ -230,10 +247,20 @@ window.testEmailConnection = function() {
             Secure connection via Google. Only grants permission to send emails.
           </div>
         `;
+        // Gmail not connected - auto-expand SMTP section
+        if (smtpSettings && smtpToggle) {
+          smtpSettings.classList.add('show');
+          smtpToggle.setAttribute('aria-expanded', 'true');
+        }
       }
     })
     .catch(e => {
       statusArea.innerHTML = '<span class="text-muted">Unable to check Gmail status</span>';
+      // On error, show SMTP as fallback
+      if (smtpSettings && smtpToggle) {
+        smtpSettings.classList.add('show');
+        smtpToggle.setAttribute('aria-expanded', 'true');
+      }
     });
 })();
 
