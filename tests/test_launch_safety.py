@@ -85,6 +85,57 @@ class LaunchSafety(unittest.TestCase):
         # Verify the setting was actually saved
         self.assertEqual(self.db.get_setting(self.tid, "default_reminder_days"), "35")
 
+    def test_settings_save_email_password_encrypted(self):
+        """Ensure saving new email password is encrypted and persists."""
+        import sqlite3
+        from app.tenant_db import _db_path
+
+        token = self.login()
+
+        # Save a new email password
+        page = self.client.get("/settings/").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        response = self.client.post("/settings/", data={
+            "csrf_token": token,
+            "email_sender": "test@gmail.com",
+            "email_password": "my-secret-app-password-123"
+        })
+        self.assertEqual(response.status_code, 302, "Settings save should redirect successfully")
+
+        # Verify password was encrypted in database (read raw value)
+        conn = sqlite3.connect(_db_path(self.tid))
+        row = conn.execute("SELECT value FROM settings WHERE key='email_password'").fetchone()
+        conn.close()
+        self.assertIsNotNone(row, "Password setting should exist in database")
+        stored_encrypted = row[0]
+        self.assertTrue(stored_encrypted.startswith("enc:"), "Password should be encrypted in database")
+        self.assertNotIn("my-secret-app-password-123", stored_encrypted, "Plaintext password should not appear in database")
+
+        # Verify decryption works (get_setting automatically decrypts)
+        decrypted = self.db.get_setting(self.tid, "email_password")
+        self.assertEqual(decrypted, "my-secret-app-password-123", "Decrypted password should match original")
+
+    def test_settings_save_masked_password_preserves_existing(self):
+        """Ensure masked password (****) preserves existing value."""
+        # Set initial password
+        self.db.save_setting(self.tid, "email_password", "original-password-123")
+
+        token = self.login()
+
+        # Submit masked password (user didn't change it)
+        page = self.client.get("/settings/").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        response = self.client.post("/settings/", data={
+            "csrf_token": token,
+            "email_sender": "test@gmail.com",
+            "email_password": "●●●●●●●●●●●●●●●●●●"  # Masked password
+        })
+        self.assertEqual(response.status_code, 302, "Settings save should redirect successfully")
+
+        # Verify original password is preserved
+        decrypted = self.db.get_setting(self.tid, "email_password")
+        self.assertEqual(decrypted, "original-password-123", "Masked password should preserve original value")
+
     def test_reminder_display_ignores_stale_interval_cache(self):
         self.db.save_setting(self.tid, "default_reminder_days", "28")
         self.db.update_debtor(self.tid, self.did, reminder_mode="custom_interval",

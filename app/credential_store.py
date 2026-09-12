@@ -1,5 +1,6 @@
 """Encrypt/decrypt sensitive credentials stored in database."""
 import os
+from pathlib import Path
 from cryptography.fernet import Fernet
 
 
@@ -14,7 +15,7 @@ _test_key_cache = None
 
 
 def get_encryption_key():
-    """Get encryption key from environment or file.
+    """Get encryption key from environment or file, auto-generating if needed.
 
     Fernet.generate_key() returns base64-encoded bytes ready for use.
     Store and retrieve as-is without re-encoding.
@@ -22,6 +23,9 @@ def get_encryption_key():
     For production, set AUTOSTACK_ENCRYPTION_KEY environment variable to the
     base64 string from Fernet.generate_key(), or AUTOSTACK_ENCRYPTION_KEY_FILE
     to path of file containing the key (one line, no encoding).
+
+    If neither is set, auto-generates and persists a key in the data directory
+    (same pattern as session key).
 
     For testing, uses a cached test key so decryption works consistently.
     """
@@ -70,11 +74,37 @@ def get_encryption_key():
             _test_key_cache = Fernet.generate_key()
         return _test_key_cache
 
-    raise RuntimeError(
-        "Encryption key not configured. Set AUTOSTACK_ENCRYPTION_KEY (as base64 string) or "
-        "AUTOSTACK_ENCRYPTION_KEY_FILE (as path to key file). "
-        "Generate key with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
-    )
+    # Production: auto-generate and persist encryption key (same pattern as session key)
+    data_dir = Path(os.environ.get("AUTOSTACK_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    key_file = data_dir / ".encryption_key"
+
+    if key_file.exists():
+        try:
+            with open(key_file, "rb") as f:
+                key_bytes = f.read().strip()
+            # Validate that it's a valid Fernet key
+            Fernet(key_bytes)
+            return key_bytes
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to read or validate encryption key from {key_file}: {e}\n"
+                "File should contain output from Fernet.generate_key() (one line, no wrapping)."
+            )
+    else:
+        # Generate new key and persist it
+        try:
+            key_bytes = Fernet.generate_key()
+            # Write with restricted permissions (Unix only, ignored on Windows)
+            with open(key_file, "wb") as f:
+                f.write(key_bytes)
+            try:
+                os.chmod(key_file, 0o600)
+            except:
+                pass
+            return key_bytes
+        except Exception as e:
+            raise RuntimeError(f"Failed to generate encryption key: {e}")
 
 
 def encrypt_value(plaintext):
