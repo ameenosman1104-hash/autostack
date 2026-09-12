@@ -136,6 +136,28 @@ class LaunchSafety(unittest.TestCase):
         decrypted = self.db.get_setting(self.tid, "email_password")
         self.assertEqual(decrypted, "original-password-123", "Masked password should preserve original value")
 
+    def test_settings_clear_email_password(self):
+        """Ensure clear_email_password checkbox deletes saved password."""
+        # Set initial password
+        self.db.save_setting(self.tid, "email_password", "original-password-123")
+        self.assertEqual(self.db.get_setting(self.tid, "email_password"), "original-password-123")
+
+        token = self.login()
+
+        # Submit clear checkbox
+        page = self.client.get("/settings/").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        response = self.client.post("/settings/", data={
+            "csrf_token": token,
+            "email_sender": "test@gmail.com",
+            "clear_email_password": "1"
+        })
+        self.assertEqual(response.status_code, 302, "Settings save should redirect successfully")
+
+        # Verify password is deleted
+        deleted_value = self.db.get_setting(self.tid, "email_password", default="")
+        self.assertEqual(deleted_value, "", "Password should be deleted")
+
     def test_reminder_display_ignores_stale_interval_cache(self):
         self.db.save_setting(self.tid, "default_reminder_days", "28")
         self.db.update_debtor(self.tid, self.did, reminder_mode="custom_interval",

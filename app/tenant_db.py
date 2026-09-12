@@ -71,6 +71,14 @@ def save_setting(tid, key, value):
     conn.close()
 
 
+def delete_setting(tid, key):
+    """Delete a setting from the database."""
+    conn = get_conn(tid)
+    conn.execute("DELETE FROM settings WHERE key=?", (key,))
+    conn.commit()
+    conn.close()
+
+
 def get_all_settings(tid):
     from app.credential_store import decrypt_value
     conn = get_conn(tid)

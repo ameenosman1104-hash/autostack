@@ -32,6 +32,12 @@ def index():
         except ValueError:
             flash("Reminder interval must be between 1 and 365 days.", "danger")
             return redirect(url_for("settings.index"))
+        # Handle password clear checkbox
+        if request.form.get("clear_email_password") == "1":
+            from ..tenant_db import delete_setting
+            delete_setting(tid, "email_password")
+            flash("Gmail App Password cleared.", "success")
+
         for key in ALL_KEYS:
             if key not in request.form:
                 continue
