@@ -51,6 +51,40 @@ class LaunchSafety(unittest.TestCase):
         self.assertEqual(result.status_code,302)
         return token
 
+    def test_settings_save_with_invalid_debtor_date(self):
+        """Ensure saving settings doesn't crash if a debtor has missing/invalid purchase date."""
+        # Create a debtor with an invalid date format to test error handling
+        import sqlite3
+        from app.tenant_db import _db_path
+        conn = sqlite3.connect(_db_path(self.tid))
+        # Insert debtor with invalid date format
+        conn.execute("INSERT INTO debtors (name, phone, email, amount_owed, date_of_purchase, notify_method, reminder_days, notes, reminder_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     ("NoDateDebtor", "", "test@example.com", 500, "not-a-date", "email", 28, "", "default"))
+        conn.commit()
+        conn.close()
+
+        # Save settings should not crash despite invalid debtor
+        page = self.client.get("/login").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        response = self.client.post("/login", data={
+            "username": self.username,
+            "password": "test-password-123",
+            "csrf_token": token
+        })
+
+        # Now save settings
+        page = self.client.get("/settings/").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        response = self.client.post("/settings/", data={
+            "csrf_token": token,
+            "default_reminder_days": "35"
+        })
+
+        self.assertEqual(response.status_code, 302, "Settings save should redirect (not crash)")
+
+        # Verify the setting was actually saved
+        self.assertEqual(self.db.get_setting(self.tid, "default_reminder_days"), "35")
+
     def test_reminder_display_ignores_stale_interval_cache(self):
         self.db.save_setting(self.tid, "default_reminder_days", "28")
         self.db.update_debtor(self.tid, self.did, reminder_mode="custom_interval",

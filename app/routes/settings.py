@@ -52,7 +52,8 @@ def index():
             if debtor.get("reminder_mode", "default") == "default":
                 try:
                     calculate_next_reminder(tid, debtor["id"])
-                except ValueError:
+                except (ValueError, TypeError):
+                    # Invalid date_of_purchase (None or unparseable) should not crash settings save
                     flash("A debtor has an invalid purchase date; its reminder was not changed.", "warning")
         flash("Settings saved.", "success")
         return redirect(url_for("settings.index"))

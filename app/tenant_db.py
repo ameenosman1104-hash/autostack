@@ -329,6 +329,8 @@ def reminder_date(debtor, default_days):
     from .validation import reminder_interval
     if debtor.get("reminder_mode") in ("manual", "custom"):
         return debtor.get("next_reminder_date")
+    if not debtor.get("date_of_purchase"):
+        raise ValueError("Debtor missing purchase date")
     days = reminder_interval(debtor.get("reminder_interval_days") if debtor.get("reminder_mode") == "custom_interval" else default_days)
     base = date.fromisoformat(debtor["date_of_purchase"])
     next_date = base + timedelta(days=days)
