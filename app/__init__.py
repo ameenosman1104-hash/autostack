@@ -23,6 +23,8 @@ def create_app():
     init_main_db()
     from .google_auth import init_google
     init_google(app)
+    from .gmail_oauth import init_gmail_oauth
+    init_gmail_oauth(app)
 
     from .auth    import auth_bp
     from .admin   import admin_bp

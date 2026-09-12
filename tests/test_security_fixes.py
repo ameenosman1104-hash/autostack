@@ -25,14 +25,14 @@ class SecurityFixes(unittest.TestCase):
 
     def test_smtp_uses_tls_context(self):
         """Test that SMTP connections use verified TLS context."""
-        from app.services.debt_notifier import _via_email
+        from app.services.debt_notifier import _via_smtp
         import ssl
 
         # This test verifies that the code calls starttls with a context
         # We can't easily test the actual SSL verification without mocking smtplib
         # but we can verify the code structure
         import inspect
-        source = inspect.getsource(_via_email)
+        source = inspect.getsource(_via_smtp)
 
         # Check that ssl.create_default_context() is called
         self.assertIn("create_default_context", source, "SSL context should be created")

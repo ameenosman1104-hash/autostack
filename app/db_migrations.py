@@ -341,6 +341,27 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 4 failed: {e}")
 
+        # Migration 5: Add gmail_oauth_tokens table for Gmail API integration
+        if current_version < 5:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS gmail_oauth_tokens (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        authorized_email TEXT NOT NULL UNIQUE,
+                        access_token TEXT NOT NULL,
+                        refresh_token TEXT,
+                        expires_at INTEGER,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                mark_migration_applied(conn, 5, "Add gmail_oauth_tokens table")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 5 failed: {e}")
+
         conn.close()
         return backup_path
 

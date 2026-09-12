@@ -57,6 +57,17 @@ def _extract_email(raw):
 
 
 def _via_email(tid, debtor, message):
+    """Route email through Gmail OAuth if connected, otherwise use SMTP."""
+    # Check if Gmail OAuth is connected
+    from ..gmail_oauth import get_authorized_email
+    gmail_email = get_authorized_email(tid)
+
+    if gmail_email:
+        return _via_gmail(tid, debtor, message, gmail_email)
+    else:
+        return _via_smtp(tid, debtor, message)
+
+def _via_smtp(tid, debtor, message):
     smtp_host = get_setting(tid, "email_smtp_host", "smtp.gmail.com")
     smtp_port = int(get_setting(tid, "email_smtp_port", "587"))
     sender    = get_setting(tid, "email_sender", "")
@@ -113,6 +124,80 @@ def _via_email(tid, debtor, message):
             return False, f"Invalid email address: {to_email}"
         else:
             return False, f"Email error: {error_str}"
+
+
+def _via_gmail(tid, debtor, message, sender):
+    """Send email via Gmail API."""
+    try:
+        from ..gmail_oauth import get_gmail_token
+        import base64
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google.auth.exceptions import RefreshError
+        from googleapiclient.discovery import build
+        from googleapiclient.errors import HttpError
+
+        to_email = _extract_email(debtor.get("email", ""))
+        if not to_email:
+            return False, f"No email address for {debtor['name']}."
+
+        # Get stored token
+        token_data = get_gmail_token(tid)
+        if not token_data:
+            return False, "Gmail not connected. Connect Gmail in Settings."
+
+        # Build Credentials object
+        creds = Credentials(
+            token=token_data.get("access_token"),
+            refresh_token=token_data.get("refresh_token"),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id="",  # Will use app config
+            client_secret=""  # Will use app config
+        )
+
+        # Refresh if expired
+        if token_data.get("expires_at") and token_data["expires_at"] < int(time.time()):
+            try:
+                from flask import current_app
+                creds.client_id = current_app.config.get("GMAIL_CLIENT_ID")
+                creds.client_secret = current_app.config.get("GMAIL_CLIENT_SECRET")
+                creds.refresh(Request())
+                # Save refreshed token
+                from ..gmail_oauth import save_gmail_token
+                save_gmail_token(tid, sender, creds.token, creds.refresh_token, 3600)
+            except RefreshError:
+                return False, "Gmail authentication expired. Please reconnect Gmail in Settings."
+            except Exception as e:
+                return False, f"Failed to refresh Gmail access: {str(e)}"
+
+        # Build message
+        business = get_setting(tid, "business_name", "Inventory Tracker")
+        subject = f"Payment Reminder — {business}"
+
+        msg_text = f"Subject: {subject}\nFrom: {sender}\nTo: {to_email}\n\n{message}"
+        message_bytes = msg_text.encode("utf-8")
+        message_b64 = base64.urlsafe_b64encode(message_bytes).decode("utf-8")
+
+        try:
+            service = build("gmail", "v1", credentials=creds)
+            send_message = {"raw": message_b64}
+            service.users().messages().send(userId="me", body=send_message).execute()
+            return True, f"Email sent via Gmail to {to_email}"
+
+        except HttpError as e:
+            error_msg = str(e)
+            if "401" in error_msg:
+                return False, "Gmail authorization expired. Please reconnect Gmail in Settings."
+            elif "403" in error_msg:
+                return False, "Gmail permission denied. Please reconnect Gmail in Settings."
+            else:
+                return False, f"Gmail error: {error_msg[:100]}"
+
+    except ImportError:
+        return False, "Gmail API client not installed. Contact your administrator."
+    except Exception as e:
+        error_str = str(e)
+        return False, f"Gmail error: {error_str[:100]}"
 
 
 def _via_sms(tid, debtor, message):

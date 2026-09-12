@@ -79,6 +79,32 @@ def delete_setting(tid, key):
     conn.close()
 
 
+def get_gmail_token_raw(tid):
+    """Get raw (encrypted) Gmail OAuth token from database."""
+    conn = get_conn(tid)
+    try:
+        row = conn.execute(
+            "SELECT id, authorized_email, access_token, refresh_token, expires_at FROM gmail_oauth_tokens LIMIT 1"
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except:
+        conn.close()
+        return None
+
+
+def has_gmail_token(tid):
+    """Check if a tenant has a Gmail OAuth token."""
+    conn = get_conn(tid)
+    try:
+        row = conn.execute("SELECT 1 FROM gmail_oauth_tokens LIMIT 1").fetchone()
+        conn.close()
+        return bool(row)
+    except:
+        conn.close()
+        return False
+
+
 def get_all_settings(tid):
     from app.credential_store import decrypt_value
     conn = get_conn(tid)
