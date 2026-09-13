@@ -724,6 +724,8 @@ def sync_from_file():
     try:
         tid = current_user.tenant_id
         f = request.files.get("file")
+        connection_id = request.form.get("connection_id")  # Optional: for updating existing connection
+
         if not f or not f.filename:
             return jsonify(ok=False, msg="Please select a file"), 400
 
@@ -786,6 +788,22 @@ def sync_from_file():
                 did = add_debtor(tid, name, email=email, phone=phone, amount_owed=amt)
                 if did:
                     added += 1
+
+        # Update last_sync_at for the connection if provided
+        if connection_id:
+            try:
+                from ..tenant_db import get_conn as get_tenant_conn
+                from datetime import datetime
+                conn = get_tenant_conn(tid)
+                conn.execute("""
+                    UPDATE data_source_connections
+                    SET last_sync_at = ?, last_sync_status = 'success'
+                    WHERE id = ?
+                """, (datetime.now().isoformat(), connection_id))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                current_app.logger.warning(f"Could not update connection metadata: {e}")
 
         return jsonify(ok=True, added=added, updated=updated)
     except Exception as e:
