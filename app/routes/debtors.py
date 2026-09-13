@@ -717,6 +717,81 @@ def refresh_source():
                            freq_options=FREQ_OPTIONS, col=mapping)
 
 
+@debtors_bp.route("/sync-from-file", methods=["POST"])
+@login_required
+def sync_from_file():
+    """Sync debtors from uploaded file. Returns stats: added, updated."""
+    try:
+        tid = current_user.tenant_id
+        f = request.files.get("file")
+        if not f or not f.filename:
+            return jsonify(ok=False, msg="Please select a file"), 400
+
+        # Parse file
+        fname = f.filename.lower()
+        raw = f.read()
+        try:
+            if fname.endswith((".xlsx", ".xls")):
+                headers, rows = _rows_from_xlsx(raw)
+            else:
+                headers, rows = _rows_from_text(raw.decode("utf-8-sig", errors="replace"))
+        except Exception as e:
+            return jsonify(ok=False, msg=f"Failed to parse file: {e}"), 400
+
+        if not rows:
+            return jsonify(ok=False, msg="File is empty"), 400
+
+        # Get existing debtors
+        all_debtors = get_all_debtors(tid, show_paid=True)
+        by_name = {d.get("name", "").lower(): d for d in all_debtors}
+        by_id = {d["id"]: d for d in all_debtors}
+
+        # Guess mapping
+        mapping = _debtor_guess(headers)
+
+        def _v(col, row, default=""):
+            return row.get(col, default).strip() if col else default
+
+        # Process rows
+        updated = added = 0
+        for row in rows:
+            name = _v(mapping.get("name", ""), row)
+            if not name:
+                continue
+
+            email = _v(mapping.get("email", ""), row)
+            phone = _v(mapping.get("phone", ""), row)
+            amt_raw = _v(mapping.get("amount_owed", ""), row, "0").replace(",", "").lstrip("R$£€")
+            try:
+                amt = float(amt_raw)
+            except:
+                amt = 0.0
+
+            # Match by name (case-insensitive)
+            existing = by_name.get(name.lower())
+            if existing:
+                # Update only non-empty fields
+                updates = {}
+                if email:
+                    updates["email"] = email
+                if phone:
+                    updates["phone"] = phone
+                if amt > 0:
+                    updates["amount_owed"] = amt
+                if updates:
+                    update_debtor(tid, existing["id"], **updates)
+                    updated += 1
+            else:
+                # Add new debtor
+                did = add_debtor(tid, name, email=email, phone=phone, amount_owed=amt)
+                if did:
+                    added += 1
+
+        return jsonify(ok=True, added=added, updated=updated)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 400
+
+
 @debtors_bp.route("/delete-all", methods=["POST"])
 @login_required
 def bulk_delete_all():

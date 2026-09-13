@@ -537,53 +537,172 @@ async function loadConnectedStockSource() {
   }
 }
 
-async function syncStockNow() {
-  const btn = event.target.closest('button');
-  const originalHTML = btn.innerHTML;
+let syncStockModal;
+
+function openSyncStockDialog() {
+  if (!syncStockModal) {
+    syncStockModal = new bootstrap.Modal(document.getElementById('syncStockModal'));
+  }
+  // Load saved connections
+  loadStockSyncOptions();
+  syncStockModal.show();
+}
+
+function syncStockNow() {
+  openSyncStockDialog();
+}
+
+async function loadStockSyncOptions() {
+  try {
+    const listResp = await fetch('/api/data-sources/list?destination=stock');
+    const listData = await listResp.json();
+    const connDiv = document.getElementById('stockConnectionsList');
+
+    if (listData.sources && listData.sources.length > 0) {
+      const options = listData.sources.map(s => `
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="radio" name="stockSource" id="source_${s.id}" value="${s.id}">
+          <label class="form-check-label" for="source_${s.id}">
+            <strong>${s.name}</strong>
+            ${s.file_path ? ` (${s.file_path.split('\\').pop()}${s.worksheet_name ? ' - ' + s.worksheet_name : ''})` : ''}
+          </label>
+        </div>
+      `).join('');
+      connDiv.innerHTML = `<div class="mb-3">${options}</div>`;
+      document.getElementById('stockSyncFromConnection').style.display = 'block';
+    } else {
+      document.getElementById('stockSyncFromConnection').style.display = 'none';
+    }
+  } catch (e) {
+    document.getElementById('stockSyncFromConnection').style.display = 'none';
+  }
+}
+
+async function doSyncFromStockConnection() {
+  const sourceId = document.querySelector('input[name="stockSource"]:checked')?.value;
+  if (!sourceId) {
+    alert('Please select a connection');
+    return;
+  }
+
+  const btn = event.target;
   btn.disabled = true;
   btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Syncing...';
 
   try {
-    // Fetch ONLY stock destination sources
-    const listResp = await fetch('/api/data-sources/list?destination=stock');
-    const listData = await listResp.json();
+    const syncResp = await fetch('/api/data-sources/sync-now', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source_id: parseInt(sourceId), destination: 'stock'})
+    });
+    const syncResult = await syncResp.json();
 
-    if (listData.sources && listData.sources.length > 0) {
-      // Use first stock source
-      const source = listData.sources[0];
-      const sourceId = source.id;
-      const sourceName = source.name;
-      const fileInfo = source.file_path ? ` (${source.file_path}${source.worksheet_name ? ' - ' + source.worksheet_name : ''})` : '';
-
-      const syncResp = await fetch('/api/data-sources/sync-now', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({source_id: sourceId, destination: 'stock'})
-      });
-
-      const syncResult = await syncResp.json();
-
-      if (syncResult.status === 'success') {
-        alert(`✓ STOCK SYNC COMPLETE!\n\nSource: ${sourceName}${fileInfo}\nAdded: ${syncResult.added}\nUpdated: ${syncResult.updated}\n\nRefreshing page...`);
-        setTimeout(() => location.reload(), 500);
-      } else {
-        alert(`❌ Sync failed:\n${syncResult.error || 'Unknown error'}`);
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
-      }
+    if (syncResult.status === 'success') {
+      syncStockModal.hide();
+      alert(`✓ Stock synced!\n\nAdded: ${syncResult.added}\nUpdated: ${syncResult.updated}\n\nRefreshing page...`);
+      setTimeout(() => location.reload(), 500);
     } else {
-      alert('❌ No Stock Management source connected.\n\nGo to Settings → Data Connections to add one.');
+      alert(`❌ Sync failed: ${syncResult.error}`);
       btn.disabled = false;
-      btn.innerHTML = originalHTML;
+      btn.innerHTML = 'Sync from Connection';
     }
   } catch (err) {
     alert(`❌ Error: ${err.message}`);
     btn.disabled = false;
-    btn.innerHTML = originalHTML;
+    btn.innerHTML = 'Sync from Connection';
+  }
+}
+
+async function doUpdateStockFromFile() {
+  const fileInput = document.getElementById('stockFileInput');
+  if (!fileInput.files.length) {
+    alert('Please select a file');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+
+  const btn = event.target;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Processing...';
+
+  try {
+    // Upload file and get preview
+    const syncResp = await fetch('/inventory/sync-from-file', {
+      method: 'POST',
+      body: formData
+    });
+    const result = await syncResp.json();
+
+    if (!result.ok) {
+      alert(`❌ ${result.msg}`);
+      btn.disabled = false;
+      btn.innerHTML = 'Preview & Apply';
+      return;
+    }
+
+    // Show confirmation
+    const message = `Ready to update stock:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
+    if (confirm(message)) {
+      syncStockModal.hide();
+      alert(`✓ Stock updated!\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nRefreshing page...`);
+      setTimeout(() => location.reload(), 500);
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = 'Preview & Apply';
+    }
+  } catch (err) {
+    alert(`❌ Error: ${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = 'Preview & Apply';
   }
 }
 
 // Load connected source on page load
 document.addEventListener('DOMContentLoaded', loadConnectedStockSource);
 </script>
+
+<!-- Sync Stock Modal -->
+<div class="modal fade" id="syncStockModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Sync Stock Management</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Option 1: Sync from saved connection -->
+        <div id="stockSyncFromConnection" style="display:none;" class="mb-4">
+          <h6 class="mb-3">1. Sync from saved connection</h6>
+          <div id="stockConnectionsList" class="mb-3"></div>
+          <button class="btn btn-success btn-sm" onclick="doSyncFromStockConnection()">
+            <i class="bi bi-cloud-download me-1"></i>Sync from Connection
+          </button>
+          <hr>
+        </div>
+
+        <!-- Option 2: Update from file -->
+        <div class="mb-4">
+          <h6 class="mb-3">2. Update from file</h6>
+          <p class="text-muted small">Select an Excel or CSV file to update products by code/SKU</p>
+          <input type="file" id="stockFileInput" accept=".xlsx,.csv" class="form-control form-control-sm mb-2">
+          <button class="btn btn-primary btn-sm" onclick="doUpdateStockFromFile()">
+            <i class="bi bi-file-earmark-arrow-up me-1"></i>Preview & Apply
+          </button>
+          <hr>
+        </div>
+
+        <!-- Option 3: Settings link -->
+        <div>
+          <h6 class="mb-3">3. Manage connections</h6>
+          <a href="{{ url_for('settings.index') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-gear me-1"></i>Go to Settings → Data Connections
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

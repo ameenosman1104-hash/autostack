@@ -711,56 +711,171 @@ async function loadConnectedDebtorSource() {
   }
 }
 
-async function syncNow() {
-  const btn = event.target.closest('button');
+let syncDebtorModal;
+
+function openSyncDebtorDialog() {
+  if (!syncDebtorModal) {
+    syncDebtorModal = new bootstrap.Modal(document.getElementById('syncDebtorModal'));
+  }
+  loadDebtorSyncOptions();
+  syncDebtorModal.show();
+}
+
+function syncNow() {
+  openSyncDebtorDialog();
+}
+
+async function loadDebtorSyncOptions() {
+  try {
+    const listResp = await fetch('/api/data-sources/list?destination=debtors');
+    const listData = await listResp.json();
+    const connDiv = document.getElementById('debtorConnectionsList');
+
+    if (listData.sources && listData.sources.length > 0) {
+      const options = listData.sources.map(s => `
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="radio" name="debtorSource" id="debtor_source_${s.id}" value="${s.id}">
+          <label class="form-check-label" for="debtor_source_${s.id}">
+            <strong>${s.name}</strong>
+            ${s.file_path ? ` (${s.file_path.split('\\').pop()}${s.worksheet_name ? ' - ' + s.worksheet_name : ''})` : ''}
+          </label>
+        </div>
+      `).join('');
+      connDiv.innerHTML = `<div class="mb-3">${options}</div>`;
+      document.getElementById('debtorSyncFromConnection').style.display = 'block';
+    } else {
+      document.getElementById('debtorSyncFromConnection').style.display = 'none';
+    }
+  } catch (e) {
+    document.getElementById('debtorSyncFromConnection').style.display = 'none';
+  }
+}
+
+async function doSyncFromDebtorConnection() {
+  const sourceId = document.querySelector('input[name="debtorSource"]:checked')?.value;
+  if (!sourceId) {
+    alert('Please select a connection');
+    return;
+  }
+
+  const btn = event.target;
   btn.disabled = true;
-  const originalHTML = btn.innerHTML;
   btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Syncing...';
 
   try {
-    // Fetch ONLY debtors destination sources
-    const listResp = await fetch('/api/data-sources/list?destination=debtors');
-    const listData = await listResp.json();
-
-    if (!listData.sources || listData.sources.length === 0) {
-      alert('❌ No Debtors source connected.\n\nTo set up automatic syncing:\n1. Go to Settings → Data Connections\n2. Add a Local File, Hosted URL, or API connection\n3. Set destination to "Debtors"\n4. Come back here and click "Sync Now"');
-      btn.disabled = false;
-      btn.innerHTML = originalHTML;
-      return;
-    }
-
-    const source = listData.sources[0];
-    const sourceId = source.id;
-    const sourceName = source.name;
-    const fileInfo = source.file_path ? ` (${source.file_path}${source.worksheet_name ? ' - ' + source.worksheet_name : ''})` : '';
-
-    // Trigger sync
     const syncResp = await fetch('/api/data-sources/sync-now', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({source_id: sourceId, destination: 'debtors'})
+      body: JSON.stringify({source_id: parseInt(sourceId), destination: 'debtors'})
     });
-
     const syncResult = await syncResp.json();
 
     if (syncResult.status === 'success') {
-      const msg = `✓ DEBTORS SYNC COMPLETE!\n\nSource: ${sourceName}${fileInfo}\nAdded: ${syncResult.added}\nUpdated: ${syncResult.updated}\n\nRefreshing page...`;
-      alert(msg);
+      syncDebtorModal.hide();
+      alert(`✓ Debtors synced!\n\nAdded: ${syncResult.added}\nUpdated: ${syncResult.updated}\n\nRefreshing page...`);
       setTimeout(() => location.reload(), 500);
-    } else if (syncResult.error) {
-      alert(`❌ Sync Error:\n${syncResult.error}\n\nNote: For local files, ensure the connector is running.`);
+    } else {
+      alert(`❌ Sync failed: ${syncResult.error}`);
       btn.disabled = false;
-      btn.innerHTML = originalHTML;
+      btn.innerHTML = 'Sync from Connection';
     }
   } catch (err) {
-    alert(`❌ Failed to sync:\n${err.message}`);
+    alert(`❌ Error: ${err.message}`);
     btn.disabled = false;
-    btn.innerHTML = originalHTML;
+    btn.innerHTML = 'Sync from Connection';
+  }
+}
+
+async function doUpdateDebtorsFromFile() {
+  const fileInput = document.getElementById('debtorFileInput');
+  if (!fileInput.files.length) {
+    alert('Please select a file');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+
+  const btn = event.target;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Processing...';
+
+  try {
+    // Upload file and get preview
+    const syncResp = await fetch('/debtors/sync-from-file', {
+      method: 'POST',
+      body: formData
+    });
+    const result = await syncResp.json();
+
+    if (!result.ok) {
+      alert(`❌ ${result.msg}`);
+      btn.disabled = false;
+      btn.innerHTML = 'Preview & Apply';
+      return;
+    }
+
+    // Show confirmation
+    const message = `Ready to update debtors:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
+    if (confirm(message)) {
+      syncDebtorModal.hide();
+      alert(`✓ Debtors updated!\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nRefreshing page...`);
+      setTimeout(() => location.reload(), 500);
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = 'Preview & Apply';
+    }
+  } catch (err) {
+    alert(`❌ Error: ${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = 'Preview & Apply';
   }
 }
 
 // Load connected source on page load
 document.addEventListener('DOMContentLoaded', loadConnectedDebtorSource);
 </script>
+
+<!-- Sync Debtors Modal -->
+<div class="modal fade" id="syncDebtorModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Sync Debtors & Collections</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Option 1: Sync from saved connection -->
+        <div id="debtorSyncFromConnection" style="display:none;" class="mb-4">
+          <h6 class="mb-3">1. Sync from saved connection</h6>
+          <div id="debtorConnectionsList" class="mb-3"></div>
+          <button class="btn btn-success btn-sm" onclick="doSyncFromDebtorConnection()">
+            <i class="bi bi-cloud-download me-1"></i>Sync from Connection
+          </button>
+          <hr>
+        </div>
+
+        <!-- Option 2: Update from file -->
+        <div class="mb-4">
+          <h6 class="mb-3">2. Update from file</h6>
+          <p class="text-muted small">Select an Excel or CSV file to update debtors by Invoice No or Customer ID</p>
+          <input type="file" id="debtorFileInput" accept=".xlsx,.csv" class="form-control form-control-sm mb-2">
+          <button class="btn btn-primary btn-sm" onclick="doUpdateDebtorsFromFile()">
+            <i class="bi bi-file-earmark-arrow-up me-1"></i>Preview & Apply
+          </button>
+          <hr>
+        </div>
+
+        <!-- Option 3: Settings link -->
+        <div>
+          <h6 class="mb-3">3. Manage connections</h6>
+          <a href="{{ url_for('settings.index') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-gear me-1"></i>Go to Settings → Data Connections
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}

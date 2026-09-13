@@ -395,6 +395,80 @@ def sync_source():
         return jsonify(ok=False, msg=str(e))
 
 
+@inventory_bp.route("/sync-from-file", methods=["POST"])
+@login_required
+def sync_from_file():
+    """Sync stock from uploaded file. Returns stats: added, updated."""
+    try:
+        tid = current_user.tenant_id
+        f = request.files.get("file")
+        if not f or not f.filename:
+            return jsonify(ok=False, msg="Please select a file"), 400
+
+        delimiter = request.form.get("delimiter", ",")
+        has_header = request.form.get("has_header", "1") == "1"
+
+        # Parse file
+        fname = f.filename.lower()
+        raw = f.read()
+        if fname.endswith((".xlsx", ".xls")):
+            headers, rows = _rows_from_xlsx(raw)
+        else:
+            headers, rows = _rows_from_text(raw.decode("utf-8-sig", errors="replace"), delimiter, has_header)
+
+        if not rows:
+            return jsonify(ok=False, msg="File is empty"), 400
+
+        # Build product lookup
+        all_products = get_all_products(tid)
+        by_code = {p["code"].lower(): p for p in all_products}
+        by_name = {p["name"].lower(): p for p in all_products}
+
+        # Guess mapping
+        mapping = _guess_mapping(headers)
+
+        def _val(col, row, default=""):
+            return row.get(col, default).strip() if col else default
+        def _fval(col, row):
+            raw = _val(col, row, "").replace(",", "").lstrip("R$£€")
+            try: return float(raw)
+            except: return None
+
+        # Process rows
+        updated = added = 0
+        for row in rows:
+            name = _val(mapping.get("name", ""), row)
+            if not name:
+                continue
+            code = _val(mapping.get("code", ""), row) or name[:8].upper().replace(" ", "")
+
+            kwargs = {k: v for k, v in {
+                "name": name,
+                "category": _val(mapping.get("category", ""), row) or None,
+                "unit": _val(mapping.get("unit", ""), row) or None,
+                "current_stock": _fval(mapping.get("current_stock", ""), row),
+                "reorder_level": _fval(mapping.get("reorder_level", ""), row),
+                "last_cost_price": _fval(mapping.get("last_cost_price", ""), row),
+                "supplier": _val(mapping.get("supplier", ""), row) or None,
+            }.items() if v is not None}
+
+            existing = by_code.get(code.lower()) or by_name.get(name.lower())
+            if existing:
+                update_product(tid, existing["id"], **{k: v for k, v in kwargs.items() if k != "code"})
+                updated += 1
+            else:
+                add_product(tid, code, **kwargs)
+                added += 1
+
+        # Auto-PO if stock changed
+        if updated > 0 or added > 0:
+            auto_create_po_if_needed(tid)
+
+        return jsonify(ok=True, added=added, updated=updated)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 400
+
+
 _ALLOWED_INV_FIELDS = {'name','category','unit','current_stock','reorder_level','last_cost_price','supplier'}
 
 @inventory_bp.route("/<int:pid>/update-field", methods=["POST"])
