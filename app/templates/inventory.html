@@ -573,67 +573,40 @@ async function getStockFileHandles() {
   }
 }
 
-// Save file handle to IndexedDB with File System Access API support
+// Save file handle to IndexedDB (metadata only for HTML5 file input)
+// Note: HTML5 <input type="file"> cannot be persisted. Use File System Access API
+// via selectStockFileWithFSA() for persistent file access across sessions.
 async function saveStockFileHandle(file) {
   try {
     const db = await initStockFileDB();
     const timestamp = new Date().toLocaleString('en-ZA', {hour12: false}).replace(',', '');
-    const handle = {
+    const record = {
       name: file.name,
       size: file.size,
       lastModified: file.lastModified,
       saved_at: timestamp,
       type: file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv',
       supportsFileHandle: false,
-      fileHandle: null  // Will store actual FileSystemFileHandle if available
+      fileHandle: null
     };
-
-    // Try File System Access API for modern browsers
-    if ('showOpenFilePicker' in window && file instanceof File && file.webkitRelativePath) {
-      // File came from File System Access API - store the handle
-      try {
-        const fileHandle = await getFileHandleFromFile(file);
-        if (fileHandle) {
-          handle.fileHandle = fileHandle;
-          handle.supportsFileHandle = true;
-        }
-      } catch (e) {
-        console.warn('Could not get file handle:', e);
-      }
-    }
-
     return new Promise((resolve, reject) => {
       const tx = db.transaction([STORE_NAME], 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      const req = store.add(handle);
+      const req = store.add(record);
       req.onerror = () => reject(req.error);
       req.onsuccess = () => resolve(req.result);
     });
   } catch (e) {
-    console.warn('Could not save file handle:', e);
+    console.warn('Could not save file metadata:', e);
     return null;
   }
 }
 
-// Get FileSystemFileHandle from File object (for File System Access API)
-async function getFileHandleFromFile(file) {
-  try {
-    // For modern browsers supporting File System Access API
-    // We store the file handle directly in IndexedDB
-    if (file && typeof file === 'object') {
-      return file; // IndexedDB can serialize File objects
-    }
-  } catch (e) {
-    console.warn('File handle not available');
-  }
-  return null;
-}
-
-// Read file from stored handle (avoids file picker)
+// Read file from stored FileSystemFileHandle with permission checking
 async function readStockFileFromHandle(handleId) {
   try {
     const db = await initStockFileDB();
-    const handle = await new Promise((resolve, reject) => {
+    const record = await new Promise((resolve, reject) => {
       const tx = db.transaction([STORE_NAME], 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const req = store.get(handleId);
@@ -641,37 +614,39 @@ async function readStockFileFromHandle(handleId) {
       req.onsuccess = () => resolve(req.result);
     });
 
-    if (!handle) {
+    if (!record) {
       throw new Error('Saved file not found');
     }
 
-    // Try to get fresh file handle (requires user permission)
-    if (handle.supportsFileHandle && handle.fileHandle) {
-      try {
-        // Verify we still have permission
-        const permission = await handle.fileHandle.queryPermission({ mode: 'read' });
-        if (permission === 'granted') {
-          const file = await handle.fileHandle.getFile();
-          return file;
-        } else if (permission === 'prompt') {
-          // Request permission
-          const result = await handle.fileHandle.requestPermission({ mode: 'read' });
-          if (result === 'granted') {
-            const file = await handle.fileHandle.getFile();
-            return file;
-          } else {
-            throw new Error('Permission denied. Click "Change Source" to select the file again.');
-          }
-        } else {
-          throw new Error('Permission denied. Click "Change Source" to select the file again.');
-        }
-      } catch (e) {
-        console.warn('File handle access failed:', e);
-        throw new Error('Cannot access saved file. Click "Change Source" to select the file again.');
+    // File System Access API requires the actual FileSystemFileHandle
+    if (!record.supportsFileHandle || !record.fileHandle) {
+      throw new Error('This connection was saved from an older session or using file upload. File System Access API is required for persistent file access. Click "Change Source" to set up a new persistent connection.');
+    }
+
+    try {
+      // Check and request permission for file access
+      let permission = await record.fileHandle.queryPermission({ mode: 'read' });
+
+      if (permission === 'denied') {
+        throw new Error('File access permission was previously denied. Click "Change Source" to select the file again.');
       }
-    } else {
-      // Fallback: store has metadata but not actual handle
-      throw new Error('File access not available. Click "Change Source" to select the file again.');
+
+      if (permission === 'prompt') {
+        // Request permission from user (happens during Sync Now click)
+        permission = await record.fileHandle.requestPermission({ mode: 'read' });
+        if (permission !== 'granted') {
+          throw new Error('File access permission denied. Click "Change Source" to select the file again.');
+        }
+      }
+
+      // Permission is now 'granted' - get the file
+      const file = await record.fileHandle.getFile();
+      return file;
+    } catch (err) {
+      if (err.message.includes('permission')) {
+        throw err;
+      }
+      throw new Error(`Cannot access file: ${err.message}. Click "Change Source" to select the file again.`);
     }
   } catch (e) {
     throw e;
@@ -692,6 +667,75 @@ async function removeStockFileHandle(id) {
   } catch (e) {
     console.warn('Could not remove file handle:', e);
     return false;
+  }
+}
+
+async function selectStockFileWithFSA() {
+  try {
+    const [fileHandle] = await window.showOpenFilePicker({
+      types: [{description: 'Excel/CSV', extensions: ['xlsx', 'xls', 'csv']}],
+      multiple: false
+    });
+    const file = await fileHandle.getFile();
+    await saveStockFileHandleWithHandle(file, fileHandle);
+    await doUpdateStockFromFileHandle(file);
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      alert(`❌ ${err.message}`);
+    }
+  }
+}
+
+async function saveStockFileHandleWithHandle(file, fileHandle) {
+  try {
+    const db = await initStockFileDB();
+    const timestamp = new Date().toLocaleString('en-ZA', {hour12: false}).replace(',', '');
+    const record = {
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      saved_at: timestamp,
+      type: file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv',
+      supportsFileHandle: true,
+      fileHandle: fileHandle
+    };
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME], 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.add(record);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    });
+  } catch (e) {
+    console.warn('Could not save file handle:', e);
+    return null;
+  }
+}
+
+async function doUpdateStockFromFileHandle(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const syncResp = await fetch('/inventory/sync-from-file', {
+      method: 'POST',
+      body: formData
+    });
+    const result = await syncResp.json();
+
+    if (!result.ok) {
+      alert(`❌ ${result.msg}`);
+      return;
+    }
+
+    const message = `Ready to update stock:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
+    if (confirm(message)) {
+      syncStockModal.hide();
+      alert(`✓ Stock synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
+      setTimeout(() => location.reload(), 800);
+    }
+  } catch (err) {
+    alert(`❌ ${err.message}`);
   }
 }
 
@@ -932,11 +976,25 @@ document.addEventListener('DOMContentLoaded', loadConnectedStockSource);
         <!-- Manual File Upload -->
         <div class="mb-4">
           <h6 class="mb-3">Update from File</h6>
-          <p class="text-muted small">Select an Excel or CSV file to sync</p>
-          <input type="file" id="stockFileInput" accept=".xlsx,.csv" class="form-control form-control-sm mb-2">
-          <button class="btn btn-primary btn-sm" onclick="doUpdateStockFromFile()">
-            <i class="bi bi-file-earmark-arrow-up me-1"></i>Preview & Apply
-          </button>
+          <div class="d-flex gap-2 align-items-center mb-2">
+            <div class="flex-grow-1">
+              <p class="text-muted small mb-2">Select an Excel or CSV file to sync</p>
+              <input type="file" id="stockFileInput" accept=".xlsx,.csv" class="form-control form-control-sm mb-2">
+            </div>
+          </div>
+          <div class="btn-group d-flex w-100 gap-2" role="group">
+            <button class="btn btn-primary btn-sm flex-grow-1" onclick="doUpdateStockFromFile()">
+              <i class="bi bi-file-earmark-arrow-up me-1"></i>Preview & Apply
+            </button>
+            <script>
+              if ('showOpenFilePicker' in window) {
+                document.write('<button class="btn btn-outline-info btn-sm flex-grow-1" onclick="selectStockFileWithFSA()" title="Persistent file access across sessions"><i class="bi bi-bookmark me-1"></i>Persistent</button>');
+              }
+            </script>
+          </div>
+          <small class="text-muted d-block mt-2" id="fsaNote" style="display:none;">
+            <i class="bi bi-info-circle me-1"></i>Persistent option stores file handle for browser session. Once selected, use Sync Now without reselecting.
+          </small>
         </div>
       </div>
     </div>
