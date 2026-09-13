@@ -37,6 +37,7 @@
           <a class="nav-link" href="#s-debtors"><i class="bi bi-people me-2"></i>7. Debtors</a>
           <a class="nav-link" href="#s-notifications"><i class="bi bi-bell me-2"></i>8. Notifications</a>
           <a class="nav-link" href="#s-settings"><i class="bi bi-gear me-2"></i>9. Settings</a>
+          <a class="nav-link" href="#s-api"><i class="bi bi-link me-2"></i>10. Stock Software API</a>
         </nav>
       </div>
     </div>
@@ -300,6 +301,183 @@
         <div class="step"><div class="step-num">1</div><div>Update the fields you want to change.</div></div>
         <div class="step"><div class="step-num">2</div><div>Click <strong>"Save Settings"</strong>.</div></div>
         <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> <strong>WhatsApp alerts</strong> require a free CallMeBot account. Visit <strong>callmebot.com</strong>, follow the setup steps, and paste your API key here.</div>
+      </div>
+    </div>
+
+    <!-- 10. Stock Software API Connections -->
+    <div class="card mb-4 help-section" id="s-api">
+      <div class="card-body">
+        <h2 class="sec-title"><span class="section-icon">🔗</span> 10. Connecting Your Stock Software to AutoStack</h2>
+        <p class="text-muted small">AutoStack can connect to your existing stock or inventory system and bring that information into AutoStack automatically. This guide shows you how to set up that connection using your software's API.</p>
+
+        <h3 class="sub-title">What is an API?</h3>
+        <p class="small">An API is a safe way for two programs to talk to each other. Think of it like giving AutoStack a special password (API key) that lets it read information from your stock software — but not change or delete anything unless you allow it.</p>
+
+        <h3 class="sub-title">Step 1 — Get your API details from your stock software</h3>
+        <div class="step"><div class="step-num">1</div><div>Log in to the software you currently use for your stock.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Look for a section called:
+          <ul class="mt-1 mb-0" style="font-size:.875rem;">
+            <li><strong>API</strong></li>
+            <li><strong>Integrations</strong></li>
+            <li><strong>Developer</strong></li>
+            <li><strong>API Settings</strong></li>
+          </ul>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div>You will need two things:
+          <ul class="mt-1 mb-0" style="font-size:.875rem;">
+            <li><strong>API URL / API Endpoint</strong> — the website address your software's API is at (e.g. <code>https://api.example.com/products</code>)</li>
+            <li><strong>API Key / Token</strong> — a special code that gives AutoStack permission to read your data</li>
+          </ul>
+        </div></div>
+        <div class="step"><div class="step-num">4</div><div>If you cannot find these, contact your software company and ask: <em>"I want to connect my stock system to another application. Please give me my inventory API URL and API key/token."</em></div></div>
+        <div class="warn-box"><i class="bi bi-exclamation-triangle me-1"></i> <strong>Important:</strong> Your API key is like a password. Do not share it with people you do not trust. Never paste it into an untrusted website.</div>
+
+        <h3 class="sub-title">Step 2 — Open AutoStack's Stock Import page</h3>
+        <div class="step"><div class="step-num">1</div><div>Click <strong>"Inventory"</strong> in the left sidebar.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Click <strong>"Import CSV"</strong> button at the top right.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Choose the <strong>"API"</strong> tab (you should see tabs for File, URL, and API).</div></div>
+
+        <h3 class="sub-title">Step 3 — Enter your API URL</h3>
+        <div class="step"><div class="step-num">1</div><div>Find the field labeled <strong>"API Endpoint URL"</strong> or <strong>"API URL"</strong>.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Paste the API URL from your stock software. For example:
+          <div class="alert alert-light border mt-1 mb-0" style="font-size:.85rem;padding:.5rem .75rem;">
+            <code>https://api.example.com/products</code>
+          </div>
+        </div></div>
+
+        <h3 class="sub-title">Step 4 — Enter your API Key or Bearer Token</h3>
+        <div class="step"><div class="step-num">1</div><div>Find the field labeled <strong>"API Key"</strong>, <strong>"Bearer Token"</strong>, or <strong>"Authentication Token"</strong>.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Paste the API key/token from your stock software.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Remember: Your API key works like a password that allows AutoStack to connect to your stock system.</div></div>
+        <div class="warn-box"><i class="bi bi-exclamation-triangle me-1"></i> Never share your API key with someone you do not trust.</div>
+
+        <h3 class="sub-title">Step 5 — JSON Records Key (optional)</h3>
+        <p class="small">Some APIs organize their products inside a group or container. Common names for this group are:</p>
+        <table class="table table-sm" style="font-size:.875rem;">
+          <tbody>
+            <tr><td><code>records</code></td><td>Most common</td></tr>
+            <tr><td><code>products</code></td><td>Sometimes used</td></tr>
+            <tr><td><code>items</code></td><td>Also common</td></tr>
+            <tr><td><code>data</code></td><td>Generic term</td></tr>
+          </tbody>
+        </table>
+        <div class="step"><div class="step-num">1</div><div>Check your software's API instructions to see which one it uses.</div></div>
+        <div class="step"><div class="step-num">2</div><div>If it does, enter it in the <strong>"JSON Records Key"</strong> field.</div></div>
+        <div class="step"><div class="step-num">3</div><div>If your API gives AutoStack the products directly (without a container), leave this field blank.</div></div>
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> If you are not sure, leave it blank and try testing the connection first. You can ask your software provider if you get an error.</div>
+
+        <h3 class="sub-title">Step 6 — Give this connection a name (optional)</h3>
+        <div class="step"><div class="step-num">1</div><div>In the field <strong>"Save this connection as"</strong>, type an easy name you will remember. Examples:
+          <ul class="mt-1 mb-0" style="font-size:.875rem;">
+            <li>"EPOS Stock"</li>
+            <li>"Main Shop Inventory"</li>
+            <li>"Tyre Shop Stock"</li>
+            <li>"Airtable Inventory"</li>
+          </ul>
+        </div></div>
+        <div class="step"><div class="step-num">2</div><div>This makes it easy to use the same connection again next time without entering everything again.</div></div>
+
+        <h3 class="sub-title">Step 7 — Test the connection</h3>
+        <div class="step"><div class="step-num">1</div><div>Click the <strong>"Test Connection"</strong> or <strong>"Fetch"</strong> button.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Wait a moment while AutoStack tries to connect to your software's API.</div></div>
+        <div class="step"><div class="step-num">3</div><div>A successful connection should show a message like:
+          <div class="alert alert-success border mt-1 mb-0" style="font-size:.85rem;padding:.5rem .75rem;">
+            ✓ Connection Successful
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">4</div><div>If the test fails, check:
+          <ul class="mt-1 mb-0" style="font-size:.875rem;">
+            <li>Is the <strong>API URL</strong> correct and did you copy the entire URL?</li>
+            <li>Is the <strong>API key/token</strong> correct?</li>
+            <li>Is the <strong>JSON records key</strong> correct?</li>
+            <li>Does your API key have <strong>permission to read stock/products</strong> (not just write)?</li>
+          </ul>
+        </div></div>
+
+        <h3 class="sub-title">Step 8 — Match the columns</h3>
+        <p class="small">Different software uses different names for the same information. AutoStack needs to know which column from your software matches which field in AutoStack.</p>
+        <table class="table table-sm" style="font-size:.85rem;">
+          <thead><tr><th>Your Software</th><th>AutoStack Field</th></tr></thead>
+          <tbody>
+            <tr><td>SKU</td><td>Product Code</td></tr>
+            <tr><td>Product Name</td><td>Product Name</td></tr>
+            <tr><td>Quantity</td><td>Stock</td></tr>
+            <tr><td>Minimum Stock</td><td>Minimum Level</td></tr>
+            <tr><td>Cost</td><td>Cost Price</td></tr>
+            <tr><td>Selling Price</td><td>Selling Price</td></tr>
+            <tr><td>Brand</td><td>Brand</td></tr>
+            <tr><td>Category</td><td>Category</td></tr>
+          </tbody>
+        </table>
+        <div class="step"><div class="step-num">1</div><div>For each AutoStack field, tell it which column name from your software matches.</div></div>
+        <div class="step"><div class="step-num">2</div><div>AutoStack will try to guess the matches automatically.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Check each one — if AutoStack guessed wrong, type the correct column name from your software.</div></div>
+        <div class="tip-box"><i class="bi bi-lightbulb me-1"></i> <strong>Product Code / SKU is important.</strong> AutoStack uses it to recognize the same product and avoid creating duplicates.</div>
+
+        <h3 class="sub-title">Step 9 — Check your products before importing</h3>
+        <div class="step"><div class="step-num">1</div><div>AutoStack will show you a preview of the products it found before importing them.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Check that:
+          <ul class="mt-1 mb-0" style="font-size:.875rem;">
+            <li>Product names look correct</li>
+            <li>Product codes/SKUs look correct</li>
+            <li>Stock quantities look correct</li>
+            <li>The correct fields are matched</li>
+          </ul>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div>If everything looks good, click the button to continue with the import.</div></div>
+
+        <h3 class="sub-title">Step 10 — Start the sync</h3>
+        <div class="step"><div class="step-num">1</div><div>Once everything is correct, start the stock sync.</div></div>
+        <div class="step"><div class="step-num">2</div><div>AutoStack will bring the stock information from your connected system into AutoStack.</div></div>
+
+        <h3 class="sub-title">Step 11 — Understanding stock status</h3>
+        <p class="small">Once synced, AutoStack uses the stock information to identify problems. Here are two examples:</p>
+        <div class="alert alert-light border" style="font-size:.85rem;padding:.75rem;">
+          <strong>Example 1:</strong><br>
+          Product: <code>205/55R16 Continental</code><br>
+          Stock: 3&nbsp; |&nbsp; Minimum Level: 8<br>
+          <span class="badge badge-low px-2">LOW STOCK</span>
+        </div>
+        <div class="alert alert-light border" style="font-size:.85rem;padding:.75rem;">
+          <strong>Example 2:</strong><br>
+          Product: <code>195/65R15 Dunlop</code><br>
+          Stock: 0<br>
+          <span class="badge badge-out px-2">OUT OF STOCK</span>
+        </div>
+        <p class="small mt-2">AutoStack uses the stock information it receives to identify products that are running low or are completely out of stock, so you know what to reorder.</p>
+
+        <h3 class="sub-title">After your first setup — reusing saved connections</h3>
+        <div class="step"><div class="step-num">1</div><div>You normally do not need to enter all your API details every time you want to sync.</div></div>
+        <div class="step"><div class="step-num">2</div><div>If you saved the connection with a name (Step 6), it will be available next time you import stock.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Just select the saved connection from the list and click Sync — AutoStack will fetch the latest stock information.</div></div>
+
+        <h3 class="sub-title" style="margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid #E2E8F0;">Connecting Airtable</h3>
+        <p class="small text-muted">Airtable is an online database tool. If you store your stock information in Airtable, here's how to connect it.</p>
+
+        <h3 class="sub-title">What you need from Airtable</h3>
+        <p class="small">To connect Airtable to AutoStack, you normally need:</p>
+        <table class="table table-sm" style="font-size:.85rem;">
+          <tbody>
+            <tr><td><strong>Personal Access Token</strong></td><td>A special code that gives AutoStack permission to read your data</td></tr>
+            <tr><td><strong>Base ID</strong></td><td>The unique ID of your Airtable database</td></tr>
+            <tr><td><strong>Table Name</strong></td><td>The name of the table inside that database (e.g. "Products" or "Stock")</td></tr>
+          </tbody>
+        </table>
+
+        <h3 class="sub-title">Creating a Personal Access Token in Airtable</h3>
+        <div class="step"><div class="step-num">1</div><div>Log in to <strong>airtable.com</strong>.</div></div>
+        <div class="step"><div class="step-num">2</div><div>Go to <strong>Account Settings → Tokens</strong> (or find the Integrations/API section).</div></div>
+        <div class="step"><div class="step-num">3</div><div>Click <strong>"Generate token"</strong> or <strong>"Create token"</strong>.</div></div>
+        <div class="step"><div class="step-num">4</div><div>Give the token a name like <em>"AutoStack"</em> so you remember what it's for.</div></div>
+        <div class="step"><div class="step-num">5</div><div>Give it permission to <strong>read</strong> the table (you do not need to give write permission).</div></div>
+        <div class="step"><div class="step-num">6</div><div>Click <strong>"Create token"</strong> and copy it somewhere safe.</div></div>
+        <div class="warn-box"><i class="bi bi-exclamation-triangle me-1"></i> Keep this token secret. Do not share it with people you do not trust.</div>
+
+        <h3 class="sub-title">Connecting Airtable to AutoStack</h3>
+        <div class="step"><div class="step-num">1</div><div>Go to AutoStack's stock import page (Inventory → Import CSV → API tab).</div></div>
+        <div class="step"><div class="step-num">2</div><div>Use the Personal Access Token as your <strong>API Key</strong>.</div></div>
+        <div class="step"><div class="step-num">3</div><div>Use your <strong>Base ID</strong> and <strong>Table Name</strong> in the API URL.</div></div>
+        <div class="step"><div class="step-num">4</div><div>Then follow the same steps (8–11 above) to match columns and sync.</div></div>
       </div>
     </div>
 
