@@ -893,11 +893,11 @@ async function doUpdateStockFromFile() {
 
     const message = `Ready to update stock:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
     if (confirm(message)) {
-      // Save file handle for future syncs
       await saveStockFileHandle(file);
+      document.getElementById('stockFileInput').value = '';
       syncStockModal.hide();
-      alert(`✓ Stock updated!\n\nAdded: ${result.added}\nUpdated: ${result.updated}`);
-      setTimeout(() => location.reload(), 500);
+      alert(`✓ Stock synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
+      setTimeout(() => location.reload(), 800);
     } else {
       btn.disabled = false;
       btn.innerHTML = 'Preview & Apply';

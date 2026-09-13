@@ -1051,7 +1051,7 @@ async function doUpdateDebtorsFromFile() {
     const message = `Ready to update debtors:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
     if (confirm(message)) {
       await saveDebtorFileHandle(file);
-      document.getElementById('debtorFileSyncForm').reset();
+      document.getElementById('debtorFileInput').value = '';
       syncDebtorModal.hide();
       alert(`✓ Debtors synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
       setTimeout(() => location.reload(), 800);
