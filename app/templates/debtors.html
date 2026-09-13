@@ -712,6 +712,84 @@ async function loadConnectedDebtorSource() {
 }
 
 let syncDebtorModal;
+const DB_NAME_DEBTOR = 'AutoStackFileHandles';
+const STORE_NAME_DEBTOR = 'debtorFiles';
+
+// Initialize IndexedDB for debtor file handle persistence
+async function initDebtorFileDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME_DEBTOR, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME_DEBTOR)) {
+        db.createObjectStore(STORE_NAME_DEBTOR, {keyPath: 'id', autoIncrement: true});
+      }
+    };
+  });
+}
+
+// Get saved debtor file handles from IndexedDB
+async function getDebtorFileHandles() {
+  try {
+    const db = await initDebtorFileDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME_DEBTOR], 'readonly');
+      const store = tx.objectStore(STORE_NAME_DEBTOR);
+      const req = store.getAll();
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    });
+  } catch (e) {
+    console.warn('IndexedDB unavailable:', e);
+    return [];
+  }
+}
+
+// Save debtor file handle to IndexedDB
+async function saveDebtorFileHandle(file) {
+  try {
+    const db = await initDebtorFileDB();
+    const timestamp = new Date().toLocaleString('en-ZA', {hour12: false}).replace(',', '');
+    const handle = {
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      saved_at: timestamp,
+      type: file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv',
+      supportsFileHandle: false
+    };
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME_DEBTOR], 'readwrite');
+      const store = tx.objectStore(STORE_NAME_DEBTOR);
+      const req = store.add(handle);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    });
+  } catch (e) {
+    console.warn('Could not save debtor file handle:', e);
+    return null;
+  }
+}
+
+// Remove debtor file handle from IndexedDB
+async function removeDebtorFileHandle(id) {
+  try {
+    const db = await initDebtorFileDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME_DEBTOR], 'readwrite');
+      const store = tx.objectStore(STORE_NAME_DEBTOR);
+      const req = store.delete(id);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(true);
+    });
+  } catch (e) {
+    console.warn('Could not remove debtor file handle:', e);
+    return false;
+  }
+}
 
 function openSyncDebtorDialog() {
   if (!syncDebtorModal) {
@@ -727,12 +805,38 @@ function syncNow() {
 
 async function loadDebtorConnections() {
   try {
-    const resp = await fetch('/api/connections?module=debtors');
-    const data = await resp.json();
+    const [apiResp, fileHandles] = await Promise.all([
+      fetch('/api/connections?module=debtors'),
+      getDebtorFileHandles()
+    ]);
+    const apiData = await apiResp.json();
     const listDiv = document.getElementById('debtorConnectionsList');
 
-    if (data.connections && data.connections.length > 0) {
-      const html = data.connections.map(c => `
+    const connections = [];
+
+    if (apiData.connections) {
+      connections.push(...apiData.connections.map(c => ({
+        ...c,
+        isLocalHandle: false
+      })));
+    }
+
+    if (fileHandles && fileHandles.length > 0) {
+      connections.push(...fileHandles.map(h => ({
+        id: `local_${h.id}`,
+        name: h.name,
+        type: 'local_file',
+        source: h.name,
+        last_sync: h.saved_at,
+        status: 'ready',
+        isLocalHandle: true,
+        handleId: h.id,
+        supportsFileHandle: h.supportsFileHandle || false
+      })));
+    }
+
+    if (connections && connections.length > 0) {
+      const html = connections.map(c => `
         <div class="border rounded p-2 mb-2">
           <div class="d-flex justify-content-between align-items-start">
             <div>
@@ -741,10 +845,10 @@ async function loadDebtorConnections() {
               <small class="text-muted">Last sync: ${c.last_sync || 'Never'}</small>
             </div>
             <div class="btn-group btn-group-sm" role="group">
-              <button class="btn btn-success" onclick="doSyncFromDebtorConnection(${c.id})" title="Sync now">
+              <button class="btn btn-success" onclick="doSyncFromDebtorConnection('${c.id}', ${c.isLocalHandle ? c.handleId : 'null'})" title="Sync now">
                 <i class="bi bi-cloud-download"></i>
               </button>
-              <button class="btn btn-danger" onclick="removeDebtorConnection(${c.id})" title="Remove">
+              <button class="btn btn-danger" onclick="removeDebtorConnection('${c.id}', ${c.isLocalHandle})" title="Remove">
                 <i class="bi bi-trash"></i>
               </button>
             </div>
@@ -757,31 +861,49 @@ async function loadDebtorConnections() {
       document.getElementById('debtorSyncSection').style.display = 'none';
     }
   } catch (e) {
+    console.error('Load connections failed:', e);
     document.getElementById('debtorSyncSection').style.display = 'none';
   }
 }
 
-async function doSyncFromDebtorConnection(connId) {
+async function doSyncFromDebtorConnection(connId, handleId) {
   const btn = event.target.closest('button');
   btn.disabled = true;
   const original = btn.innerHTML;
   btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
 
   try {
-    const syncResp = await fetch('/api/data-sources/sync-now', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({source_id: connId, destination: 'debtors'})
-    });
-    const result = await syncResp.json();
-
-    if (result.status === 'success') {
-      alert(`✓ Debtors synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
-      setTimeout(() => location.reload(), 800);
+    if (handleId !== null && handleId !== undefined) {
+      const fileInput = document.getElementById('debtorFileInput');
+      fileInput.click();
+      const onFileSelected = async () => {
+        if (fileInput.files.length) {
+          const newId = await saveDebtorFileHandle(fileInput.files[0]);
+          await doUpdateDebtorsFromFile();
+          setTimeout(() => loadDebtorConnections(), 1000);
+          fileInput.removeEventListener('change', onFileSelected);
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = original;
+        }
+      };
+      fileInput.addEventListener('change', onFileSelected);
     } else {
-      alert(`❌ ${result.error}`);
-      btn.disabled = false;
-      btn.innerHTML = original;
+      const syncResp = await fetch('/api/data-sources/sync-now', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({source_id: connId, destination: 'debtors'})
+      });
+      const result = await syncResp.json();
+
+      if (result.status === 'success') {
+        alert(`✓ Debtors synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
+        setTimeout(() => location.reload(), 800);
+      } else {
+        alert(`❌ ${result.error}`);
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
     }
   } catch (err) {
     alert(`❌ ${err.message}`);
@@ -790,16 +912,22 @@ async function doSyncFromDebtorConnection(connId) {
   }
 }
 
-async function removeDebtorConnection(connId) {
+async function removeDebtorConnection(connId, isLocalHandle) {
   if (!confirm('Remove this connection? Existing debtor records will be kept.')) return;
 
   try {
-    const resp = await fetch(`/api/connections/${connId}`, {method: 'DELETE'});
-    const result = await resp.json();
-    if (result.ok) {
+    if (isLocalHandle) {
+      const handleId = parseInt(connId.replace('local_', ''));
+      await removeDebtorFileHandle(handleId);
       loadDebtorConnections();
     } else {
-      alert(`❌ ${result.error}`);
+      const resp = await fetch(`/api/connections/${connId}`, {method: 'DELETE'});
+      const result = await resp.json();
+      if (result.ok) {
+        loadDebtorConnections();
+      } else {
+        alert(`❌ ${result.error}`);
+      }
     }
   } catch (err) {
     alert(`❌ ${err.message}`);
@@ -813,8 +941,9 @@ async function doUpdateDebtorsFromFile() {
     return;
   }
 
+  const file = fileInput.files[0];
   const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
+  formData.append('file', file);
 
   const btn = event.target;
   btn.disabled = true;
@@ -836,6 +965,8 @@ async function doUpdateDebtorsFromFile() {
 
     const message = `Ready to update debtors:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
     if (confirm(message)) {
+      // Save file handle for future syncs
+      await saveDebtorFileHandle(file);
       syncDebtorModal.hide();
       alert(`✓ Debtors updated!\n\nAdded: ${result.added}\nUpdated: ${result.updated}`);
       setTimeout(() => location.reload(), 500);

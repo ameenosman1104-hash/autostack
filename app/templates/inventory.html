@@ -538,6 +538,96 @@ async function loadConnectedStockSource() {
 }
 
 let syncStockModal;
+const DB_NAME = 'AutoStackFileHandles';
+const STORE_NAME = 'stockFiles';
+
+// Initialize IndexedDB for file handle persistence
+async function initStockFileDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, {keyPath: 'id', autoIncrement: true});
+      }
+    };
+  });
+}
+
+// Get saved file handle from IndexedDB
+async function getStockFileHandles() {
+  try {
+    const db = await initStockFileDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME], 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    });
+  } catch (e) {
+    console.warn('IndexedDB unavailable:', e);
+    return [];
+  }
+}
+
+// Save file handle to IndexedDB
+async function saveStockFileHandle(file) {
+  try {
+    const db = await initStockFileDB();
+    const timestamp = new Date().toLocaleString('en-ZA', {hour12: false}).replace(',', '');
+    const handle = {
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      saved_at: timestamp,
+      type: file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv'
+    };
+
+    // For File System Access API (modern browsers)
+    if ('showOpenFilePicker' in window) {
+      try {
+        // Try to get a file handle if user has already granted permission
+        // This is primarily for future File System Access API integration
+        handle.supportsFileHandle = true;
+      } catch (e) {
+        handle.supportsFileHandle = false;
+      }
+    } else {
+      handle.supportsFileHandle = false;
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME], 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.add(handle);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    });
+  } catch (e) {
+    console.warn('Could not save file handle:', e);
+    return null;
+  }
+}
+
+// Remove file handle from IndexedDB
+async function removeStockFileHandle(id) {
+  try {
+    const db = await initStockFileDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME], 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.delete(id);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(true);
+    });
+  } catch (e) {
+    console.warn('Could not remove file handle:', e);
+    return false;
+  }
+}
 
 function openSyncStockDialog() {
   if (!syncStockModal) {
@@ -553,12 +643,41 @@ function syncStockNow() {
 
 async function loadStockConnections() {
   try {
-    const resp = await fetch('/api/connections?module=stock');
-    const data = await resp.json();
+    // Load both database connections and local file handles
+    const [apiResp, fileHandles] = await Promise.all([
+      fetch('/api/connections?module=stock'),
+      getStockFileHandles()
+    ]);
+    const apiData = await apiResp.json();
     const listDiv = document.getElementById('stockConnectionsList');
 
-    if (data.connections && data.connections.length > 0) {
-      const html = data.connections.map(c => `
+    const connections = [];
+
+    // Add API-saved connections
+    if (apiData.connections) {
+      connections.push(...apiData.connections.map(c => ({
+        ...c,
+        isLocalHandle: false
+      })));
+    }
+
+    // Add local file handles from IndexedDB
+    if (fileHandles && fileHandles.length > 0) {
+      connections.push(...fileHandles.map(h => ({
+        id: `local_${h.id}`,
+        name: h.name,
+        type: 'local_file',
+        source: h.name,
+        last_sync: h.saved_at,
+        status: 'ready',
+        isLocalHandle: true,
+        handleId: h.id,
+        supportsFileHandle: h.supportsFileHandle || false
+      })));
+    }
+
+    if (connections && connections.length > 0) {
+      const html = connections.map(c => `
         <div class="border rounded p-2 mb-2">
           <div class="d-flex justify-content-between align-items-start">
             <div>
@@ -567,10 +686,10 @@ async function loadStockConnections() {
               <small class="text-muted">Last sync: ${c.last_sync || 'Never'}</small>
             </div>
             <div class="btn-group btn-group-sm" role="group">
-              <button class="btn btn-success" onclick="doSyncFromStockConnection(${c.id})" title="Sync now">
+              <button class="btn btn-success" onclick="doSyncFromStockConnection('${c.id}', ${c.isLocalHandle ? c.handleId : 'null'})" title="Sync now">
                 <i class="bi bi-cloud-download"></i>
               </button>
-              <button class="btn btn-danger" onclick="removeStockConnection(${c.id})" title="Remove">
+              <button class="btn btn-danger" onclick="removeStockConnection('${c.id}', ${c.isLocalHandle})" title="Remove">
                 <i class="bi bi-trash"></i>
               </button>
             </div>
@@ -583,31 +702,55 @@ async function loadStockConnections() {
       document.getElementById('stockSyncSection').style.display = 'none';
     }
   } catch (e) {
+    console.error('Load connections failed:', e);
     document.getElementById('stockSyncSection').style.display = 'none';
   }
 }
 
-async function doSyncFromStockConnection(connId) {
+async function doSyncFromStockConnection(connId, handleId) {
   const btn = event.target.closest('button');
   btn.disabled = true;
   const original = btn.innerHTML;
   btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
 
   try {
-    const syncResp = await fetch('/api/data-sources/sync-now', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({source_id: connId, destination: 'stock'})
-    });
-    const result = await syncResp.json();
-
-    if (result.status === 'success') {
-      alert(`✓ Stock synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
-      setTimeout(() => location.reload(), 800);
+    // Check if this is a local file handle
+    if (handleId !== null && handleId !== undefined) {
+      // Sync from local file handle - user must select file again (browser limitation)
+      const fileInput = document.getElementById('stockFileInput');
+      fileInput.click();
+      const onFileSelected = async () => {
+        if (fileInput.files.length) {
+          // Re-save the file handle with new timestamp
+          const newId = await saveStockFileHandle(fileInput.files[0]);
+          // Perform sync with file
+          await doUpdateStockFromFile();
+          // Update connections list
+          setTimeout(() => loadStockConnections(), 1000);
+          fileInput.removeEventListener('change', onFileSelected);
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = original;
+        }
+      };
+      fileInput.addEventListener('change', onFileSelected);
     } else {
-      alert(`❌ ${result.error}`);
-      btn.disabled = false;
-      btn.innerHTML = original;
+      // Sync from database connection (file or API)
+      const syncResp = await fetch('/api/data-sources/sync-now', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({source_id: connId, destination: 'stock'})
+      });
+      const result = await syncResp.json();
+
+      if (result.status === 'success') {
+        alert(`✓ Stock synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
+        setTimeout(() => location.reload(), 800);
+      } else {
+        alert(`❌ ${result.error}`);
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
     }
   } catch (err) {
     alert(`❌ ${err.message}`);
@@ -616,16 +759,24 @@ async function doSyncFromStockConnection(connId) {
   }
 }
 
-async function removeStockConnection(connId) {
+async function removeStockConnection(connId, isLocalHandle) {
   if (!confirm('Remove this connection? Existing stock records will be kept.')) return;
 
   try {
-    const resp = await fetch(`/api/connections/${connId}`, {method: 'DELETE'});
-    const result = await resp.json();
-    if (result.ok) {
+    if (isLocalHandle) {
+      // Remove from IndexedDB
+      const handleId = parseInt(connId.replace('local_', ''));
+      await removeStockFileHandle(handleId);
       loadStockConnections();
     } else {
-      alert(`❌ ${result.error}`);
+      // Remove from database
+      const resp = await fetch(`/api/connections/${connId}`, {method: 'DELETE'});
+      const result = await resp.json();
+      if (result.ok) {
+        loadStockConnections();
+      } else {
+        alert(`❌ ${result.error}`);
+      }
     }
   } catch (err) {
     alert(`❌ ${err.message}`);
@@ -639,8 +790,9 @@ async function doUpdateStockFromFile() {
     return;
   }
 
+  const file = fileInput.files[0];
   const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
+  formData.append('file', file);
 
   const btn = event.target;
   btn.disabled = true;
@@ -662,6 +814,8 @@ async function doUpdateStockFromFile() {
 
     const message = `Ready to update stock:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
     if (confirm(message)) {
+      // Save file handle for future syncs
+      await saveStockFileHandle(file);
       syncStockModal.hide();
       alert(`✓ Stock updated!\n\nAdded: ${result.added}\nUpdated: ${result.updated}`);
       setTimeout(() => location.reload(), 500);
