@@ -327,3 +327,165 @@ def upload_snapshot():
         except:
             pass
         return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/connections", methods=["GET"])
+@login_required
+def list_connections():
+    """List saved connections for current user's tenant and specified module."""
+    tid = current_user.tenant_id
+    module = request.args.get("module", "debtors").strip()  # stock or debtors
+
+    if module not in ("stock", "debtors"):
+        return jsonify({"error": "Invalid module"}), 400
+
+    try:
+        from ..services.data_sources import list_data_sources
+        sources = list_data_sources(tid, destination=module)
+
+        # Return connection list with safe info (no credentials)
+        connections = []
+        for s in sources:
+            source_type = s.get("source_type", "")
+            config = s.get("config") or {}
+
+            # Build safe display info
+            if source_type == "local_file":
+                source_info = s.get("file_path", "").split("\\")[-1] if s.get("file_path") else "Local File"
+                if s.get("worksheet_name"):
+                    source_info += f" ({s['worksheet_name']})"
+            elif source_type == "hosted_url":
+                url = config.get("url", "")
+                source_info = url[:50] + "..." if len(url) > 50 else url
+            elif source_type == "api":
+                url = config.get("api_url", "")
+                source_info = url[:50] + "..." if len(url) > 50 else url
+            else:
+                source_info = "Unknown"
+
+            connections.append({
+                "id": s["id"],
+                "name": s["name"],
+                "type": source_type,
+                "source": source_info,
+                "last_sync": s.get("last_sync_at"),
+                "status": s.get("last_sync_status", "pending")
+            })
+
+        return jsonify({"connections": connections}), 200
+    except Exception as e:
+        current_app.logger.error(f"List connections failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/api/connections/{id}/test", methods=["POST"])
+@login_required
+def test_connection(id):
+    """Test a connection and preview data without saving."""
+    tid = current_user.tenant_id
+    data = request.get_json() or {}
+
+    try:
+        from ..services.data_sources import get_data_source
+        from ..services.excel_sync import fetch_source_data
+
+        # If updating config: use provided config, else get from DB
+        source_type = data.get("source_type")
+        config = data.get("config", {})
+
+        if not source_type or not config:
+            # Load existing connection
+            source = get_data_source(tid, id)
+            if not source:
+                return jsonify({"error": "Connection not found"}), 404
+            source_type = source["source_type"]
+            config = source.get("config") or {}
+
+        # Validate based on type
+        if source_type == "local_file":
+            from ..services.file_snapshot import read_snapshot
+            rows = read_snapshot(config.get("file_path"), sheet=config.get("worksheet_name"))
+            if not rows:
+                return jsonify({"error": "File is empty or unreadable"}), 400
+
+            preview = rows[:3] if rows else []
+            return jsonify({
+                "ok": True,
+                "total_rows": len(rows),
+                "preview": preview,
+                "columns": list(preview[0].keys()) if preview else []
+            }), 200
+
+        elif source_type in ("hosted_url", "api"):
+            headers, rows = fetch_source_data(source_type, config)
+            if rows is None:
+                return jsonify({"error": "Failed to fetch from source"}), 400
+
+            if not rows:
+                return jsonify({"error": "Source returned no data"}), 400
+
+            preview = rows[:3] if rows else []
+            return jsonify({
+                "ok": True,
+                "total_rows": len(rows),
+                "preview": preview,
+                "columns": list(preview[0].keys()) if preview else []
+            }), 200
+
+        else:
+            return jsonify({"error": f"Unsupported source type: {source_type}"}), 400
+
+    except Exception as e:
+        current_app.logger.error(f"Test connection failed: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@bp.route("/api/connections", methods=["POST"])
+@login_required
+def save_connection():
+    """Save a new data source connection (file or API)."""
+    tid = current_user.tenant_id
+    data = request.get_json() or {}
+
+    name = data.get("name", "").strip()
+    source_type = data.get("source_type", "").strip()
+    destination = data.get("destination", "debtors").strip()
+    config = data.get("config", {})
+    column_mapping = data.get("column_mapping", {})
+    unique_key_field = data.get("unique_key_field", "Invoice No.")
+
+    if not name or not source_type or destination not in ("stock", "debtors"):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        from ..services.data_sources import create_data_source
+
+        pairing_token, source_id = create_data_source(
+            tid, name, source_type, config, column_mapping, unique_key_field,
+            destination, "auto"
+        )
+
+        return jsonify({
+            "ok": True,
+            "connection_id": source_id,
+            "pairing_token": pairing_token if pairing_token else None
+        }), 201
+
+    except Exception as e:
+        current_app.logger.error(f"Save connection failed: {e}")
+        return jsonify({"error": str(e)}), 400
+
+
+@bp.route("/api/connections/{id}", methods=["DELETE"])
+@login_required
+def delete_connection(id):
+    """Delete a saved connection."""
+    tid = current_user.tenant_id
+
+    try:
+        from ..services.data_sources import disconnect_source
+        disconnect_source(tid, id)
+        return jsonify({"ok": True, "message": "Connection removed"}), 200
+    except Exception as e:
+        current_app.logger.error(f"Delete connection failed: {e}")
+        return jsonify({"error": str(e)}), 400

@@ -543,8 +543,7 @@ function openSyncStockDialog() {
   if (!syncStockModal) {
     syncStockModal = new bootstrap.Modal(document.getElementById('syncStockModal'));
   }
-  // Load saved connections
-  loadStockSyncOptions();
+  loadStockConnections();
   syncStockModal.show();
 }
 
@@ -552,64 +551,84 @@ function syncStockNow() {
   openSyncStockDialog();
 }
 
-async function loadStockSyncOptions() {
+async function loadStockConnections() {
   try {
-    const listResp = await fetch('/api/data-sources/list?destination=stock');
-    const listData = await listResp.json();
-    const connDiv = document.getElementById('stockConnectionsList');
+    const resp = await fetch('/api/connections?module=stock');
+    const data = await resp.json();
+    const listDiv = document.getElementById('stockConnectionsList');
 
-    if (listData.sources && listData.sources.length > 0) {
-      const options = listData.sources.map(s => `
-        <div class="form-check mb-2">
-          <input class="form-check-input" type="radio" name="stockSource" id="source_${s.id}" value="${s.id}">
-          <label class="form-check-label" for="source_${s.id}">
-            <strong>${s.name}</strong>
-            ${s.file_path ? ` (${s.file_path.split('\\').pop()}${s.worksheet_name ? ' - ' + s.worksheet_name : ''})` : ''}
-          </label>
+    if (data.connections && data.connections.length > 0) {
+      const html = data.connections.map(c => `
+        <div class="border rounded p-2 mb-2">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <strong>${c.name}</strong><br>
+              <small class="text-muted">${c.type} • ${c.source}</small><br>
+              <small class="text-muted">Last sync: ${c.last_sync || 'Never'}</small>
+            </div>
+            <div class="btn-group btn-group-sm" role="group">
+              <button class="btn btn-success" onclick="doSyncFromStockConnection(${c.id})" title="Sync now">
+                <i class="bi bi-cloud-download"></i>
+              </button>
+              <button class="btn btn-danger" onclick="removeStockConnection(${c.id})" title="Remove">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </div>
         </div>
       `).join('');
-      connDiv.innerHTML = `<div class="mb-3">${options}</div>`;
-      document.getElementById('stockSyncFromConnection').style.display = 'block';
+      listDiv.innerHTML = html;
+      document.getElementById('stockSyncSection').style.display = 'block';
     } else {
-      document.getElementById('stockSyncFromConnection').style.display = 'none';
+      document.getElementById('stockSyncSection').style.display = 'none';
     }
   } catch (e) {
-    document.getElementById('stockSyncFromConnection').style.display = 'none';
+    document.getElementById('stockSyncSection').style.display = 'none';
   }
 }
 
-async function doSyncFromStockConnection() {
-  const sourceId = document.querySelector('input[name="stockSource"]:checked')?.value;
-  if (!sourceId) {
-    alert('Please select a connection');
-    return;
-  }
-
-  const btn = event.target;
+async function doSyncFromStockConnection(connId) {
+  const btn = event.target.closest('button');
   btn.disabled = true;
-  btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Syncing...';
+  const original = btn.innerHTML;
+  btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
 
   try {
     const syncResp = await fetch('/api/data-sources/sync-now', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({source_id: parseInt(sourceId), destination: 'stock'})
+      body: JSON.stringify({source_id: connId, destination: 'stock'})
     });
-    const syncResult = await syncResp.json();
+    const result = await syncResp.json();
 
-    if (syncResult.status === 'success') {
-      syncStockModal.hide();
-      alert(`✓ Stock synced!\n\nAdded: ${syncResult.added}\nUpdated: ${syncResult.updated}\n\nRefreshing page...`);
-      setTimeout(() => location.reload(), 500);
+    if (result.status === 'success') {
+      alert(`✓ Stock synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
+      setTimeout(() => location.reload(), 800);
     } else {
-      alert(`❌ Sync failed: ${syncResult.error}`);
+      alert(`❌ ${result.error}`);
       btn.disabled = false;
-      btn.innerHTML = 'Sync from Connection';
+      btn.innerHTML = original;
     }
   } catch (err) {
-    alert(`❌ Error: ${err.message}`);
+    alert(`❌ ${err.message}`);
     btn.disabled = false;
-    btn.innerHTML = 'Sync from Connection';
+    btn.innerHTML = original;
+  }
+}
+
+async function removeStockConnection(connId) {
+  if (!confirm('Remove this connection? Existing stock records will be kept.')) return;
+
+  try {
+    const resp = await fetch(`/api/connections/${connId}`, {method: 'DELETE'});
+    const result = await resp.json();
+    if (result.ok) {
+      loadStockConnections();
+    } else {
+      alert(`❌ ${result.error}`);
+    }
+  } catch (err) {
+    alert(`❌ ${err.message}`);
   }
 }
 
@@ -628,7 +647,6 @@ async function doUpdateStockFromFile() {
   btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Processing...';
 
   try {
-    // Upload file and get preview
     const syncResp = await fetch('/inventory/sync-from-file', {
       method: 'POST',
       body: formData
@@ -642,18 +660,17 @@ async function doUpdateStockFromFile() {
       return;
     }
 
-    // Show confirmation
     const message = `Ready to update stock:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
     if (confirm(message)) {
       syncStockModal.hide();
-      alert(`✓ Stock updated!\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nRefreshing page...`);
+      alert(`✓ Stock updated!\n\nAdded: ${result.added}\nUpdated: ${result.updated}`);
       setTimeout(() => location.reload(), 500);
     } else {
       btn.disabled = false;
       btn.innerHTML = 'Preview & Apply';
     }
   } catch (err) {
-    alert(`❌ Error: ${err.message}`);
+    alert(`❌ ${err.message}`);
     btn.disabled = false;
     btn.innerHTML = 'Preview & Apply';
   }
@@ -672,33 +689,21 @@ document.addEventListener('DOMContentLoaded', loadConnectedStockSource);
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <!-- Option 1: Sync from saved connection -->
-        <div id="stockSyncFromConnection" style="display:none;" class="mb-4">
-          <h6 class="mb-3">1. Sync from saved connection</h6>
-          <div id="stockConnectionsList" class="mb-3"></div>
-          <button class="btn btn-success btn-sm" onclick="doSyncFromStockConnection()">
-            <i class="bi bi-cloud-download me-1"></i>Sync from Connection
-          </button>
+        <!-- Saved Connections -->
+        <div id="stockSyncSection" style="display:none;" class="mb-4">
+          <h6 class="mb-3">Saved Connections</h6>
+          <div id="stockConnectionsList"></div>
           <hr>
         </div>
 
-        <!-- Option 2: Update from file -->
+        <!-- Manual File Upload -->
         <div class="mb-4">
-          <h6 class="mb-3">2. Update from file</h6>
-          <p class="text-muted small">Select an Excel or CSV file to update products by code/SKU</p>
+          <h6 class="mb-3">Update from File</h6>
+          <p class="text-muted small">Select an Excel or CSV file to sync</p>
           <input type="file" id="stockFileInput" accept=".xlsx,.csv" class="form-control form-control-sm mb-2">
           <button class="btn btn-primary btn-sm" onclick="doUpdateStockFromFile()">
             <i class="bi bi-file-earmark-arrow-up me-1"></i>Preview & Apply
           </button>
-          <hr>
-        </div>
-
-        <!-- Option 3: Settings link -->
-        <div>
-          <h6 class="mb-3">3. Manage connections</h6>
-          <a href="{{ url_for('settings.index') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-gear me-1"></i>Go to Settings → Data Connections
-          </a>
         </div>
       </div>
     </div>

@@ -543,6 +543,35 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 9 failed: {e}")
 
+        # Migration 10: Add columns for credential encryption and file handle persistence
+        if get_schema_version(conn) < 10:
+            try:
+                conn.execute("PRAGMA foreign_keys=OFF")
+
+                # Add credential encryption and file handle columns
+                try:
+                    conn.execute("""
+                        ALTER TABLE data_source_connections
+                        ADD COLUMN credentials_encrypted TEXT
+                    """)
+                except sqlite3.OperationalError:
+                    pass  # Column may already exist
+
+                try:
+                    conn.execute("""
+                        ALTER TABLE data_source_connections
+                        ADD COLUMN file_handle_id TEXT
+                    """)
+                except sqlite3.OperationalError:
+                    pass  # Column may already exist
+
+                conn.execute("PRAGMA foreign_keys=ON")
+                mark_migration_applied(conn, 10, "Add credentials and file handle support for saved connections")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 10 failed: {e}")
+
         conn.close()
         return backup_path
 
