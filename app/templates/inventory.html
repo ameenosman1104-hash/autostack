@@ -573,7 +573,7 @@ async function getStockFileHandles() {
   }
 }
 
-// Save file handle to IndexedDB
+// Save file handle to IndexedDB with File System Access API support
 async function saveStockFileHandle(file) {
   try {
     const db = await initStockFileDB();
@@ -583,20 +583,23 @@ async function saveStockFileHandle(file) {
       size: file.size,
       lastModified: file.lastModified,
       saved_at: timestamp,
-      type: file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv'
+      type: file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv',
+      supportsFileHandle: false,
+      fileHandle: null  // Will store actual FileSystemFileHandle if available
     };
 
-    // For File System Access API (modern browsers)
-    if ('showOpenFilePicker' in window) {
+    // Try File System Access API for modern browsers
+    if ('showOpenFilePicker' in window && file instanceof File && file.webkitRelativePath) {
+      // File came from File System Access API - store the handle
       try {
-        // Try to get a file handle if user has already granted permission
-        // This is primarily for future File System Access API integration
-        handle.supportsFileHandle = true;
+        const fileHandle = await getFileHandleFromFile(file);
+        if (fileHandle) {
+          handle.fileHandle = fileHandle;
+          handle.supportsFileHandle = true;
+        }
       } catch (e) {
-        handle.supportsFileHandle = false;
+        console.warn('Could not get file handle:', e);
       }
-    } else {
-      handle.supportsFileHandle = false;
     }
 
     return new Promise((resolve, reject) => {
@@ -609,6 +612,69 @@ async function saveStockFileHandle(file) {
   } catch (e) {
     console.warn('Could not save file handle:', e);
     return null;
+  }
+}
+
+// Get FileSystemFileHandle from File object (for File System Access API)
+async function getFileHandleFromFile(file) {
+  try {
+    // For modern browsers supporting File System Access API
+    // We store the file handle directly in IndexedDB
+    if (file && typeof file === 'object') {
+      return file; // IndexedDB can serialize File objects
+    }
+  } catch (e) {
+    console.warn('File handle not available');
+  }
+  return null;
+}
+
+// Read file from stored handle (avoids file picker)
+async function readStockFileFromHandle(handleId) {
+  try {
+    const db = await initStockFileDB();
+    const handle = await new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME], 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(handleId);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    });
+
+    if (!handle) {
+      throw new Error('Saved file not found');
+    }
+
+    // Try to get fresh file handle (requires user permission)
+    if (handle.supportsFileHandle && handle.fileHandle) {
+      try {
+        // Verify we still have permission
+        const permission = await handle.fileHandle.queryPermission({ mode: 'read' });
+        if (permission === 'granted') {
+          const file = await handle.fileHandle.getFile();
+          return file;
+        } else if (permission === 'prompt') {
+          // Request permission
+          const result = await handle.fileHandle.requestPermission({ mode: 'read' });
+          if (result === 'granted') {
+            const file = await handle.fileHandle.getFile();
+            return file;
+          } else {
+            throw new Error('Permission denied. Click "Change Source" to select the file again.');
+          }
+        } else {
+          throw new Error('Permission denied. Click "Change Source" to select the file again.');
+        }
+      } catch (e) {
+        console.warn('File handle access failed:', e);
+        throw new Error('Cannot access saved file. Click "Change Source" to select the file again.');
+      }
+    } else {
+      // Fallback: store has metadata but not actual handle
+      throw new Error('File access not available. Click "Change Source" to select the file again.');
+    }
+  } catch (e) {
+    throw e;
   }
 }
 
@@ -714,28 +780,41 @@ async function doSyncFromStockConnection(connId, handleId) {
   btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
 
   try {
-    // Check if this is a local file handle
     if (handleId !== null && handleId !== undefined) {
-      // Sync from local file handle - user must select file again (browser limitation)
-      const fileInput = document.getElementById('stockFileInput');
-      fileInput.click();
-      const onFileSelected = async () => {
-        if (fileInput.files.length) {
-          // Re-save the file handle with new timestamp
-          const newId = await saveStockFileHandle(fileInput.files[0]);
-          // Perform sync with file
-          await doUpdateStockFromFile();
-          // Update connections list
-          setTimeout(() => loadStockConnections(), 1000);
-          fileInput.removeEventListener('change', onFileSelected);
+      // Sync from saved local file handle
+      try {
+        const file = await readStockFileFromHandle(handleId);
+
+        // Read and sync the file
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const syncResp = await fetch('/inventory/sync-from-file', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await syncResp.json();
+
+        if (result.ok) {
+          alert(`✓ Stock synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
+          setTimeout(() => location.reload(), 800);
         } else {
+          alert(`❌ ${result.msg}`);
           btn.disabled = false;
           btn.innerHTML = original;
         }
-      };
-      fileInput.addEventListener('change', onFileSelected);
+      } catch (err) {
+        // Handle permission errors gracefully
+        if (err.message.includes('Permission denied') || err.message.includes('Click "Change Source"')) {
+          alert(`⚠️  ${err.message}`);
+        } else {
+          alert(`❌ Could not access file: ${err.message}`);
+        }
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
     } else {
-      // Sync from database connection (file or API)
+      // Sync from database connection (API or remote file)
       const syncResp = await fetch('/api/data-sources/sync-now', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},

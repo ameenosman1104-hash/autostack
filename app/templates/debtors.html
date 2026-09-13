@@ -747,7 +747,7 @@ async function getDebtorFileHandles() {
   }
 }
 
-// Save debtor file handle to IndexedDB
+// Save debtor file handle to IndexedDB with File System Access API support
 async function saveDebtorFileHandle(file) {
   try {
     const db = await initDebtorFileDB();
@@ -758,8 +758,21 @@ async function saveDebtorFileHandle(file) {
       lastModified: file.lastModified,
       saved_at: timestamp,
       type: file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv',
-      supportsFileHandle: false
+      supportsFileHandle: false,
+      fileHandle: null
     };
+
+    if ('showOpenFilePicker' in window && file instanceof File && file.webkitRelativePath) {
+      try {
+        const fileHandle = await getFileHandleFromFile(file);
+        if (fileHandle) {
+          handle.fileHandle = fileHandle;
+          handle.supportsFileHandle = true;
+        }
+      } catch (e) {
+        console.warn('Could not get debtor file handle:', e);
+      }
+    }
 
     return new Promise((resolve, reject) => {
       const tx = db.transaction([STORE_NAME_DEBTOR], 'readwrite');
@@ -771,6 +784,61 @@ async function saveDebtorFileHandle(file) {
   } catch (e) {
     console.warn('Could not save debtor file handle:', e);
     return null;
+  }
+}
+
+async function getFileHandleFromFile(file) {
+  try {
+    if (file && typeof file === 'object') {
+      return file;
+    }
+  } catch (e) {
+    console.warn('File handle not available');
+  }
+  return null;
+}
+
+async function readDebtorFileFromHandle(handleId) {
+  try {
+    const db = await initDebtorFileDB();
+    const handle = await new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME_DEBTOR], 'readonly');
+      const store = tx.objectStore(STORE_NAME_DEBTOR);
+      const req = store.get(handleId);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    });
+
+    if (!handle) {
+      throw new Error('Saved file not found');
+    }
+
+    if (handle.supportsFileHandle && handle.fileHandle) {
+      try {
+        const permission = await handle.fileHandle.queryPermission({ mode: 'read' });
+        if (permission === 'granted') {
+          const file = await handle.fileHandle.getFile();
+          return file;
+        } else if (permission === 'prompt') {
+          const result = await handle.fileHandle.requestPermission({ mode: 'read' });
+          if (result === 'granted') {
+            const file = await handle.fileHandle.getFile();
+            return file;
+          } else {
+            throw new Error('Permission denied. Click "Change Source" to select the file again.');
+          }
+        } else {
+          throw new Error('Permission denied. Click "Change Source" to select the file again.');
+        }
+      } catch (e) {
+        console.warn('File handle access failed:', e);
+        throw new Error('Cannot access saved file. Click "Change Source" to select the file again.');
+      }
+    } else {
+      throw new Error('File access not available. Click "Change Source" to select the file again.');
+    }
+  } catch (e) {
+    throw e;
   }
 }
 
@@ -874,21 +942,38 @@ async function doSyncFromDebtorConnection(connId, handleId) {
 
   try {
     if (handleId !== null && handleId !== undefined) {
-      const fileInput = document.getElementById('debtorFileInput');
-      fileInput.click();
-      const onFileSelected = async () => {
-        if (fileInput.files.length) {
-          const newId = await saveDebtorFileHandle(fileInput.files[0]);
-          await doUpdateDebtorsFromFile();
-          setTimeout(() => loadDebtorConnections(), 1000);
-          fileInput.removeEventListener('change', onFileSelected);
+      // Sync from saved debtor file handle
+      try {
+        const file = await readDebtorFileFromHandle(handleId);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const syncResp = await fetch('/debtors/sync-from-file', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await syncResp.json();
+
+        if (result.ok) {
+          alert(`✓ Debtors synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
+          setTimeout(() => location.reload(), 800);
         } else {
+          alert(`❌ ${result.msg}`);
           btn.disabled = false;
           btn.innerHTML = original;
         }
-      };
-      fileInput.addEventListener('change', onFileSelected);
+      } catch (err) {
+        if (err.message.includes('Permission denied') || err.message.includes('Click "Change Source"')) {
+          alert(`⚠️  ${err.message}`);
+        } else {
+          alert(`❌ Could not access file: ${err.message}`);
+        }
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
     } else {
+      // Sync from database connection (API)
       const syncResp = await fetch('/api/data-sources/sync-now', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -965,11 +1050,11 @@ async function doUpdateDebtorsFromFile() {
 
     const message = `Ready to update debtors:\n\nAdded: ${result.added}\nUpdated: ${result.updated}\n\nContinue?`;
     if (confirm(message)) {
-      // Save file handle for future syncs
       await saveDebtorFileHandle(file);
+      document.getElementById('debtorFileSyncForm').reset();
       syncDebtorModal.hide();
-      alert(`✓ Debtors updated!\n\nAdded: ${result.added}\nUpdated: ${result.updated}`);
-      setTimeout(() => location.reload(), 500);
+      alert(`✓ Debtors synced!\nAdded: ${result.added}, Updated: ${result.updated}`);
+      setTimeout(() => location.reload(), 800);
     } else {
       btn.disabled = false;
       btn.innerHTML = 'Preview & Apply';
