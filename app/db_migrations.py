@@ -709,6 +709,22 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 15 failed: {e}")
 
+        # Migration 16: Add customer_id to debtors
+        if get_schema_version(conn) < 16:
+            conn.execute("BEGIN")
+            try:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(debtors)").fetchall()}
+
+                if "customer_id" not in cols:
+                    conn.execute("ALTER TABLE debtors ADD COLUMN customer_id INTEGER DEFAULT NULL")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_debtors_customer ON debtors(customer_id)")
+
+                mark_migration_applied(conn, 16, "Add customer_id to debtors table")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 16 failed: {e}")
+
         # Migration 17: Add selling_price column to products + backfill from extra_data
         if get_schema_version(conn) < 17:
             conn.execute("BEGIN")
@@ -743,22 +759,6 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 17 failed: {e}")
-
-        # Migration 16: Add customer_id to debtors
-        if get_schema_version(conn) < 16:
-            conn.execute("BEGIN")
-            try:
-                cols = {r[1] for r in conn.execute("PRAGMA table_info(debtors)").fetchall()}
-
-                if "customer_id" not in cols:
-                    conn.execute("ALTER TABLE debtors ADD COLUMN customer_id INTEGER DEFAULT NULL")
-                    conn.execute("CREATE INDEX IF NOT EXISTS idx_debtors_customer ON debtors(customer_id)")
-
-                mark_migration_applied(conn, 16, "Add customer_id to debtors table")
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                raise RuntimeError(f"Migration 16 failed: {e}")
 
         # Migration 18: Create invoice_sequences table for atomic invoice numbering
         if get_schema_version(conn) < 18:
