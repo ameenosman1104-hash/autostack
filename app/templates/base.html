@@ -355,6 +355,11 @@
         </a>
       </li>
       <li class="nav-item">
+        <a class="nav-link {% if request.endpoint and 'pos.' in request.endpoint %}active{% endif %}" href="{{ url_for('pos.index') }}">
+          <i class="bi bi-cash-coin me-2"></i>Point of Sale
+        </a>
+      </li>
+      <li class="nav-item">
         <a class="nav-link {% if request.endpoint and 'po.' in request.endpoint %}active{% endif %}" href="{{ url_for('po.index') }}">
           <i class="bi bi-cart me-2"></i>Purchase Orders
         </a>
