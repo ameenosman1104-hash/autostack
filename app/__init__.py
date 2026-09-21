@@ -40,6 +40,7 @@ def create_app():
     from .routes.dashboard      import dashboard_bp
     from .routes.inventory      import inventory_bp
     from .routes.purchase_orders import po_bp
+    from .routes.customers      import customers_bp
     from .routes.debtors        import debtors_bp
     from .routes.settings       import settings_bp
     from .routes.notifications  import notifications_bp
@@ -54,6 +55,7 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(inventory_bp,   url_prefix="/inventory")
     app.register_blueprint(po_bp,          url_prefix="/purchase-orders")
+    app.register_blueprint(customers_bp,   url_prefix="/customers")
     app.register_blueprint(debtors_bp,     url_prefix="/debtors")
     app.register_blueprint(settings_bp,    url_prefix="/settings")
     app.register_blueprint(notifications_bp, url_prefix="/notifications")

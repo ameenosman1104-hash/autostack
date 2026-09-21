@@ -5,12 +5,17 @@ import tempfile
 import os
 import sqlite3
 import shutil
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app.db_migrations import migrate_tenant_db
 from app.tenant_db import add_product, get_product, update_product
 
-# Create fresh temp directory
+# Create fresh temp directory with unique tenant
+import random
 temp_dir = tempfile.mkdtemp(prefix='phase_a_verify_')
-test_tenant = 9999
+test_tenant = 9000 + random.randint(1, 999)
 test_db = os.path.join(temp_dir, f'{test_tenant}.db')
 
 try:
@@ -23,7 +28,7 @@ try:
     print('=' * 60)
     print('\n1. Running migrations...')
     migrate_tenant_db(test_tenant, test_db)
-    print('   ✓ Migrations completed')
+    print('   [OK] Migrations completed')
 
     # Verify Migration 15 applied correctly
     print('\n2. Verifying Migration 15 (condition column)...')
@@ -31,8 +36,8 @@ try:
     cols = {r[1]: r for r in conn.execute('PRAGMA table_info(products)').fetchall()}
 
     assert 'condition' in cols, 'condition column should exist'
-    print('   ✓ Condition column exists')
-    print(f'   ✓ Column DEFAULT: {cols["condition"][4]}')  # DEFAULT is at index 4
+    print('   [OK] Condition column exists')
+    print(f'   [OK] Column DEFAULT: {cols["condition"][4]}')  # DEFAULT is at index 4
 
     # Verify migrations applied
     versions = conn.execute('SELECT version FROM schema_migrations ORDER BY version').fetchall()
@@ -45,8 +50,8 @@ try:
     assert 15 in versions, 'Migration 15 should be applied'
     assert 16 in versions, 'Migration 16 should be applied'
     assert 17 not in versions, 'Migration 17 should NOT be applied (removed)'
-    print('   ✓ All Phase A migrations (11-16) present')
-    print('   ✓ Migration 17 NOT present (correctly removed)')
+    print('   [OK] All Phase A migrations (11-16) present')
+    print('   [OK] Migration 17 NOT present (correctly removed)')
 
     conn.close()
 
@@ -55,7 +60,7 @@ try:
     prod1 = add_product(test_tenant, 'UNCLASS-001', 'Unclassified Product', current_stock=10)
     prod1_data = get_product(test_tenant, prod1)
     assert prod1_data['condition'] is None, f'Unclassified product should have NULL condition, got {repr(prod1_data["condition"])}'
-    print(f'   ✓ Unclassified product condition: {repr(prod1_data["condition"])} (NULL)')
+    print(f'   [OK] Unclassified product condition: {repr(prod1_data["condition"])} (NULL)')
 
     # Test: Explicitly set to 'new'
     print('\n5. Testing explicit condition=\'new\'...')
@@ -63,7 +68,7 @@ try:
     update_product(test_tenant, prod2, condition='new')
     prod2_data = get_product(test_tenant, prod2)
     assert prod2_data['condition'] == 'new', f'Explicit new should be preserved, got {repr(prod2_data["condition"])}'
-    print(f'   ✓ Explicit condition=\'new\': {repr(prod2_data["condition"])} (preserved)')
+    print(f'   [OK] Explicit condition=\'new\': {repr(prod2_data["condition"])} (preserved)')
 
     # Test: Explicitly set to 'used'
     print('\n6. Testing explicit condition=\'used\'...')
@@ -71,18 +76,18 @@ try:
     update_product(test_tenant, prod3, condition='used')
     prod3_data = get_product(test_tenant, prod3)
     assert prod3_data['condition'] == 'used', f'Explicit used should be preserved, got {repr(prod3_data["condition"])}'
-    print(f'   ✓ Explicit condition=\'used\': {repr(prod3_data["condition"])} (preserved)')
+    print(f'   [OK] Explicit condition=\'used\': {repr(prod3_data["condition"])} (preserved)')
 
     print('\n' + '=' * 60)
-    print('✓ Phase A Verification COMPLETE - All checks passed')
+    print('[OK] Phase A Verification COMPLETE - All checks passed')
     print('=' * 60)
     print('\nSummary:')
-    print('  ✓ Migration 15: condition column added with DEFAULT NULL')
-    print('  ✓ Migration 16: customer_id added to debtors')
-    print('  ✓ Migration 17: REMOVED (does not blindly update values)')
-    print('  ✓ Unclassified products: condition = NULL')
-    print('  ✓ Explicit \'new\' classification: preserved')
-    print('  ✓ Explicit \'used\' classification: preserved')
+    print('  [OK] Migration 15: condition column added with DEFAULT NULL')
+    print('  [OK] Migration 16: customer_id added to debtors')
+    print('  [OK] Migration 17: REMOVED (does not blindly update values)')
+    print('  [OK] Unclassified products: condition = NULL')
+    print('  [OK] Explicit \'new\' classification: preserved')
+    print('  [OK] Explicit \'used\' classification: preserved')
 
 finally:
     # Cleanup

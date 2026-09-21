@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div class="page-title mb-0">
+    <i class="bi bi-person me-2"></i>{{ customer.name }}
+  </div>
+  <a href="{{ url_for('customers.edit', cid=customer.id) }}" class="btn btn-primary">
+    <i class="bi bi-pencil me-1"></i>Edit
+  </a>
+</div>
+
+<!-- Customer Information -->
+<div class="row mb-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-info-circle me-2"></i>Customer Information
+      </div>
+      <div class="card-body">
+        <dl class="row">
+          <dt class="col-sm-4">Name</dt>
+          <dd class="col-sm-8 fw-semibold">{{ customer.name }}</dd>
+
+          <dt class="col-sm-4">Phone</dt>
+          <dd class="col-sm-8">
+            {% if customer.phone %}
+              <a href="tel:{{ customer.phone }}" class="text-decoration-none">{{ customer.phone }}</a>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-sm-4">Email</dt>
+          <dd class="col-sm-8">
+            {% if customer.email %}
+              <a href="mailto:{{ customer.email }}" class="text-decoration-none">{{ customer.email }}</a>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-sm-4">Vehicle</dt>
+          <dd class="col-sm-8">
+            {{ customer.vehicle_registration or '—' }}
+          </dd>
+        </dl>
+
+        {% if customer.notes %}
+        <div class="mt-3 pt-3 border-top">
+          <h6>Notes</h6>
+          <p class="text-muted small mb-0">{{ customer.notes }}</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Outstanding Balance -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-cash-coin me-2"></i>Account Status
+      </div>
+      <div class="card-body">
+        {% if outstanding_balance is not none %}
+          <div class="mb-3">
+            <div class="text-muted small">Outstanding Balance</div>
+            <div class="stat-val text-danger">R {{ "%.2f"|format(outstanding_balance) }}</div>
+          </div>
+          {% if debtor %}
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('debtors.detail', did=debtor.id) }}" class="btn btn-sm btn-outline-info">
+              <i class="bi bi-arrow-right me-1"></i>View in Debtors
+            </a>
+          </div>
+          {% endif %}
+        {% else %}
+          <div class="text-center py-4">
+            <i class="bi bi-check-circle text-success" style="font-size:3rem;"></i>
+            <p class="mt-2 text-muted">No outstanding debt</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Transaction History -->
+<div class="card">
+  <div class="card-header">
+    <i class="bi bi-receipt me-2"></i>Transaction History
+  </div>
+  <div class="card-body">
+    {% if invoices %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Invoice</th>
+            <th>Date</th>
+            <th class="text-end">Amount</th>
+            <th class="text-center">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in invoices %}
+          <tr>
+            <td class="fw-semibold">
+              <a href="#" class="text-decoration-none">{{ inv.invoice_number }}</a>
+            </td>
+            <td class="small text-muted">{{ inv.sale_date[:10] if inv.sale_date else '—' }}</td>
+            <td class="text-end">R {{ "%.2f"|format(inv.total) }}</td>
+            <td class="text-center">
+              <span class="badge bg-success">{{ inv.status or 'Completed' }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-4 text-muted">
+      <i class="bi bi-inbox" style="font-size:2rem; opacity:0.3;"></i>
+      <p class="mt-2">No transactions yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Helpful Links -->
+<div class="mt-4">
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('customers.index') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Back to Customers
+    </a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title mb-4">
+  {% if mode == "add" %}
+    <i class="bi bi-person-plus me-2"></i>Add Customer
+  {% else %}
+    <i class="bi bi-person-pen me-2"></i>Edit Customer
+  {% endif %}
+</div>
+
+<div class="card" style="max-width:600px;">
+  <div class="card-body">
+    <form method="post" novalidate>
+      <!-- Customer Name (Required) -->
+      <div class="mb-3">
+        <label for="name" class="form-label">
+          Customer / Company Name <span class="text-danger">*</span>
+        </label>
+        <input type="text" class="form-control" id="name" name="name"
+               value="{{ customer.name if customer else '' }}"
+               placeholder="e.g., ABC Transport, John Doe"
+               required autofocus>
+        <small class="form-text text-muted">Required. Can be individual name or company name.</small>
+      </div>
+
+      <!-- Phone -->
+      <div class="mb-3">
+        <label for="phone" class="form-label">Phone Number</label>
+        <input type="tel" class="form-control" id="phone" name="phone"
+               value="{{ customer.phone if customer else '' }}"
+               placeholder="e.g., 082 123 4567">
+        <small class="form-text text-muted">Optional. Useful for quick lookup at POS.</small>
+      </div>
+
+      <!-- Email -->
+      <div class="mb-3">
+        <label for="email" class="form-label">Email Address</label>
+        <input type="email" class="form-control" id="email" name="email"
+               value="{{ customer.email if customer else '' }}"
+               placeholder="e.g., customer@example.com">
+        <small class="form-text text-muted">Optional.</small>
+      </div>
+
+      <!-- Vehicle Registration -->
+      <div class="mb-3">
+        <label for="vehicle_registration" class="form-label">Vehicle Registration</label>
+        <input type="text" class="form-control" id="vehicle_registration" name="vehicle_registration"
+               value="{{ customer.vehicle_registration if customer else '' }}"
+               placeholder="e.g., CA 123 ABC">
+        <small class="form-text text-muted">Optional. Useful for identifying repeat customers in tyre shops.</small>
+      </div>
+
+      <!-- Notes -->
+      <div class="mb-4">
+        <label for="notes" class="form-label">Notes</label>
+        <textarea class="form-control" id="notes" name="notes" rows="3"
+                  placeholder="Internal notes, e.g., 'Preferred contact: SMS', 'Fleet customer'">{{ customer.notes if customer else '' }}</textarea>
+        <small class="form-text text-muted">Optional. Visible only to your team.</small>
+      </div>
+
+      <!-- Actions -->
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          {% if mode == "add" %}
+            <i class="bi bi-check-circle me-1"></i>Add Customer
+          {% else %}
+            <i class="bi bi-check-circle me-1"></i>Save Changes
+          {% endif %}
+        </button>
+        <a href="{{ url_for('customers.index') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

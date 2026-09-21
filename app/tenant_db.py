@@ -1176,6 +1176,26 @@ def get_all_customers(tid):
     return [dict(r) for r in rows]
 
 
+def search_customers(tid, query):
+    """Search customers by name, phone, or vehicle registration.
+
+    Args:
+        tid: Tenant ID
+        query: Search string (name, phone, or vehicle registration)
+
+    Returns:
+        List of matching customer dictionaries
+    """
+    conn = get_conn(tid)
+    q = f"%{query}%"
+    rows = conn.execute(
+        "SELECT * FROM customers WHERE name LIKE ? OR phone LIKE ? OR vehicle_registration LIKE ? ORDER BY name",
+        (q, q, q)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def update_customer(tid, customer_id, **kwargs):
     """Update customer fields."""
     conn = get_conn(tid)
