@@ -358,7 +358,8 @@
             if (basket.size === 0) return;
 
             const items = Array.from(basket.values()).map(item => ({
-                product_id: item.productId,
+                type: "product",
+                id: item.productId,
                 quantity: item.quantity
             }));
 
