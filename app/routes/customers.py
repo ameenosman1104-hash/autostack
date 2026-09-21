@@ -14,7 +14,8 @@ from flask_login import login_required, current_user
 from datetime import date
 from ..tenant_db import (
     add_customer, get_customer, get_all_customers, update_customer, search_customers,
-    get_debtor_by_customer_id, outstanding_balance, list_invoices_by_customer,
+    get_debtor_by_customer_id, get_debtors_by_customer_id, customer_total_outstanding,
+    outstanding_balance, list_invoices_by_customer,
 )
 
 customers_bp = Blueprint("customers", __name__)
@@ -32,15 +33,13 @@ def index():
     else:
         customers = get_all_customers(tid)
 
-    # Enrich each customer with debtor balance if linked
+    # Enrich each customer with total outstanding balance (across all debtors)
     for c in customers:
-        debtor = get_debtor_by_customer_id(tid, c["id"])
-        if debtor:
-            c["outstanding_balance"] = outstanding_balance(debtor)
-            c["debtor_id"] = debtor["id"]
+        total_outstanding = customer_total_outstanding(tid, c["id"])
+        if total_outstanding > 0:
+            c["outstanding_balance"] = total_outstanding
         else:
             c["outstanding_balance"] = None
-            c["debtor_id"] = None
 
     return render_template(
         "customers.html",
@@ -138,11 +137,9 @@ def detail(cid):
         flash("Customer not found.", "danger")
         return redirect(url_for("customers.index"))
 
-    # Get linked debtor and balance
-    debtor = get_debtor_by_customer_id(tid, cid)
-    outstanding = None
-    if debtor:
-        outstanding = outstanding_balance(debtor)
+    # Get all open debtors for this customer (Phase C.0)
+    debtors = get_debtors_by_customer_id(tid, cid)
+    outstanding = customer_total_outstanding(tid, cid)
 
     # Get transaction history (invoices)
     invoices = list_invoices_by_customer(tid, cid)
@@ -150,8 +147,8 @@ def detail(cid):
     return render_template(
         "customer_detail.html",
         customer=customer,
-        debtor=debtor,
-        outstanding_balance=outstanding,
+        debtors=debtors,
+        outstanding_balance=outstanding if outstanding > 0 else None,
         invoices=invoices,
         today=date.today().isoformat()
     )

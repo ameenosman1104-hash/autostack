@@ -1384,3 +1384,402 @@ def update_service(tid, service_id, **kwargs):
     conn.execute(f"UPDATE services SET {sets} WHERE id=?", vals)
     conn.commit()
     conn.close()
+
+
+# ── PHASE C.0: Customer Aggregate Debt ────────────────────────────────────────
+
+def get_debtors_by_customer_id(tid, customer_id):
+    """Get all unpaid debtors for a customer (Phase C.0: multiple debtors per customer)."""
+    conn = get_conn(tid)
+    rows = conn.execute(
+        "SELECT * FROM debtors WHERE customer_id=? AND is_paid=0 ORDER BY created_at",
+        (customer_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def customer_total_outstanding(tid, customer_id):
+    """Calculate total outstanding balance across all unpaid debtors for a customer."""
+    debtors = get_debtors_by_customer_id(tid, customer_id)
+    total = 0.0
+    for debtor in debtors:
+        total += outstanding_balance(debtor)
+    return round(total, 2)
+
+
+# ── PHASE C.1: Atomic Sale Transaction Engine ─────────────────────────────────
+
+def complete_sale(tid, invoice_number, idempotency_key, items,
+                  customer_id=None, payment_method="cash", sale_date=None,
+                  discount=0, notes="", created_by=None):
+    """
+    Atomically process a complete POS transaction.
+
+    Args:
+        tid: Tenant ID
+        invoice_number: Unique invoice identifier (e.g., "INV-001")
+        idempotency_key: UUID/deduplication key
+        items: List of line items:
+            [{'type': 'product'|'service', 'id': <id>, 'quantity': <qty>}, ...]
+        customer_id: Customer ID (required for credit, optional for cash/card/eft)
+        payment_method: 'cash'|'card'|'eft'|'credit' (default: 'cash')
+        sale_date: ISO date string (defaults to today)
+        discount: Invoice-level discount amount (0 to subtotal)
+        notes: Transaction notes
+        created_by: User ID who recorded sale
+
+    Returns:
+        {
+            'success': True,
+            'duplicate': False,  # True if idempotent retry
+            'invoice_id': <id>,
+            'invoice_number': <str>,
+            'total': <float>,
+            'debtor_id': <id or None>,
+            'items_count': <int>,
+            'payment_status': 'paid'|'unpaid'
+        }
+
+    Raises:
+        ValueError: Validation error (stock, customer, price, etc.)
+        Exception: Database error (transaction rolled back)
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+    import json
+
+    conn = get_conn(tid)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+
+        # ── 1. Check idempotency inside transaction ──
+        existing = conn.execute(
+            "SELECT id FROM invoices WHERE idempotency_key=?",
+            (idempotency_key,)
+        ).fetchone()
+
+        if existing:
+            invoice_id = existing[0]
+            invoice = conn.execute(
+                "SELECT * FROM invoices WHERE id=?", (invoice_id,)
+            ).fetchone()
+            invoice = dict(invoice) if invoice else None
+            items_data = conn.execute(
+                "SELECT * FROM invoice_items WHERE invoice_id=?", (invoice_id,)
+            ).fetchall()
+            conn.commit()
+            conn.close()
+            return {
+                'success': True,
+                'duplicate': True,
+                'invoice_id': invoice_id,
+                'invoice_number': invoice['invoice_number'] if invoice else invoice_number,
+                'total': float(invoice['total']) if invoice else 0,
+                'debtor_id': invoice['debtor_id'] if invoice else None,
+                'items_count': len(items_data),
+                'payment_status': invoice['payment_status'] if invoice else 'paid'
+            }
+
+        # ── 2. Validate inputs ──
+        if not invoice_number or not invoice_number.strip():
+            raise ValueError("invoice_number is required")
+        if not idempotency_key or not idempotency_key.strip():
+            raise ValueError("idempotency_key is required")
+        if payment_method not in ['cash', 'card', 'eft', 'credit']:
+            raise ValueError(f"Invalid payment_method: {payment_method}")
+        if not items or len(items) == 0:
+            raise ValueError("items list cannot be empty")
+        if payment_method == 'credit' and customer_id is None:
+            raise ValueError("credit payment requires customer_id")
+        if discount < 0:
+            raise ValueError("discount cannot be negative")
+
+        # Check invoice_number uniqueness
+        dup_invoice = conn.execute(
+            "SELECT id FROM invoices WHERE invoice_number=?",
+            (invoice_number,)
+        ).fetchone()
+        if dup_invoice:
+            raise ValueError(f"invoice_number '{invoice_number}' already exists")
+
+        # ── 3. Validate customer (if provided) ──
+        if customer_id is not None:
+            customer = conn.execute(
+                "SELECT * FROM customers WHERE id=?",
+                (customer_id,)
+            ).fetchone()
+            if not customer:
+                raise ValueError(f"Customer ID {customer_id} not found")
+            customer = dict(customer)
+        else:
+            customer = None
+
+        # ── 4. Validate sale_date ──
+        if sale_date is None:
+            sale_date = date.today().isoformat()
+        else:
+            try:
+                date.fromisoformat(sale_date)
+            except ValueError:
+                raise ValueError(f"Invalid sale_date format: {sale_date}")
+
+        # ── 5. Aggregate product quantities by product_id ──
+        items_by_product = {}
+        items_by_service = {}
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("Each item must be a dict")
+            item_type = item.get('type')
+            item_id = item.get('id')
+            qty = item.get('quantity')
+
+            if item_type not in ['product', 'service']:
+                raise ValueError(f"Invalid item type: {item_type}")
+            if not item_id or item_id <= 0:
+                raise ValueError("Item id must be > 0")
+            if not qty or qty <= 0:
+                raise ValueError("Item quantity must be > 0")
+
+            if item_type == 'product':
+                if item_id not in items_by_product:
+                    items_by_product[item_id] = 0
+                items_by_product[item_id] += qty
+            else:  # service
+                if item_id not in items_by_service:
+                    items_by_service[item_id] = 0
+                items_by_service[item_id] += qty
+
+        # ── 6. Validate products exist and have sufficient stock ──
+        products_map = {}
+        for product_id, total_qty in items_by_product.items():
+            product = conn.execute(
+                "SELECT * FROM products WHERE id=? AND (deleted=0 OR deleted IS NULL)",
+                (product_id,)
+            ).fetchone()
+            if not product:
+                raise ValueError(f"Product ID {product_id} not found or deleted")
+            product = dict(product)
+            products_map[product_id] = product
+
+            if product['current_stock'] < total_qty:
+                raise ValueError(
+                    f"Insufficient stock for product '{product['name']}': "
+                    f"have {product['current_stock']}, need {total_qty}"
+                )
+
+        # ── 7. Validate services exist and fetch prices ──
+        services_map = {}
+        for service_id, total_qty in items_by_service.items():
+            service = conn.execute(
+                "SELECT * FROM services WHERE id=? AND is_active=1",
+                (service_id,)
+            ).fetchone()
+            if not service:
+                raise ValueError(f"Service ID {service_id} not found or inactive")
+            service = dict(service)
+            services_map[service_id] = service
+
+            if service['default_price'] is None or service['default_price'] < 0:
+                raise ValueError(
+                    f"Service '{service['name']}' has invalid price: {service['default_price']}"
+                )
+
+        # ── 8. Load authoritative prices and calculate totals ──
+        item_details = []  # Track each line item for later INSERT
+        subtotal_decimal = Decimal('0.00')
+
+        for item in items:
+            item_type = item.get('type')
+            item_id = item.get('id')
+            qty = Decimal(str(item.get('quantity')))
+
+            if item_type == 'product':
+                product = products_map[item_id]
+
+                # Load selling price from extra_data
+                try:
+                    extra_data = json.loads(product.get('extra_data', '{}') or '{}')
+                except (json.JSONDecodeError, ValueError):
+                    raise ValueError(
+                        f"Product '{product['name']}' has malformed extra_data JSON"
+                    )
+
+                selling_price = extra_data.get('selling_price')
+                if selling_price is None:
+                    raise ValueError(
+                        f"Product '{product['name']}' lacks authoritative selling_price. "
+                        "Configure via admin settings before sale."
+                    )
+
+                try:
+                    unit_price = Decimal(str(selling_price))
+                except (ValueError, TypeError):
+                    raise ValueError(
+                        f"Product '{product['name']}' has invalid selling_price: {selling_price}"
+                    )
+
+                if unit_price < 0:
+                    raise ValueError(
+                        f"Product '{product['name']}' selling_price cannot be negative: {unit_price}"
+                    )
+
+            else:  # service
+                service = services_map[item_id]
+                try:
+                    unit_price = Decimal(str(service['default_price']))
+                except (ValueError, TypeError):
+                    raise ValueError(
+                        f"Service '{service['name']}' has invalid default_price: {service['default_price']}"
+                    )
+
+            item_total = (qty * unit_price).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+            subtotal_decimal += item_total
+
+            item_details.append({
+                'type': item_type,
+                'id': item_id,
+                'quantity': float(qty),
+                'unit_price': float(unit_price),
+                'total': float(item_total)
+            })
+
+        # ── 9. Validate discount and calculate total ──
+        discount_decimal = Decimal(str(discount)).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+
+        if discount_decimal < 0 or discount_decimal > subtotal_decimal:
+            raise ValueError(
+                f"discount must be between 0 and subtotal ({float(subtotal_decimal)})"
+            )
+
+        # Phase C.1: tax = 0 (no VAT engine yet)
+        tax_decimal = Decimal('0.00')
+
+        total_decimal = (subtotal_decimal - discount_decimal + tax_decimal).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+
+        if total_decimal < 0:
+            raise ValueError("Total cannot be negative")
+
+        # ── 10. Determine payment status ──
+        if payment_method in ['cash', 'card', 'eft']:
+            payment_status = 'paid'
+            new_debtor_id = None
+        else:  # credit
+            payment_status = 'unpaid'
+            new_debtor_id = None  # Will be set after debtor creation
+
+        # ── 11. Create invoice ──
+        invoice_id = conn.execute(
+            """INSERT INTO invoices
+               (invoice_number, idempotency_key, customer_id, debtor_id,
+                sale_date, status, subtotal, discount, tax, total,
+                payment_method, payment_status, notes, created_by,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, datetime('now'), datetime('now'))""",
+            (invoice_number, idempotency_key, customer_id, None,
+             sale_date, 'completed', float(subtotal_decimal), float(discount_decimal),
+             float(tax_decimal), float(total_decimal),
+             payment_method, payment_status, notes, created_by)
+        ).lastrowid
+
+        # ── 12. Create invoice items ──
+        for item_detail in item_details:
+            conn.execute(
+                """INSERT INTO invoice_items
+                   (invoice_id, item_type, product_id, service_id,
+                    quantity, unit_price, total, discount)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (invoice_id,
+                 item_detail['type'],
+                 item_detail['id'] if item_detail['type'] == 'product' else None,
+                 item_detail['id'] if item_detail['type'] == 'service' else None,
+                 item_detail['quantity'],
+                 item_detail['unit_price'],
+                 item_detail['total'],
+                 0)
+            )
+
+        # ── 13. Deduct product stock (defensive UPDATE) ──
+        for product_id, product in products_map.items():
+            total_qty_needed = items_by_product[product_id]
+            qty_before = product['current_stock']
+
+            cursor = conn.execute(
+                """UPDATE products
+                   SET current_stock = current_stock - ?,
+                       updated_at = datetime('now')
+                   WHERE id = ? AND current_stock >= ?""",
+                (total_qty_needed, product_id, total_qty_needed)
+            )
+
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    f"Stock update failed for product ID {product_id} "
+                    "(possible concurrent sale)"
+                )
+
+            # Fetch updated stock
+            updated_product = conn.execute(
+                "SELECT current_stock FROM products WHERE id=?",
+                (product_id,)
+            ).fetchone()
+            qty_after = updated_product[0]
+
+            # ── 14. Log to stock_history ──
+            conn.execute(
+                """INSERT INTO stock_history
+                   (product_id, product_code, product_name,
+                    change_type, qty_before, qty_after, change_by, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (product_id, product['code'], product['name'],
+                 'sale', qty_before, qty_after, qty_after - qty_before,
+                 f"Invoice {invoice_number}")
+            )
+
+        # ── 15. Handle credit sale (create debtor) ──
+        if payment_method == 'credit':
+            new_debtor_id = conn.execute(
+                """INSERT INTO debtors
+                   (name, customer_id, amount_owed, date_of_purchase,
+                    status, is_paid, notify_method, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+                (customer['name'] if customer else 'Unknown',
+                 customer_id,
+                 float(total_decimal),
+                 sale_date,
+                 'DUE',
+                 0,
+                 'email')
+            ).lastrowid
+
+            # Link debtor to invoice
+            conn.execute(
+                "UPDATE invoices SET debtor_id=? WHERE id=?",
+                (new_debtor_id, invoice_id)
+            )
+
+        # ── 16. COMMIT ──
+        conn.commit()
+
+        return {
+            'success': True,
+            'duplicate': False,
+            'invoice_id': invoice_id,
+            'invoice_number': invoice_number,
+            'total': float(total_decimal),
+            'debtor_id': new_debtor_id,
+            'items_count': len(item_details),
+            'payment_status': payment_status
+        }
+
+    except Exception as e:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
