@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tyre Shop POS - Cashier</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
         * { box-sizing: border-box; }
         body {
@@ -235,6 +236,21 @@
     </div>
 
     <script>
+        // Automatic CSRF token injection for same-origin POST/PUT/PATCH/DELETE requests
+        const autoStackFetch = window.fetch.bind(window);
+        window.fetch = function(input, options = {}) {
+            const url = new URL(input instanceof Request ? input.url : input, location.href);
+            const method = (options.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+            if (url.origin === location.origin && !['GET','HEAD','OPTIONS'].includes(method)) {
+                options = {...options, headers: new Headers(options.headers || (input instanceof Request ? input.headers : {}))};
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                if (csrfToken) {
+                    options.headers.set('X-CSRFToken', csrfToken);
+                }
+            }
+            return autoStackFetch(input, options);
+        };
+
         const tenantId = "{{ tenant_id }}";
         const basket = new Map();
         let selectedPaymentMethod = "cash";
@@ -363,6 +379,15 @@
                     body: JSON.stringify(payload)
                 });
 
+                // Check if response is JSON
+                const contentType = res.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.error(`Unexpected response type: ${contentType}, status: ${res.status}`);
+                    console.error(`Response text: ${await res.text()}`);
+                    showStatus("Unable to complete sale. Please try again or contact the administrator.", "error");
+                    return;
+                }
+
                 const data = await res.json();
 
                 if (data.success) {
@@ -374,9 +399,11 @@
                     document.getElementById("customerDisplay").textContent = "No customer selected";
                 } else {
                     showStatus(data.error || "Sale failed", "error");
+                    console.error("Sale error response:", data);
                 }
             } catch (err) {
                 showStatus("Error: " + err.message, "error");
+                console.error("Complete sale exception:", err);
             }
         });
 
