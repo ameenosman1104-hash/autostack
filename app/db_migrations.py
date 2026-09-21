@@ -724,27 +724,6 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 16 failed: {e}")
 
-        # Migration 17: Fix product condition default for existing databases (Migration 15 correction)
-        # If Migration 15 was already applied with DEFAULT 'new', update those default values to NULL
-        if get_schema_version(conn) < 17:
-            conn.execute("BEGIN")
-            try:
-                cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
-
-                # Only run this if condition column exists (Migration 15 was applied)
-                if "condition" in cols:
-                    # Update rows that have condition='new' (which were default from old Migration 15)
-                    # to NULL to indicate unclassified. Explicitly set 'new' or 'used' values are preserved.
-                    # Since condition was just added and nothing was setting it explicitly before this fix,
-                    # all 'new' values are defaults from the migration, not intentional classifications.
-                    conn.execute("UPDATE products SET condition=NULL WHERE condition='new'")
-
-                mark_migration_applied(conn, 17, "Fix product condition default from 'new' to NULL")
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                raise RuntimeError(f"Migration 17 failed: {e}")
-
         conn.close()
         return backup_path
 
