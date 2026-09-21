@@ -5,7 +5,7 @@ from flask_login import login_required, current_user
 import uuid
 
 from ..tenant_db import (
-    get_all_products, get_all_services, search_customers,
+    get_all_products, get_all_services,
     complete_sale
 )
 
@@ -63,31 +63,6 @@ def get_services():
             "default_price": s["default_price"]
         }
         for s in services
-    ]
-
-    return jsonify(results)
-
-
-@pos_bp.route("/customers/search")
-@login_required
-def search_cust():
-    """Search customers by name, phone, vehicle registration."""
-    tid = current_user.tenant_id
-    query = request.args.get("q", "").strip()
-
-    if not query:
-        return jsonify([])
-
-    customers = search_customers(tid, query)
-
-    results = [
-        {
-            "id": c["id"],
-            "name": c["name"],
-            "phone": c.get("phone", ""),
-            "vehicle_registration": c.get("vehicle_registration", "")
-        }
-        for c in customers
     ]
 
     return jsonify(results)

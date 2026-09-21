@@ -65,6 +65,15 @@ def reorder_required():
 def add():
     if request.method == "POST":
         try:
+            # Parse selling_price: None if blank, validated if provided
+            selling_price_str = request.form.get("selling_price", "").strip()
+            selling_price = None
+            if selling_price_str:
+                selling_price = float(selling_price_str)
+                if selling_price < 0:
+                    flash("Selling price cannot be negative.", "danger")
+                    return render_template("inventory_form.html", product=None)
+
             add_product(
                 current_user.tenant_id,
                 code           = request.form["code"].strip(),
@@ -75,9 +84,12 @@ def add():
                 reorder_level  = float(request.form.get("reorder_level", 0) or 0),
                 last_cost_price= float(request.form.get("last_cost_price", 0) or 0),
                 supplier       = request.form.get("supplier", "").strip(),
+                selling_price  = selling_price,
             )
             flash("Product added.", "success")
             return redirect(url_for("inventory.index"))
+        except ValueError as e:
+            flash(f"Invalid input: {str(e)}", "danger")
         except Exception as e:
             flash(str(e), "danger")
     return render_template("inventory_form.html", product=None)
@@ -92,17 +104,32 @@ def edit(pid):
         flash("Product not found.", "danger")
         return redirect(url_for("inventory.index"))
     if request.method == "POST":
-        update_product(tid, pid,
-            name           = request.form["name"].strip(),
-            category       = request.form.get("category", "").strip(),
-            unit           = request.form.get("unit", "PCS").strip(),
-            current_stock  = float(request.form.get("current_stock", 0) or 0),
-            reorder_level  = float(request.form.get("reorder_level", 0) or 0),
-            last_cost_price= float(request.form.get("last_cost_price", 0) or 0),
-            supplier       = request.form.get("supplier", "").strip(),
-        )
-        flash("Product updated.", "success")
-        return redirect(url_for("inventory.index"))
+        try:
+            # Parse selling_price: None if blank, validated if provided
+            selling_price_str = request.form.get("selling_price", "").strip()
+            selling_price = None
+            if selling_price_str:
+                selling_price = float(selling_price_str)
+                if selling_price < 0:
+                    flash("Selling price cannot be negative.", "danger")
+                    return render_template("inventory_form.html", product=product)
+
+            update_product(tid, pid,
+                name           = request.form["name"].strip(),
+                category       = request.form.get("category", "").strip(),
+                unit           = request.form.get("unit", "PCS").strip(),
+                current_stock  = float(request.form.get("current_stock", 0) or 0),
+                reorder_level  = float(request.form.get("reorder_level", 0) or 0),
+                last_cost_price= float(request.form.get("last_cost_price", 0) or 0),
+                supplier       = request.form.get("supplier", "").strip(),
+                selling_price  = selling_price,
+            )
+            flash("Product updated.", "success")
+            return redirect(url_for("inventory.index"))
+        except ValueError as e:
+            flash(f"Invalid input: {str(e)}", "danger")
+        except Exception as e:
+            flash(str(e), "danger")
     return render_template("inventory_form.html", product=product)
 
 
@@ -860,6 +887,7 @@ def import_csv():
                 "reorder_level":   request.form.get("map_min", ""),
                 "last_cost_price": request.form.get("map_cost", ""),
                 "supplier":        request.form.get("map_supplier", ""),
+                "selling_price":   request.form.get("map_selling_price", ""),
             }
 
             if not mapping["name"]:
@@ -890,6 +918,7 @@ def import_csv():
                     "reorder_level":   _fval(mapping["reorder_level"], row),
                     "last_cost_price": _fval(mapping["last_cost_price"], row),
                     "supplier":        _val(mapping["supplier"], row),
+                    "selling_price":   _fval(mapping["selling_price"], row) if mapping["selling_price"] else "",
                 })
 
             opts = {
@@ -918,6 +947,7 @@ def import_csv():
             mins    = request.form.getlist("reorder_level")
             costs   = request.form.getlist("last_cost_price")
             supps   = request.form.getlist("supplier")
+            selling_prices = request.form.getlist("selling_price")
             dels    = set(request.form.getlist("delete_row"))
 
             def sf(v):
@@ -941,6 +971,11 @@ def import_csv():
                     skipped += 1
                     continue
                 code = (codes[i] if i < len(codes) else row["code"]).strip() or name[:8].upper().replace(" ", "")
+
+                # Parse selling_price: None if blank/empty
+                sp_str = (selling_prices[i] if i < len(selling_prices) else row.get("selling_price", "")).strip()
+                selling_price = sf(sp_str) if sp_str else None
+
                 kwargs = dict(
                     name           = name,
                     code           = code,
@@ -951,6 +986,8 @@ def import_csv():
                     last_cost_price= sf(costs[i]  if i < len(costs)  else row["last_cost_price"]),
                     supplier       = (supps[i]  if i < len(supps)  else row["supplier"]).strip(),
                 )
+                if selling_price is not None and selling_price >= 0:
+                    kwargs["selling_price"] = selling_price
                 # Find existing product by code first, then by name
                 existing = by_code_lookup.get(code.lower()) or by_name_lookup.get(name.lower())
                 try:

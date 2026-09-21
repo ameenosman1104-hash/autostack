@@ -160,14 +160,14 @@ def get_product_by_code(tid, code):
 
 
 def add_product(tid, code, name, category="", unit="PCS", current_stock=0,
-                reorder_level=0, last_cost_price=0, supplier="", extra_data="{}"):
+                reorder_level=0, last_cost_price=0, supplier="", extra_data="{}", selling_price=None):
     conn = get_conn(tid)
     try:
         cur = conn.execute(
             """INSERT INTO products (code,name,category,unit,current_stock,reorder_level,
-               last_cost_price,previous_cost_price,supplier,extra_data) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+               last_cost_price,previous_cost_price,supplier,extra_data,selling_price) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (code, name, category, unit, current_stock, reorder_level,
-             last_cost_price, last_cost_price, supplier, extra_data)
+             last_cost_price, last_cost_price, supplier, extra_data, selling_price)
         )
         conn.commit()
         return cur.lastrowid
