@@ -1408,49 +1408,44 @@ def customer_total_outstanding(tid, customer_id):
     return round(total, 2)
 
 
-def generate_invoice_number(tid):
-    """Generate unique, sequential invoice number for tenant."""
-    conn = get_conn(tid)
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        # Get or create sequence for this tenant
-        row = conn.execute(
-            "SELECT next_number FROM invoice_sequences WHERE tid = ?",
-            (tid,)
-        ).fetchone()
+def _allocate_invoice_number(conn, tid):
+    """Allocate next invoice number within an existing transaction (no commit)."""
+    row = conn.execute(
+        "SELECT next_number FROM invoice_sequences WHERE tid = ?",
+        (tid,)
+    ).fetchone()
 
-        if not row:
-            conn.execute(
-                "INSERT INTO invoice_sequences (tid, next_number) VALUES (?, ?)",
-                (tid, 1)
-            )
-            next_num = 1
-        else:
-            next_num = row[0]
-
-        # Increment for next time
+    if not row:
         conn.execute(
-            "UPDATE invoice_sequences SET next_number = ? WHERE tid = ?",
-            (next_num + 1, tid)
+            "INSERT INTO invoice_sequences (tid, next_number) VALUES (?, ?)",
+            (tid, 1)
         )
+        next_num = 1
+    else:
+        next_num = row[0]
 
-        conn.commit()
-        return f"INV-{next_num:06d}"  # INV-000001
-    finally:
-        conn.close()
+    # Increment for next time
+    conn.execute(
+        "UPDATE invoice_sequences SET next_number = ? WHERE tid = ?",
+        (next_num + 1, tid)
+    )
+
+    return f"INV-{next_num:06d}"
 
 
 # ── PHASE C.1: Atomic Sale Transaction Engine ─────────────────────────────────
 
-def complete_sale(tid, invoice_number, idempotency_key, items,
+def complete_sale(tid, idempotency_key, items,
                   customer_id=None, payment_method="cash", sale_date=None,
-                  discount=0, notes="", created_by=None):
+                  discount=0, notes="", created_by=None, invoice_number=None):
     """
     Atomically process a complete POS transaction.
 
+    Invoice number is allocated internally, after idempotency check. This ensures
+    no sequence numbers are wasted on failures or retries.
+
     Args:
         tid: Tenant ID
-        invoice_number: Unique invoice identifier (e.g., "INV-001")
         idempotency_key: UUID/deduplication key
         items: List of line items:
             [{'type': 'product'|'service', 'id': <id>, 'quantity': <qty>}, ...]
@@ -1460,6 +1455,7 @@ def complete_sale(tid, invoice_number, idempotency_key, items,
         discount: Invoice-level discount amount (0 to subtotal)
         notes: Transaction notes
         created_by: User ID who recorded sale
+        invoice_number: (Optional, for backward compat) Ignored; auto-allocated
 
     Returns:
         {
@@ -1505,7 +1501,7 @@ def complete_sale(tid, invoice_number, idempotency_key, items,
                 'success': True,
                 'duplicate': True,
                 'invoice_id': invoice_id,
-                'invoice_number': invoice['invoice_number'] if invoice else invoice_number,
+                'invoice_number': invoice['invoice_number'] if invoice else None,
                 'total': float(invoice['total']) if invoice else 0,
                 'debtor_id': invoice['debtor_id'] if invoice else None,
                 'items_count': len(items_data),
@@ -1513,8 +1509,6 @@ def complete_sale(tid, invoice_number, idempotency_key, items,
             }
 
         # ── 2. Validate inputs ──
-        if not invoice_number or not invoice_number.strip():
-            raise ValueError("invoice_number is required")
         if not idempotency_key or not idempotency_key.strip():
             raise ValueError("idempotency_key is required")
         if payment_method not in ['cash', 'card', 'eft', 'credit']:
@@ -1526,13 +1520,8 @@ def complete_sale(tid, invoice_number, idempotency_key, items,
         if discount < 0:
             raise ValueError("discount cannot be negative")
 
-        # Check invoice_number uniqueness
-        dup_invoice = conn.execute(
-            "SELECT id FROM invoices WHERE invoice_number=?",
-            (invoice_number,)
-        ).fetchone()
-        if dup_invoice:
-            raise ValueError(f"invoice_number '{invoice_number}' already exists")
+        # Allocate invoice number within transaction (after idempotency check)
+        invoice_number = _allocate_invoice_number(conn, tid)
 
         # ── 3. Validate customer (if provided) ──
         if customer_id is not None:
@@ -1628,21 +1617,13 @@ def complete_sale(tid, invoice_number, idempotency_key, items,
             if item_type == 'product':
                 product = products_map[item_id]
 
-                # Load selling price from column (authoritative) with fallback to extra_data
+                # Load selling price from column (authoritative)
                 selling_price = product.get('selling_price')
 
                 if selling_price is None:
-                    # Fallback to extra_data for transition period
-                    try:
-                        extra_data = json.loads(product.get('extra_data', '{}') or '{}')
-                        selling_price = extra_data.get('selling_price')
-                    except (json.JSONDecodeError, ValueError):
-                        pass
-
-                if selling_price is None:
                     raise ValueError(
-                        f"Product '{product['name']}' lacks authoritative selling_price. "
-                        "Configure via admin settings before sale."
+                        f"Product '{product['name']}' has no selling price configured. "
+                        "Please set selling price in inventory before sale."
                     )
 
                 try:

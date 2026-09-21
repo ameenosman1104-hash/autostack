@@ -2,6 +2,7 @@
 import sqlite3
 import os
 import shutil
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -708,7 +709,7 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 15 failed: {e}")
 
-        # Migration 17: Add selling_price column to products
+        # Migration 17: Add selling_price column to products + backfill from extra_data
         if get_schema_version(conn) < 17:
             conn.execute("BEGIN")
             try:
@@ -717,7 +718,27 @@ def migrate_tenant_db(tenant_id, db_path):
                 if "selling_price" not in cols:
                     conn.execute("ALTER TABLE products ADD COLUMN selling_price REAL DEFAULT NULL")
 
-                mark_migration_applied(conn, 17, "Add selling_price column to products")
+                # Backfill: extract valid selling_price from extra_data JSON
+                products = conn.execute("SELECT id, extra_data FROM products WHERE selling_price IS NULL").fetchall()
+                for product_id, extra_data_str in products:
+                    try:
+                        if extra_data_str:
+                            extra_data = json.loads(extra_data_str)
+                            price = extra_data.get('selling_price')
+
+                            # Only backfill if: parseable, numeric, >= 0
+                            if price is not None:
+                                price_float = float(price)
+                                if price_float >= 0:
+                                    conn.execute(
+                                        "UPDATE products SET selling_price = ? WHERE id = ?",
+                                        (price_float, product_id)
+                                    )
+                    except (json.JSONDecodeError, ValueError, TypeError):
+                        # Leave as NULL if malformed or invalid
+                        pass
+
+                mark_migration_applied(conn, 17, "Add selling_price column + backfill from extra_data")
                 conn.commit()
             except Exception as e:
                 conn.rollback()

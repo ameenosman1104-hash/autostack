@@ -6,7 +6,7 @@ import uuid
 
 from ..tenant_db import (
     get_all_products, get_all_services, search_customers,
-    complete_sale, generate_invoice_number
+    complete_sale
 )
 
 pos_bp = Blueprint("pos", __name__)
@@ -108,13 +108,9 @@ def complete_sale_route():
         if not data.get("items"):
             return jsonify({"success": False, "error": "items required"}), 400
 
-        # Generate invoice number if not provided
-        invoice_number = data.get("invoice_number") or generate_invoice_number(tid)
-
-        # Call Phase C transaction engine
+        # Call Phase C transaction engine (invoice number allocated internally)
         result = complete_sale(
             tid=tid,
-            invoice_number=invoice_number,
             idempotency_key=data["idempotency_key"],
             items=data["items"],
             customer_id=data.get("customer_id"),

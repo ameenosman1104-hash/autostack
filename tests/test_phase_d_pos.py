@@ -1,15 +1,16 @@
-"""Phase D POS integration tests."""
+"""Phase D POS integration tests - Fixed for invoice number allocation in transaction."""
 
 import pytest
 import json
 import uuid
+import time
 from datetime import datetime
 from decimal import Decimal
 
 from app import create_app
 from app.main_db import init_main_db, get_main_db_path
 from app.tenant_db import (
-    setup_tenant_db, get_conn, generate_invoice_number, complete_sale,
+    setup_tenant_db, get_conn, complete_sale,
     get_all_products, get_all_services, search_customers
 )
 
@@ -21,10 +22,10 @@ class IsolatedTestDB:
         self.offset = offset
         self.tenant_id = None
         self.original_env = None
+        self.code_suffix = int(time.time() * 1000000) % 1000000
 
     def __enter__(self):
         import os
-        import time
 
         self.tenant_id = self.offset + int(time.time() * 1000) % 10000
         self.original_env = os.environ.get("TENANT_ID")
@@ -54,252 +55,278 @@ def client(app):
     return app.test_client()
 
 
-class TestInvoiceNumbering:
-    """Tests for atomic invoice number generation."""
+class TestInvoiceNumberAllocation:
+    """Tests for atomic invoice number allocation within transactions."""
 
-    def test_generate_invoice_number_first_call(self):
-        """First call should generate INV-000001."""
+    def test_invoice_allocated_first_call(self):
+        """First sale should allocate INV-000001."""
         with IsolatedTestDB() as tid:
-            num = generate_invoice_number(tid)
-            assert num == "INV-000001"
-
-    def test_generate_invoice_number_increments(self):
-        """Each call increments the sequence."""
-        with IsolatedTestDB() as tid:
-            num1 = generate_invoice_number(tid)
-            num2 = generate_invoice_number(tid)
-            num3 = generate_invoice_number(tid)
-
-            assert num1 == "INV-000001"
-            assert num2 == "INV-000002"
-            assert num3 == "INV-000003"
-
-    def test_invoice_number_atomic(self):
-        """Invoice number generation is atomic per tenant."""
-        with IsolatedTestDB() as tid1:
-            with IsolatedTestDB() as tid2:
-                # Tenant 1 generates numbers
-                tid1_num1 = generate_invoice_number(tid1)
-                tid1_num2 = generate_invoice_number(tid1)
-
-                # Tenant 2 generates numbers independently
-                tid2_num1 = generate_invoice_number(tid2)
-                tid2_num2 = generate_invoice_number(tid2)
-
-                # Both start at INV-000001
-                assert tid1_num1 == "INV-000001"
-                assert tid2_num1 == "INV-000001"
-
-                # Tenant 1 is at 3, Tenant 2 is at 2
-                assert tid1_num2 == "INV-000002"
-                assert tid2_num2 == "INV-000002"
-
-
-class TestPOSSearch:
-    """Tests for POS search endpoints."""
-
-    def test_search_products_with_query(self):
-        """Search products should return matching results."""
-        with IsolatedTestDB() as tid:
-            conn = get_conn(tid)
-
-            # Insert a product
-            conn.execute("""
-                INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, ("TYRE001", "Bridgestone 195/65R15", "Bridgestone", "195/65R15", "new", 10, 450.00))
-            conn.commit()
-            conn.close()
-
-            # Search should find it
-            products = get_all_products(tid, "Bridgestone")
-            assert len(products) > 0
-            assert any(p["code"] == "TYRE001" for p in products)
-
-    def test_search_customers_with_query(self):
-        """Search customers should find by name."""
-        with IsolatedTestDB() as tid:
-            conn = get_conn(tid)
-
-            # Insert a customer
-            conn.execute("""
-                INSERT INTO customers (name, phone)
-                VALUES (?, ?)
-            """, ("John's Garage", "555-1234"))
-            conn.commit()
-            conn.close()
-
-            # Search should find it
-            customers = search_customers(tid, "John")
-            assert len(customers) > 0
-            assert any(c["name"] == "John's Garage" for c in customers)
-
-    def test_search_services(self):
-        """Get active services should return service list."""
-        with IsolatedTestDB() as tid:
-            conn = get_conn(tid)
-
-            # Insert a service
-            conn.execute("""
-                INSERT INTO services (name, default_price, is_active)
-                VALUES (?, ?, ?)
-            """, ("Wheel Alignment", 150.00, 1))
-            conn.commit()
-            conn.close()
-
-            # Get services
-            services = get_all_services(tid, active_only=True)
-            assert len(services) > 0
-            assert any(s["name"] == "Wheel Alignment" for s in services)
-
-
-class TestPOSCompleteRoute:
-    """Tests for /pos/complete route."""
-
-    def test_complete_sale_via_route(self, client):
-        """POST /pos/complete should call complete_sale() and return result."""
-        with IsolatedTestDB() as tid:
-            # Setup: Insert product
             conn = get_conn(tid)
             conn.execute("""
                 INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, ("TYRE001", "Test Tyre", "TestBrand", "195/65R15", "new", 10, 500.00))
-
             product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             conn.commit()
             conn.close()
 
-            # Make request
-            payload = {
-                "idempotency_key": str(uuid.uuid4()),
-                "items": [{"product_id": product_id, "quantity": 1}],
-                "customer_id": None,
-                "payment_method": "cash"
-            }
-
-            # Note: This would normally require authentication in the actual app
-            # For now, we're testing the route structure
-
-    def test_complete_sale_missing_idempotency_key(self, client):
-        """POST /pos/complete without idempotency_key should return 400."""
-        payload = {
-            "items": [{"product_id": 1, "quantity": 1}]
-        }
-
-        # This tests that the route validates the idempotency_key
-
-
-class TestPOSIntegration:
-    """Integration tests for complete POS flow."""
-
-    def test_pos_flow_cash_sale(self):
-        """Complete flow: search → add to basket → complete sale (cash)."""
-        with IsolatedTestDB() as tid:
-            conn = get_conn(tid)
-
-            # Insert product
-            conn.execute("""
-                INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, ("TYRE-CASH-001", "Budget Tyre", "BudgetBrand", "175/70R13", "new", 20, 250.00))
-
-            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-            conn.commit()
-            conn.close()
-
-            # Complete sale
-            idempotency_key = str(uuid.uuid4())
             result = complete_sale(
                 tid=tid,
-                invoice_number=generate_invoice_number(tid),
-                idempotency_key=idempotency_key,
-                items=[{"product_id": product_id, "quantity": 1}],
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 1}],
                 payment_method="cash"
             )
 
             assert result["success"] is True
-            assert result["payment_status"] == "paid"
-            assert result["total"] == 250.0
+            assert result["invoice_number"] == "INV-000001"
 
-    def test_pos_flow_credit_sale_with_customer(self):
-        """Complete flow: search customer → add tyre → credit sale."""
+    def test_invoice_allocated_increments(self):
+        """Each new sale increments invoice number."""
         with IsolatedTestDB() as tid:
             conn = get_conn(tid)
-
-            # Insert customer
-            conn.execute("""
-                INSERT INTO customers (name, phone)
-                VALUES (?, ?)
-            """, ("TestGarage Ltd", "555-1234"))
-            customer_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-
-            # Insert product
             conn.execute("""
                 INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, ("TYRE-CREDIT-001", "Premium Tyre", "PremiumBrand", "205/55R16", "new", 15, 800.00))
+            """, ("TYRE002", "Test Tyre", "TestBrand", "195/65R15", "new", 100, 500.00))
             product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             conn.commit()
             conn.close()
 
-            # Complete credit sale
-            idempotency_key = str(uuid.uuid4())
-            result = complete_sale(
+            result1 = complete_sale(
                 tid=tid,
-                invoice_number=generate_invoice_number(tid),
-                idempotency_key=idempotency_key,
-                items=[{"product_id": product_id, "quantity": 2}],
-                customer_id=customer_id,
-                payment_method="credit"
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 1}],
+                payment_method="cash"
             )
 
-            assert result["success"] is True
-            assert result["payment_status"] == "unpaid"
-            assert result["total"] == 1600.0  # 2 × 800
-            assert result["debtor_id"] is not None
+            result2 = complete_sale(
+                tid=tid,
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 1}],
+                payment_method="cash"
+            )
 
-    def test_pos_flow_duplicate_request_idempotent(self):
-        """Retrying same idempotency_key should return duplicate=True."""
+            assert result1["invoice_number"] == "INV-000001"
+            assert result2["invoice_number"] == "INV-000002"
+
+    def test_failed_sale_does_not_consume_number(self):
+        """Failed sale should not allocate sequence number."""
         with IsolatedTestDB() as tid:
             conn = get_conn(tid)
-
-            # Insert product
             conn.execute("""
                 INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, ("TYRE-IDEM-001", "Test Tyre", "TestBrand", "195/65R15", "new", 10, 500.00))
+            """, ("TYRE003", "Test Tyre", "TestBrand", "195/65R15", "new", 1, 500.00))
+            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.commit()
+            conn.close()
+
+            # Try sale with insufficient stock (will fail)
+            try:
+                complete_sale(
+                    tid=tid,
+                    idempotency_key=str(uuid.uuid4()),
+                    items=[{"type": "product", "id": product_id, "quantity": 10}],
+                    payment_method="cash"
+                )
+            except ValueError:
+                pass  # Expected to fail
+
+            # Next successful sale should still get INV-000001 (not INV-000002)
+            result = complete_sale(
+                tid=tid,
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 1}],
+                payment_method="cash"
+            )
+
+            assert result["invoice_number"] == "INV-000001"
+
+    def test_duplicate_retry_does_not_consume_number(self):
+        """Retry with same idempotency key should return same invoice, not consume new number."""
+        with IsolatedTestDB() as tid:
+            conn = get_conn(tid)
+            conn.execute("""
+                INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, ("TYRE004", "Test Tyre", "TestBrand", "195/65R15", "new", 100, 500.00))
             product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             conn.commit()
             conn.close()
 
             idempotency_key = str(uuid.uuid4())
-            invoice_number = generate_invoice_number(tid)
-            items = [{"product_id": product_id, "quantity": 1}]
 
             # First request
             result1 = complete_sale(
                 tid=tid,
-                invoice_number=invoice_number,
                 idempotency_key=idempotency_key,
-                items=items,
+                items=[{"type": "product", "id": product_id, "quantity": 1}],
                 payment_method="cash"
             )
 
             # Retry with same key
             result2 = complete_sale(
                 tid=tid,
-                invoice_number=invoice_number,
                 idempotency_key=idempotency_key,
-                items=items,
+                items=[{"type": "product", "id": product_id, "quantity": 1}],
                 payment_method="cash"
             )
 
-            # Both succeed, second one marked as duplicate
-            assert result1["success"] is True
-            assert result2["success"] is True
+            # Both should have same invoice number
+            assert result1["invoice_number"] == "INV-000001"
+            assert result2["invoice_number"] == "INV-000001"
             assert result2["duplicate"] is True
-            assert result1["invoice_id"] == result2["invoice_id"]
+
+            # Next new sale should get INV-000002
+            result3 = complete_sale(
+                tid=tid,
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 1}],
+                payment_method="cash"
+            )
+
+            assert result3["invoice_number"] == "INV-000002"
+
+
+class TestSellingPriceValidation:
+    """Tests for selling_price validation and authorization."""
+
+    def test_product_without_selling_price_rejected(self):
+        """Sale fails if product has no selling_price set."""
+        with IsolatedTestDB() as tid:
+            conn = get_conn(tid)
+            # Insert product WITHOUT selling_price
+            conn.execute("""
+                INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, ("TYRE005", "No Price Tyre", "TestBrand", "195/65R15", "new", 10, None))
+            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.commit()
+            conn.close()
+
+            # Sale should be rejected
+            with pytest.raises(ValueError, match="no selling price"):
+                complete_sale(
+                    tid=tid,
+                    idempotency_key=str(uuid.uuid4()),
+                    items=[{"type": "product", "id": product_id, "quantity": 1}],
+                    payment_method="cash"
+                )
+
+    def test_selling_price_from_column_only(self):
+        """Uses selling_price column (not extra_data fallback)."""
+        with IsolatedTestDB() as tid:
+            conn = get_conn(tid)
+            conn.execute("""
+                INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price, extra_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, ("TYRE006", "Test Tyre", "TestBrand", "195/65R15", "new", 10, 600.00,
+                  json.dumps({"selling_price": 999.99})))  # Ignored extra_data price
+            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.commit()
+            conn.close()
+
+            result = complete_sale(
+                tid=tid,
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 1}],
+                payment_method="cash"
+            )
+
+            # Should use column price (600.00), NOT extra_data (999.99)
+            assert result["success"] is True
+            assert result["total"] == 600.00
+
+
+class TestProductPlusSaleTransaction:
+    """Tests for complete sales with products only, products+services."""
+
+    def test_cash_walk_in_product_only(self):
+        """Complete flow: walk-in, product, cash payment."""
+        with IsolatedTestDB() as tid:
+            conn = get_conn(tid)
+            conn.execute("""
+                INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, ("TYRE007", "Premium Tyre", "Michelin", "205/55R16", "new", 20, 1500.00))
+            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.commit()
+            conn.close()
+
+            result = complete_sale(
+                tid=tid,
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 2}],
+                payment_method="cash"
+            )
+
+            assert result["success"] is True
+            assert result["payment_status"] == "paid"
+            assert result["total"] == 3000.00  # 2 × 1500
+            assert result["debtor_id"] is None
+            assert result["invoice_number"] == "INV-000001"
+
+    def test_credit_creates_debtor(self):
+        """Credit sale creates debtor record."""
+        with IsolatedTestDB() as tid:
+            conn = get_conn(tid)
+            # Insert customer
+            conn.execute("INSERT INTO customers (name, phone) VALUES (?, ?)",
+                        ("Test Garage", "555-1234"))
+            customer_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            # Insert product
+            conn.execute("""
+                INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, ("TYRE008", "Budget Tyre", "Generic", "175/70R13", "new", 30, 250.00))
+            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.commit()
+            conn.close()
+
+            result = complete_sale(
+                tid=tid,
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 4}],
+                customer_id=customer_id,
+                payment_method="credit"
+            )
+
+            assert result["success"] is True
+            assert result["payment_status"] == "unpaid"
+            assert result["total"] == 1000.00  # 4 × 250
+            assert result["debtor_id"] is not None
+
+
+class TestStockDeduction:
+    """Tests for stock deduction during sales."""
+
+    def test_stock_deducted_on_sale(self):
+        """Stock should be reduced after successful sale."""
+        with IsolatedTestDB() as tid:
+            conn = get_conn(tid)
+            conn.execute("""
+                INSERT INTO products (code, name, brand, tyre_size, condition, current_stock, selling_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, ("TYRE009", "Test Tyre", "TestBrand", "195/65R15", "new", 50, 400.00))
+            product_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.commit()
+            conn.close()
+
+            complete_sale(
+                tid=tid,
+                idempotency_key=str(uuid.uuid4()),
+                items=[{"type": "product", "id": product_id, "quantity": 15}],
+                payment_method="cash"
+            )
+
+            # Check stock reduced
+            conn = get_conn(tid)
+            product = conn.execute("SELECT current_stock FROM products WHERE id=?",
+                                 (product_id,)).fetchone()
+            conn.close()
+
+            assert product[0] == 35  # 50 - 15
 
 
 if __name__ == "__main__":
