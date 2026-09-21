@@ -62,25 +62,26 @@ class TestResults:
 _test_counter = 0
 
 def setup_test_db():
-    """Setup test database with migrations."""
+    """Setup test database with migrations (fully isolated per test)."""
     global _test_counter
     _test_counter += 1
 
-    temp_dir = tempfile.mkdtemp()
-    test_tenant_id = 999 + _test_counter  # Use different tenant ID for each test
+    # Create a truly unique temp directory for this test with unique tenant ID
+    temp_dir = tempfile.mkdtemp(prefix=f"test_{_test_counter}_")
+    test_tenant_id = 1000 + _test_counter  # Use very different tenant ID for each test
     test_db_path = os.path.join(temp_dir, f"{test_tenant_id}.db")
 
-    # Patch environment
+    # Set environment for this test database
+    # NOTE: We do NOT restore it yet — tests will call get_conn() which needs this set
     os.environ["AUTOSTACK_DATA_DIR"] = temp_dir
 
     # Run migrations
     try:
         migrate_tenant_db(test_tenant_id, test_db_path)
+        return test_tenant_id, test_db_path
     except Exception as e:
         print(f"Migration failed: {e}")
         return None
-
-    return test_tenant_id, test_db_path
 
 
 def test_migrations():
@@ -255,8 +256,9 @@ def test_regression_products():
     assert product is not None, "Product not found"
     assert product["current_stock"] == 50, "Stock mismatch"
 
-    # Product has condition field
-    assert product["condition"] == "new", "Condition field missing or wrong default"
+    # Product has condition field (defaults to NULL for unclassified products)
+    actual_value = product["condition"]
+    assert product["condition"] is None, f"Condition field should default to NULL, but got: {repr(actual_value)} (type: {type(actual_value).__name__})"
 
 
 def test_regression_debtors():
@@ -329,6 +331,28 @@ def test_regression_settings():
     assert value == "test_value", "Setting not saved/retrieved"
 
 
+def test_product_condition_explicit_classification():
+    """Test explicit classification of products as 'new' or 'used'."""
+    test_id, _ = setup_test_db()
+
+    # Add product without condition (should be NULL)
+    prod1 = add_product(test_id, "UNCLASS-001", "Unclassified Product")
+    product = get_product(test_id, prod1)
+    assert product["condition"] is None, "Unclassified product should have NULL condition"
+
+    # Add new tyre with explicit 'new'
+    prod2 = add_product(test_id, "TYRE-NEW-001", "New Tyre", last_cost_price=500)
+    update_product(test_id, prod2, condition='new')
+    product = get_product(test_id, prod2)
+    assert product["condition"] == "new", "New tyre should have condition='new'"
+
+    # Add used tyre with explicit 'used'
+    prod3 = add_product(test_id, "TYRE-USED-001", "Used Tyre", last_cost_price=300)
+    update_product(test_id, prod3, condition='used')
+    product = get_product(test_id, prod3)
+    assert product["condition"] == "used", "Used tyre should have condition='used'"
+
+
 def test_regression_sales_stats():
     """Regression: Sales statistics work."""
     test_id, _ = setup_test_db()
@@ -347,6 +371,9 @@ def test_regression_sales_stats():
 
 def main():
     """Run all tests."""
+    global _test_counter
+    _test_counter = 0  # Reset counter for this test run
+
     print("="*60)
     print("Phase A Tests: POS Foundation")
     print("="*60 + "\n")
@@ -377,6 +404,9 @@ def main():
     results.test("Stock tracking still works", test_regression_stock_tracking)
     results.test("Settings still work", test_regression_settings)
     results.test("Sales stats still work", test_regression_sales_stats)
+
+    print("\nRunning Product Condition Classification Tests...")
+    results.test("Product condition explicit classification (NULL/'new'/'used')", test_product_condition_explicit_classification)
 
     success = results.summary()
     return 0 if success else 1
