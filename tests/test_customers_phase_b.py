@@ -55,6 +55,7 @@ class TestResults:
 
 
 _test_counter = 0
+_current_test_db = None
 
 class IsolatedTestDB:
     """Context manager for isolated test databases."""
@@ -66,6 +67,10 @@ class IsolatedTestDB:
         self.temp_dir = None
         self.tid = 3000 + _test_counter
         self.original_dir = None
+
+    def unique_code(self, base):
+        """Generate unique product/code suffix using test counter."""
+        return f"{base}-{self.counter}"
 
     def __enter__(self):
         self.temp_dir = tempfile.mkdtemp(prefix=f"phaseB_test_{self.counter}_")
@@ -79,6 +84,9 @@ class IsolatedTestDB:
             self.__exit__(None, None, None)
             raise RuntimeError(f"Migration failed: {e}")
 
+        # Store a global reference so test functions can access unique_code
+        global _current_test_db
+        _current_test_db = self
         return self.tid
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -371,7 +379,8 @@ def test_regression_debtors_still_work():
 def test_regression_stock_still_works():
     """Existing stock system unaffected by Phase B."""
     with IsolatedTestDB() as tid:
-        pid = add_product(tid, "TYRE-001", "Test Tyre", current_stock=10)
+        code = _current_test_db.unique_code("TYRE")
+        pid = add_product(tid, code, "Test Tyre", current_stock=10)
 
         product = get_product(tid, pid)
         assert product is not None
@@ -384,23 +393,25 @@ def test_regression_stock_still_works():
 def test_regression_sales_still_work():
     """Existing sales system unaffected by Phase B."""
     with IsolatedTestDB() as tid:
-        pid = add_product(tid, "LEGACY-001", "Legacy Product")
-        add_sale(tid, pid, "LEGACY-001", "Legacy Product", 3, 500, "Legacy note")
+        code = _current_test_db.unique_code("LEGACY")
+        pid = add_product(tid, code, "Legacy Product")
+        add_sale(tid, pid, code, "Legacy Product", 3, 500, "Legacy note")
 
         sales = get_all_sales(tid, limit=10)
         assert len(sales) > 0
-        assert any(s["product_code"] == "LEGACY-001" for s in sales)
+        assert any(s["product_code"] == code for s in sales)
 
 
 def test_regression_stock_history_still_works():
     """Existing stock history system unaffected by Phase B."""
     with IsolatedTestDB() as tid:
-        pid = add_product(tid, "TRACK-001", "Track Product", current_stock=20)
-        log_stock_change(tid, pid, "TRACK-001", "Track Product", "manual", 20, 15, "Test")
+        code = _current_test_db.unique_code("TRACK")
+        pid = add_product(tid, code, "Track Product", current_stock=20)
+        log_stock_change(tid, pid, code, "Track Product", "manual", 20, 15, "Test")
 
         history = get_stock_history(tid, limit=5)
         assert len(history) > 0
-        assert any(h["product_code"] == "TRACK-001" for h in history)
+        assert any(h["product_code"] == code for h in history)
 
 
 def test_regression_settings_still_work():

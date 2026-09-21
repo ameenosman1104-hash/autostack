@@ -2,13 +2,13 @@
 import sqlite3, os
 from datetime import datetime, date, timedelta
 
-DATA_DIR = os.path.join(os.environ.get("AUTOSTACK_DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")), "tenants")
-
 
 def _db_path(tenant_id):
     try:
-        os.makedirs(DATA_DIR, exist_ok=True)
-        test_path = os.path.join(DATA_DIR, f"{tenant_id}.db")
+        # Compute DATA_DIR dynamically to respect AUTOSTACK_DATA_DIR changes during tests
+        data_dir = os.path.join(os.environ.get("AUTOSTACK_DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")), "tenants")
+        os.makedirs(data_dir, exist_ok=True)
+        test_path = os.path.join(data_dir, f"{tenant_id}.db")
         sqlite3.connect(test_path).close()
         return test_path
     except:
