@@ -8,10 +8,10 @@ from datetime import datetime
 from decimal import Decimal
 
 from app import create_app
-from app.main_db import init_main_db, get_main_db_path
+from app.db_migrations import migrate_tenant_db
 from app.tenant_db import (
-    setup_tenant_db, get_conn, complete_sale,
-    get_all_products, get_all_services, search_customers
+    get_conn, complete_sale,
+    get_all_products, get_all_services, search_customers, add_product
 )
 
 
@@ -26,11 +26,14 @@ class IsolatedTestDB:
 
     def __enter__(self):
         import os
+        import tempfile
 
         self.tenant_id = self.offset + int(time.time() * 1000) % 10000
-        self.original_env = os.environ.get("TENANT_ID")
-        os.environ["TENANT_ID"] = str(self.tenant_id)
-        setup_tenant_db(self.tenant_id)
+        self.temp_dir = tempfile.mkdtemp()
+        self.original_env = os.environ.get("AUTOSTACK_DATA_DIR")
+        os.environ["AUTOSTACK_DATA_DIR"] = self.temp_dir
+        db_path = os.path.join(self.temp_dir, f"{self.tenant_id}.db")
+        migrate_tenant_db(self.tenant_id, db_path)
         return self.tenant_id
 
     def __exit__(self, exc_type, exc_val, exc_tb):
