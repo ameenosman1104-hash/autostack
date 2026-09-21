@@ -49,9 +49,12 @@ try:
     assert 14 in versions, 'Migration 14 should be applied'
     assert 15 in versions, 'Migration 15 should be applied'
     assert 16 in versions, 'Migration 16 should be applied'
-    assert 17 not in versions, 'Migration 17 should NOT be applied (removed)'
+    # Phase D reintroduced Migration 17 as a SAFE backfill (not the unsafe Phase A version)
+    # Phase D Migration 17: Add selling_price column + safe backfill from extra_data
+    assert 17 in versions, 'Migration 17 should be applied (Phase D safe backfill)'
+    assert 18 in versions, 'Migration 18 should be applied (Phase D invoice sequences)'
     print('   [OK] All Phase A migrations (11-16) present')
-    print('   [OK] Migration 17 NOT present (correctly removed)')
+    print('   [OK] Migration 17 present (Phase D safe backfill)')
 
     conn.close()
 
