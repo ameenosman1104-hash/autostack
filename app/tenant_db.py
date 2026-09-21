@@ -340,11 +340,15 @@ def add_debtor(tid, name=None, phone=None, email=None, amount_owed=None,
     column_list = ",".join(columns)
 
     try:
-        conn.execute(
+        cur = conn.execute(
             f"INSERT INTO debtors ({column_list}) VALUES ({placeholders})",
             values
         )
         conn.commit()
+        return cur.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -1123,3 +1127,240 @@ def mark_debtor_removed_from_source(tid, debtor_id, external_key, sync_source="a
     except Exception as e:
         print(f"Error marking debtor as removed: {e}")
         return False
+
+
+# ── POS: Customers ────────────────────────────────────────────────────────────
+
+def add_customer(tid, name, phone="", email="", vehicle_registration="", notes="", customer_type="regular"):
+    """Add a new customer."""
+    conn = get_conn(tid)
+    try:
+        cur = conn.execute(
+            """INSERT INTO customers (name, phone, email, vehicle_registration, notes, customer_type)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (name, phone, email, vehicle_registration, notes, customer_type)
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_customer(tid, customer_id):
+    """Get customer by ID."""
+    conn = get_conn(tid)
+    row = conn.execute("SELECT * FROM customers WHERE id=?", (customer_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_customer_by_name(tid, name):
+    """Search for customer by name (case-insensitive)."""
+    conn = get_conn(tid)
+    row = conn.execute(
+        "SELECT * FROM customers WHERE LOWER(name) LIKE LOWER(?) ORDER BY name LIMIT 1",
+        (f"%{name}%",)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_customers(tid):
+    """Get all customers."""
+    conn = get_conn(tid)
+    rows = conn.execute("SELECT * FROM customers ORDER BY name").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_customer(tid, customer_id, **kwargs):
+    """Update customer fields."""
+    conn = get_conn(tid)
+    kwargs["updated_at"] = datetime.now().isoformat()
+    sets = ", ".join(f"{k}=?" for k in kwargs)
+    vals = list(kwargs.values()) + [customer_id]
+    conn.execute(f"UPDATE customers SET {sets} WHERE id=?", vals)
+    conn.commit()
+    conn.close()
+
+
+def get_debtor_by_customer_id(tid, customer_id):
+    """Get debtor linked to a customer (returns first active debtor)."""
+    conn = get_conn(tid)
+    row = conn.execute(
+        "SELECT * FROM debtors WHERE customer_id=? AND is_paid=0",
+        (customer_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# ── POS: Invoices (Transactions) ──────────────────────────────────────────────
+
+def add_invoice(tid, invoice_number, idempotency_key, customer_id, sale_date, total=0,
+                payment_method='cash', created_by=None, debtor_id=None, status='completed',
+                subtotal=0, discount=0, tax=0):
+    """Create a new invoice (transaction record)."""
+    conn = get_conn(tid)
+    try:
+        cur = conn.execute(
+            """INSERT INTO invoices
+               (invoice_number, idempotency_key, customer_id, sale_date, total,
+                payment_method, created_by, debtor_id, status, subtotal, discount, tax)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (invoice_number, idempotency_key, customer_id, sale_date, total,
+             payment_method, created_by, debtor_id, status, subtotal, discount, tax)
+        )
+        conn.commit()
+        return cur.lastrowid
+    except sqlite3.IntegrityError as e:
+        conn.rollback()
+        if "invoice_number" in str(e):
+            raise ValueError("Invoice number already exists")
+        elif "idempotency_key" in str(e):
+            raise ValueError("This request was already processed")
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_invoice(tid, invoice_id):
+    """Get invoice by ID."""
+    conn = get_conn(tid)
+    row = conn.execute("SELECT * FROM invoices WHERE id=?", (invoice_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_invoice_by_idempotency_key(tid, idempotency_key):
+    """Get invoice by idempotency key (for preventing duplicates)."""
+    conn = get_conn(tid)
+    row = conn.execute(
+        "SELECT * FROM invoices WHERE idempotency_key=?",
+        (idempotency_key,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_invoices(tid, limit=200, offset=0):
+    """Get invoices for tenant, newest first."""
+    conn = get_conn(tid)
+    rows = conn.execute(
+        "SELECT * FROM invoices ORDER BY sale_date DESC, created_at DESC LIMIT ? OFFSET ?",
+        (limit, offset)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def list_invoices_by_customer(tid, customer_id):
+    """Get all invoices for a customer."""
+    conn = get_conn(tid)
+    rows = conn.execute(
+        "SELECT * FROM invoices WHERE customer_id=? ORDER BY sale_date DESC",
+        (customer_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_invoice(tid, invoice_id, **kwargs):
+    """Update invoice fields."""
+    conn = get_conn(tid)
+    kwargs["updated_at"] = datetime.now().isoformat()
+    sets = ", ".join(f"{k}=?" for k in kwargs)
+    vals = list(kwargs.values()) + [invoice_id]
+    conn.execute(f"UPDATE invoices SET {sets} WHERE id=?", vals)
+    conn.commit()
+    conn.close()
+
+
+# ── POS: Invoice Items (Line Items) ──────────────────────────────────────────
+
+def add_invoice_item(tid, invoice_id, item_type, quantity, unit_price,
+                     product_id=None, service_id=None, discount=0):
+    """Add a line item to an invoice."""
+    conn = get_conn(tid)
+    total = quantity * unit_price
+    try:
+        cur = conn.execute(
+            """INSERT INTO invoice_items
+               (invoice_id, item_type, product_id, service_id, quantity, unit_price, total, discount)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (invoice_id, item_type, product_id, service_id, quantity, unit_price, total, discount)
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_invoice_items(tid, invoice_id):
+    """Get all line items for an invoice."""
+    conn = get_conn(tid)
+    rows = conn.execute(
+        "SELECT * FROM invoice_items WHERE invoice_id=? ORDER BY id",
+        (invoice_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ── POS: Services ────────────────────────────────────────────────────────────
+
+def add_service(tid, name, default_price=0, description="", category=""):
+    """Add a new service."""
+    conn = get_conn(tid)
+    try:
+        cur = conn.execute(
+            """INSERT INTO services (name, default_price, description, category)
+               VALUES (?, ?, ?, ?)""",
+            (name, default_price, description, category)
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_service(tid, service_id):
+    """Get service by ID."""
+    conn = get_conn(tid)
+    row = conn.execute("SELECT * FROM services WHERE id=?", (service_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_services(tid, active_only=True):
+    """Get all services."""
+    conn = get_conn(tid)
+    if active_only:
+        rows = conn.execute("SELECT * FROM services WHERE is_active=1 ORDER BY name").fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM services ORDER BY name").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_service(tid, service_id, **kwargs):
+    """Update service fields."""
+    conn = get_conn(tid)
+    kwargs["updated_at"] = datetime.now().isoformat()
+    sets = ", ".join(f"{k}=?" for k in kwargs)
+    vals = list(kwargs.values()) + [service_id]
+    conn.execute(f"UPDATE services SET {sets} WHERE id=?", vals)
+    conn.commit()
+    conn.close()

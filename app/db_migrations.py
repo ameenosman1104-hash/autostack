@@ -572,6 +572,158 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 10 failed: {e}")
 
+        # Migration 11: Create customers table for POS
+        if get_schema_version(conn) < 11:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS customers (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        phone TEXT DEFAULT '',
+                        email TEXT DEFAULT '',
+                        vehicle_registration TEXT DEFAULT '',
+                        notes TEXT DEFAULT '',
+                        customer_type TEXT DEFAULT 'regular',
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email)")
+                mark_migration_applied(conn, 11, "Create customers table for POS")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 11 failed: {e}")
+
+        # Migration 12: Create invoices table for POS transactions
+        if get_schema_version(conn) < 12:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        invoice_number TEXT UNIQUE NOT NULL,
+                        idempotency_key TEXT UNIQUE NOT NULL,
+                        customer_id INTEGER,
+                        debtor_id INTEGER,
+                        sale_date TEXT NOT NULL,
+                        status TEXT DEFAULT 'completed',
+                        subtotal REAL DEFAULT 0,
+                        discount REAL DEFAULT 0,
+                        tax REAL DEFAULT 0,
+                        total REAL DEFAULT 0,
+                        payment_method TEXT,
+                        payment_status TEXT DEFAULT 'completed',
+                        notes TEXT DEFAULT '',
+                        created_by INTEGER,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (customer_id) REFERENCES customers(id),
+                        FOREIGN KEY (debtor_id) REFERENCES debtors(id)
+                    )
+                """)
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number)")
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_idempotency ON invoices(idempotency_key)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_debtor ON invoices(debtor_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_date ON invoices(sale_date)")
+                mark_migration_applied(conn, 12, "Create invoices table for POS transactions")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 12 failed: {e}")
+
+        # Migration 13: Create invoice_items table for line items
+        if get_schema_version(conn) < 13:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS invoice_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        invoice_id INTEGER NOT NULL,
+                        item_type TEXT,
+                        product_id INTEGER,
+                        service_id INTEGER,
+                        quantity REAL DEFAULT 0,
+                        unit_price REAL DEFAULT 0,
+                        total REAL DEFAULT 0,
+                        discount REAL DEFAULT 0,
+                        FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+                        FOREIGN KEY (product_id) REFERENCES products(id),
+                        FOREIGN KEY (service_id) REFERENCES services(id)
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_items_sale ON invoice_items(invoice_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_items_product ON invoice_items(product_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_items_service ON invoice_items(service_id)")
+                mark_migration_applied(conn, 13, "Create invoice_items table for line items")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 13 failed: {e}")
+
+        # Migration 14: Create services table for POS
+        if get_schema_version(conn) < 14:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS services (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        description TEXT DEFAULT '',
+                        default_price REAL DEFAULT 0,
+                        category TEXT DEFAULT '',
+                        is_active INTEGER DEFAULT 1,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_services_active ON services(is_active)")
+                mark_migration_applied(conn, 14, "Create services table for POS services")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 14 failed: {e}")
+
+        # Migration 15: Add tyre-specific columns to products
+        if get_schema_version(conn) < 15:
+            conn.execute("BEGIN")
+            try:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
+
+                if "condition" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN condition TEXT DEFAULT 'new'")
+                if "brand" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN brand TEXT DEFAULT ''")
+                if "tyre_size" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN tyre_size TEXT DEFAULT ''")
+                if "pattern" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN pattern TEXT DEFAULT ''")
+
+                mark_migration_applied(conn, 15, "Add tyre-specific columns to products")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 15 failed: {e}")
+
+        # Migration 16: Add customer_id to debtors
+        if get_schema_version(conn) < 16:
+            conn.execute("BEGIN")
+            try:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(debtors)").fetchall()}
+
+                if "customer_id" not in cols:
+                    conn.execute("ALTER TABLE debtors ADD COLUMN customer_id INTEGER DEFAULT NULL")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_debtors_customer ON debtors(customer_id)")
+
+                mark_migration_applied(conn, 16, "Add customer_id to debtors table")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 16 failed: {e}")
+
         conn.close()
         return backup_path
 
