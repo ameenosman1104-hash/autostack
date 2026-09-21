@@ -939,6 +939,108 @@ def test_tenant_isolation():
         db_b.__exit__(None, None, None)
 
 
+def test_browser_unit_price_ignored():
+    """Browser-supplied unit_price is ignored; backend price used."""
+    db = IsolatedTestDB()
+    tid = db.__enter__()
+    try:
+        pid = add_product(tid, db.unique_code("BROWSER"), "Browser Test", current_stock=10)
+        extra_data = json.dumps({"selling_price": 100.00})
+        update_product(tid, pid, extra_data=extra_data)
+
+        # Even if caller tries to supply unit_price, backend ignores it
+        result = complete_sale(
+            tid,
+            invoice_number=db.unique_invoice("INV"),
+            idempotency_key=f"key-{db.code_suffix}",
+            items=[{"type": "product", "id": pid, "quantity": 2}],
+            payment_method="cash"
+        )
+
+        # Verify backend used correct price (100 * 2 = 200)
+        assert result["success"] is True
+        assert result["total"] == 200.00
+
+        invoice_items = get_invoice_items(tid, result["invoice_id"])
+        assert invoice_items[0]["unit_price"] == 100.00
+    finally:
+        db.__exit__(None, None, None)
+
+
+def test_credit_sale_failure_rollback_debtor():
+    """If credit sale fails, debtor is NOT created (atomicity)."""
+    db = IsolatedTestDB()
+    tid = db.__enter__()
+    try:
+        cid = add_customer(tid, "Credit Failure Test", phone="089999999")
+        pid = add_product(tid, db.unique_code("CREDITFAIL"), "Credit Fail", current_stock=1)
+        extra_data = json.dumps({"selling_price": 100.00})
+        update_product(tid, pid, extra_data=extra_data)
+
+        # Try to buy more than stock
+        try:
+            complete_sale(
+                tid,
+                invoice_number=db.unique_invoice("INV"),
+                idempotency_key=f"key-{db.code_suffix}",
+                items=[{"type": "product", "id": pid, "quantity": 5}],
+                customer_id=cid,
+                payment_method="credit"
+            )
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            assert "Insufficient stock" in str(e)
+
+        # Verify no debtor was created
+        debtors = get_debtors_by_customer_id(tid, cid)
+        assert len(debtors) == 0
+    finally:
+        db.__exit__(None, None, None)
+
+
+def test_stock_history_idempotent_no_duplicate():
+    """Idempotent retry does not create duplicate stock_history entry."""
+    db = IsolatedTestDB()
+    tid = db.__enter__()
+    try:
+        pid = add_product(tid, db.unique_code("STKHIST"), "Stock History", current_stock=20)
+        extra_data = json.dumps({"selling_price": 50.00})
+        update_product(tid, pid, extra_data=extra_data)
+
+        idem_key = f"key-{db.code_suffix}"
+        inv_num = db.unique_invoice("INV")
+
+        # First call
+        result1 = complete_sale(
+            tid,
+            invoice_number=inv_num,
+            idempotency_key=idem_key,
+            items=[{"type": "product", "id": pid, "quantity": 4}],
+            payment_method="cash"
+        )
+
+        history1 = get_stock_history(tid)
+        history_count_1 = len([h for h in history1 if inv_num in h.get("notes", "")])
+
+        # Second call (idempotent)
+        result2 = complete_sale(
+            tid,
+            invoice_number=inv_num,
+            idempotency_key=idem_key,
+            items=[{"type": "product", "id": pid, "quantity": 4}],
+            payment_method="cash"
+        )
+
+        history2 = get_stock_history(tid)
+        history_count_2 = len([h for h in history2 if inv_num in h.get("notes", "")])
+
+        # Should still have only 1 history entry
+        assert history_count_1 == 1
+        assert history_count_2 == 1
+    finally:
+        db.__exit__(None, None, None)
+
+
 # ======================== MAIN ========================
 
 def main():
@@ -980,6 +1082,9 @@ def main():
     results.test("Tax is zero", test_tax_is_zero)
     results.test("No payment_history for paid", test_no_payment_history_for_cash_sale)
     results.test("Tenant isolation", test_tenant_isolation)
+    results.test("Browser unit_price ignored", test_browser_unit_price_ignored)
+    results.test("Credit failure: debtor rollback", test_credit_sale_failure_rollback_debtor)
+    results.test("Idempotent: no duplicate stock_history", test_stock_history_idempotent_no_duplicate)
 
     success = results.summary()
     return 0 if success else 1
