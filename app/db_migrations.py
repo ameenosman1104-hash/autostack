@@ -708,6 +708,21 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 15 failed: {e}")
 
+        # Migration 17: Add selling_price column to products
+        if get_schema_version(conn) < 17:
+            conn.execute("BEGIN")
+            try:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
+
+                if "selling_price" not in cols:
+                    conn.execute("ALTER TABLE products ADD COLUMN selling_price REAL DEFAULT NULL")
+
+                mark_migration_applied(conn, 17, "Add selling_price column to products")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 17 failed: {e}")
+
         # Migration 16: Add customer_id to debtors
         if get_schema_version(conn) < 16:
             conn.execute("BEGIN")
@@ -723,6 +738,23 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 16 failed: {e}")
+
+        # Migration 18: Create invoice_sequences table for atomic invoice numbering
+        if get_schema_version(conn) < 18:
+            conn.execute("BEGIN")
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS invoice_sequences (
+                        tid INTEGER PRIMARY KEY,
+                        next_number INTEGER DEFAULT 1,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                mark_migration_applied(conn, 18, "Create invoice_sequences table for POS")
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 18 failed: {e}")
 
         conn.close()
         return backup_path

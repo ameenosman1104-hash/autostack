@@ -1408,6 +1408,38 @@ def customer_total_outstanding(tid, customer_id):
     return round(total, 2)
 
 
+def generate_invoice_number(tid):
+    """Generate unique, sequential invoice number for tenant."""
+    conn = get_conn(tid)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        # Get or create sequence for this tenant
+        row = conn.execute(
+            "SELECT next_number FROM invoice_sequences WHERE tid = ?",
+            (tid,)
+        ).fetchone()
+
+        if not row:
+            conn.execute(
+                "INSERT INTO invoice_sequences (tid, next_number) VALUES (?, ?)",
+                (tid, 1)
+            )
+            next_num = 1
+        else:
+            next_num = row[0]
+
+        # Increment for next time
+        conn.execute(
+            "UPDATE invoice_sequences SET next_number = ? WHERE tid = ?",
+            (next_num + 1, tid)
+        )
+
+        conn.commit()
+        return f"INV-{next_num:06d}"  # INV-000001
+    finally:
+        conn.close()
+
+
 # ── PHASE C.1: Atomic Sale Transaction Engine ─────────────────────────────────
 
 def complete_sale(tid, invoice_number, idempotency_key, items,
@@ -1596,15 +1628,17 @@ def complete_sale(tid, invoice_number, idempotency_key, items,
             if item_type == 'product':
                 product = products_map[item_id]
 
-                # Load selling price from extra_data
-                try:
-                    extra_data = json.loads(product.get('extra_data', '{}') or '{}')
-                except (json.JSONDecodeError, ValueError):
-                    raise ValueError(
-                        f"Product '{product['name']}' has malformed extra_data JSON"
-                    )
+                # Load selling price from column (authoritative) with fallback to extra_data
+                selling_price = product.get('selling_price')
 
-                selling_price = extra_data.get('selling_price')
+                if selling_price is None:
+                    # Fallback to extra_data for transition period
+                    try:
+                        extra_data = json.loads(product.get('extra_data', '{}') or '{}')
+                        selling_price = extra_data.get('selling_price')
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
                 if selling_price is None:
                     raise ValueError(
                         f"Product '{product['name']}' lacks authoritative selling_price. "

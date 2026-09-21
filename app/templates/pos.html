@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tyre Shop POS - Cashier</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+        }
+
+        .pos-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+            height: 100vh;
+            padding: 20px;
+        }
+
+        .pos-main { display: flex; flex-direction: column; gap: 15px; }
+
+        .search-panel {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .search-panel input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .product-card {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .product-card:hover {
+            background: #f0f0f0;
+            border-color: #999;
+        }
+
+        .product-name { font-weight: 500; font-size: 13px; }
+        .product-stock { font-size: 12px; color: #666; margin: 4px 0; }
+        .product-price { font-size: 14px; font-weight: 600; color: #2c5aa0; }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .basket {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .basket-title { font-weight: 600; font-size: 14px; }
+
+        .basket-item {
+            display: grid;
+            grid-template-columns: 1fr auto 30px;
+            gap: 8px;
+            padding: 8px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            font-size: 12px;
+            align-items: center;
+        }
+
+        .basket-item-name { font-weight: 500; }
+        .basket-item-price { text-align: right; }
+        .basket-item-remove {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 2px 4px;
+        }
+
+        .checkout-panel {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+            font-size: 15px;
+            padding-top: 8px;
+            border-top: 1px solid #ddd;
+        }
+
+        .payment-method {
+            display: flex;
+            gap: 5px;
+            margin: 8px 0;
+        }
+
+        .payment-method button {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .payment-method button.active {
+            background: #2c5aa0;
+            color: white;
+            border-color: #2c5aa0;
+        }
+
+        .checkout-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .checkout-btn:hover { background: #229954; }
+        .checkout-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+
+        .customer-search {
+            padding: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .error-msg {
+            background: #ffe6e6;
+            color: #c0392b;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .success-msg {
+            background: #e6ffe6;
+            color: #27ae60;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="pos-container">
+        <div class="pos-main">
+            <div class="search-panel">
+                <input type="text" id="productSearch" placeholder="Search by brand, size, code...">
+            </div>
+            <div class="products-grid" id="productsGrid"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="basket">
+                <div class="basket-title">Basket</div>
+                <div id="basketItems"></div>
+            </div>
+
+            <div class="checkout-panel">
+                <div id="customerDisplay">No customer selected</div>
+                <input type="hidden" id="selectedCustomerId">
+
+                <div class="total-row">
+                    <span>Subtotal:</span>
+                    <span id="subtotal">0.00</span>
+                </div>
+                <div class="total-row">
+                    <span>Discount:</span>
+                    <input type="number" id="discount" value="0" step="0.01" style="width: 60px; text-align: right;">
+                </div>
+                <div class="total-row">
+                    <span>Total:</span>
+                    <span id="total">0.00</span>
+                </div>
+
+                <div class="payment-method">
+                    <button class="active" data-method="cash">Cash</button>
+                    <button data-method="card">Card</button>
+                    <button data-method="eft">EFT</button>
+                    <button data-method="credit">Credit</button>
+                </div>
+
+                <button class="checkout-btn" id="completeBtn" disabled>Complete Sale</button>
+                <div id="statusMsg"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tenantId = "{{ tenant_id }}";
+        const basket = new Map();
+        let selectedPaymentMethod = "cash";
+        let selectedCustomerId = null;
+        const idempotencyKey = generateUUID();
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        document.getElementById("productSearch").addEventListener("input", async (e) => {
+            const query = e.target.value.trim();
+            if (!query) {
+                document.getElementById("productsGrid").innerHTML = "";
+                return;
+            }
+
+            const res = await fetch(`/pos/products/search?q=${encodeURIComponent(query)}`);
+            const products = await res.json();
+            renderProducts(products);
+        });
+
+        function renderProducts(products) {
+            const grid = document.getElementById("productsGrid");
+            grid.innerHTML = products.map(p => `
+                <div class="product-card" onclick="addToBasket(${p.id}, '${p.name}', ${p.selling_price}, ${p.current_stock})">
+                    <div class="product-name">${p.name}</div>
+                    <div class="product-stock">Stock: ${p.current_stock}</div>
+                    <div class="product-price">R${p.selling_price.toFixed(2)}</div>
+                </div>
+            `).join("");
+        }
+
+        function addToBasket(productId, name, price, stock) {
+            if (stock <= 0) {
+                showStatus("Out of stock", "error");
+                return;
+            }
+
+            if (basket.has(productId)) {
+                const item = basket.get(productId);
+                if (item.quantity < stock) {
+                    item.quantity++;
+                }
+            } else {
+                basket.set(productId, { name, price, quantity: 1, productId });
+            }
+
+            renderBasket();
+            updateTotal();
+        }
+
+        function removeFromBasket(productId) {
+            basket.delete(productId);
+            renderBasket();
+            updateTotal();
+        }
+
+        function renderBasket() {
+            const container = document.getElementById("basketItems");
+            if (basket.size === 0) {
+                container.innerHTML = "<div style='color: #999; font-size: 12px;'>Basket is empty</div>";
+                return;
+            }
+
+            container.innerHTML = Array.from(basket.values()).map(item => `
+                <div class="basket-item">
+                    <div>
+                        <div class="basket-item-name">${item.name}</div>
+                        <div style="color: #666;">Qty: ${item.quantity}</div>
+                    </div>
+                    <div class="basket-item-price">R${(item.price * item.quantity).toFixed(2)}</div>
+                    <button class="basket-item-remove" onclick="removeFromBasket(${item.productId})">✕</button>
+                </div>
+            `).join("");
+        }
+
+        function updateTotal() {
+            const subtotal = Array.from(basket.values())
+                .reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            const discount = parseFloat(document.getElementById("discount").value) || 0;
+            const total = Math.max(0, subtotal - discount);
+
+            document.getElementById("subtotal").textContent = subtotal.toFixed(2);
+            document.getElementById("total").textContent = total.toFixed(2);
+            document.getElementById("completeBtn").disabled = basket.size === 0;
+        }
+
+        document.querySelectorAll(".payment-method button").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                document.querySelectorAll(".payment-method button").forEach(b => b.classList.remove("active"));
+                e.target.classList.add("active");
+                selectedPaymentMethod = e.target.dataset.method;
+            });
+        });
+
+        document.getElementById("discount").addEventListener("change", updateTotal);
+
+        document.getElementById("completeBtn").addEventListener("click", async () => {
+            if (basket.size === 0) return;
+
+            const items = Array.from(basket.values()).map(item => ({
+                product_id: item.productId,
+                quantity: item.quantity
+            }));
+
+            const discount = parseFloat(document.getElementById("discount").value) || 0;
+
+            const payload = {
+                idempotency_key: idempotencyKey,
+                items,
+                customer_id: selectedCustomerId,
+                payment_method: selectedPaymentMethod,
+                discount
+            };
+
+            try {
+                const res = await fetch("/pos/complete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    showStatus(`Sale completed! Invoice: ${data.invoice_number}`, "success");
+                    basket.clear();
+                    renderBasket();
+                    updateTotal();
+                    document.getElementById("selectedCustomerId").value = "";
+                    document.getElementById("customerDisplay").textContent = "No customer selected";
+                } else {
+                    showStatus(data.error || "Sale failed", "error");
+                }
+            } catch (err) {
+                showStatus("Error: " + err.message, "error");
+            }
+        });
+
+        function showStatus(msg, type) {
+            const container = document.getElementById("statusMsg");
+            container.className = type === "error" ? "error-msg" : "success-msg";
+            container.textContent = msg;
+            setTimeout(() => { container.textContent = ""; }, 4000);
+        }
+
+        renderBasket();
+        updateTotal();
+    </script>
+</body>
+</html>
