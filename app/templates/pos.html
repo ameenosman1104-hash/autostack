@@ -249,6 +249,14 @@
     <script>
         console.log('POS page script starting');
 
+        // Validate critical elements exist before proceeding
+        const completeBtn = document.getElementById('completeBtn');
+        if (!completeBtn) {
+            console.error('CRITICAL: completeBtn element not found in DOM');
+        } else {
+            console.log('✓ completeBtn found:', completeBtn);
+        }
+
         // Automatic CSRF token injection for same-origin POST/PUT/PATCH/DELETE requests
         const autoStackFetch = window.fetch.bind(window);
         window.fetch = function(input, options = {}) {
@@ -403,10 +411,19 @@
         document.getElementById("discount").addEventListener("change", updateTotal);
 
         function showStatus(msg, type) {
-            const container = document.getElementById("statusMsg");
-            container.className = type === "error" ? "error-msg" : "success-msg";
-            container.textContent = msg;
-            setTimeout(() => { container.textContent = ""; }, 4000);
+            try {
+                const container = document.getElementById("statusMsg");
+                if (!container) {
+                    console.error('showStatus: statusMsg element not found');
+                    console.log('Message would have been:', msg);
+                    return;
+                }
+                container.className = type === "error" ? "error-msg" : "success-msg";
+                container.textContent = msg;
+                setTimeout(() => { container.textContent = ""; }, 4000);
+            } catch (err) {
+                console.error('showStatus error:', err);
+            }
         }
 
         // Customer Management
@@ -514,7 +531,15 @@
 
         // Complete Sale handler
         console.log('Attaching Complete Sale handler to completeBtn');
-        document.getElementById('completeBtn').onclick = async () => {
+
+        const completeBtnForHandler = document.getElementById('completeBtn');
+        if (!completeBtnForHandler) {
+            console.error('CRITICAL at handler registration: completeBtn element not found');
+            showStatus('ERROR: Complete Sale button not found. Page may not have loaded correctly.', 'error');
+        } else {
+            console.log('✓ completeBtn exists, attaching handler');
+
+            completeBtnForHandler.onclick = async () => {
             try {
                 console.log('COMPLETE SALE CLICKED - selectedPaymentMethod:', selectedPaymentMethod, 'basket.size:', basket.size);
 
@@ -583,10 +608,24 @@
                 console.error("Complete sale exception:", err);
                 showStatus("Something went wrong: " + err.message, "error");
             }
-        };
+            };
+
+            console.log('✓ Handler attached to completeBtn');
+            console.log('Handler attached:', typeof completeBtnForHandler.onclick);
+        }
 
         renderBasket();
         updateTotal();
+
+        // Final validation after full initialization
+        const finalCompleteBtn = document.getElementById('completeBtn');
+        if (!finalCompleteBtn) {
+            console.error('CRITICAL: completeBtn disappeared after initialization');
+        } else if (!finalCompleteBtn.onclick) {
+            console.error('CRITICAL: completeBtn.onclick handler disappeared after initialization');
+        } else {
+            console.log('✓ Final check: completeBtn exists and has onclick handler');
+        }
     </script>
 
     <!-- New Customer Modal -->
