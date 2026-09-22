@@ -247,16 +247,6 @@
     </div>
 
     <script>
-        console.log('POS page script starting');
-
-        // Validate critical elements exist before proceeding
-        const completeBtn = document.getElementById('completeBtn');
-        if (!completeBtn) {
-            console.error('CRITICAL: completeBtn element not found in DOM');
-        } else {
-            console.log('✓ completeBtn found:', completeBtn);
-        }
-
         // Automatic CSRF token injection for same-origin POST/PUT/PATCH/DELETE requests
         const autoStackFetch = window.fetch.bind(window);
         window.fetch = function(input, options = {}) {
@@ -529,28 +519,14 @@
             }
         });
 
-        // Complete Sale handler
-        console.log('Attaching Complete Sale handler to completeBtn');
-
-        const completeBtnForHandler = document.getElementById('completeBtn');
-        if (!completeBtnForHandler) {
-            console.error('CRITICAL at handler registration: completeBtn element not found');
-            showStatus('ERROR: Complete Sale button not found. Page may not have loaded correctly.', 'error');
-        } else {
-            console.log('✓ completeBtn exists, attaching handler');
-
-            completeBtnForHandler.onclick = async () => {
+        async function completeSale() {
             try {
-                console.log('COMPLETE SALE CLICKED - selectedPaymentMethod:', selectedPaymentMethod, 'basket.size:', basket.size);
-
                 if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
-                    console.log('Credit payment without customer - blocking');
                     showStatus('Please select or add a customer for a credit sale.', 'error');
                     return;
                 }
 
                 if (basket.size === 0) {
-                    console.log('Empty basket - blocking');
                     showStatus('Add at least one item to the basket.', 'error');
                     return;
                 }
@@ -572,19 +548,14 @@
                     discount
                 };
 
-                console.log('SALE PAYLOAD:', payload);
-                console.log('Sending POST /pos/complete');
-
                 const res = await fetch("/pos/complete", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
                 });
-                console.log('Response received, status:', res.status);
 
                 const contentType = res.headers.get('content-type');
                 if (!contentType || !contentType.includes('application/json')) {
-                    console.error(`Unexpected response type: ${contentType}, status: ${res.status}`);
                     showStatus("Unable to complete sale. Please try again or contact the administrator.", "error");
                     return;
                 }
@@ -602,30 +573,28 @@
                     customerSearchInput.value = '';
                 } else {
                     showStatus(data.error || "Sale failed", "error");
-                    console.error("Sale error response:", data);
                 }
             } catch (err) {
                 console.error("Complete sale exception:", err);
                 showStatus("Something went wrong: " + err.message, "error");
             }
-            };
+        }
 
-            console.log('✓ Handler attached to completeBtn');
-            console.log('Handler attached:', typeof completeBtnForHandler.onclick);
+        function initializePOS() {
+            const completeBtn = document.getElementById('completeBtn');
+            if (completeBtn) {
+                completeBtn.onclick = completeSale;
+            }
+        }
+
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", initializePOS);
+        } else {
+            initializePOS();
         }
 
         renderBasket();
         updateTotal();
-
-        // Final validation after full initialization
-        const finalCompleteBtn = document.getElementById('completeBtn');
-        if (!finalCompleteBtn) {
-            console.error('CRITICAL: completeBtn disappeared after initialization');
-        } else if (!finalCompleteBtn.onclick) {
-            console.error('CRITICAL: completeBtn.onclick handler disappeared after initialization');
-        } else {
-            console.log('✓ Final check: completeBtn exists and has onclick handler');
-        }
     </script>
 
     <!-- New Customer Modal -->
