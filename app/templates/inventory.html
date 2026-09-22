@@ -72,7 +72,7 @@
               <th>{{ col }}</th>
             {% endfor %}
           {% else %}
-            <th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th class="text-center">Stock</th>
+            <th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th class="text-center">Stock</th><th class="text-right">Cost Price</th><th class="text-right">Selling Price</th>
           {% endif %}
           <th class="text-center">Min Level</th>
           <th class="text-center">Status</th>
@@ -115,6 +115,8 @@
             <td class="editable-cell" data-field="category" data-raw="{{ p.category }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.category }}</td>
             <td class="editable-cell" data-field="unit" data-raw="{{ p.unit }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.unit }}</td>
             <td class="text-center editable-cell" data-field="current_stock" data-type="number" data-raw="{{ p.current_stock }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.current_stock }}</td>
+            <td class="editable-cell text-right price-cell" data-field="last_cost_price" data-type="number" data-raw="{{ p.last_cost_price }}" data-endpoint="/inventory/{{ p.id }}/update-field">R {{ "%.2f"|format(p.last_cost_price) }}</td>
+            <td class="editable-cell text-right price-cell" data-field="selling_price" data-type="number" data-raw="{{ p.selling_price if p.selling_price else '' }}" data-endpoint="/inventory/{{ p.id }}/update-field">{% if p.selling_price %}R {{ "%.2f"|format(p.selling_price) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           {% endif %}
           <td class="text-center editable-cell" data-field="reorder_level" data-type="number"
               data-raw="{{ p.reorder_level }}" data-endpoint="/inventory/{{ p.id }}/update-field">{{ p.reorder_level }}</td>
@@ -955,6 +957,156 @@ async function doUpdateStockFromFile() {
 
 // Load connected source on page load
 document.addEventListener('DOMContentLoaded', loadConnectedStockSource);
+
+// ── Inline Editable Cells ────────────────────────────────────────────
+(function() {
+  function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : '';
+  }
+
+  function formatPrice(value) {
+    if (value === null || value === '') return '—';
+    const num = parseFloat(value);
+    return isNaN(num) ? '—' : `R ${num.toFixed(2)}`;
+  }
+
+  function parsePrice(str) {
+    return parseFloat((str || '').toString().replace(/[^0-9.-]/g, '')) || '';
+  }
+
+  document.querySelectorAll('.editable-cell').forEach(cell => {
+    cell.addEventListener('click', editCell);
+  });
+
+  function editCell(e) {
+    if (e.target.classList.contains('edit-confirm') || e.target.classList.contains('edit-cancel')) return;
+    if (this.querySelector('input')) return; // already editing
+
+    const field = this.dataset.field;
+    const raw = this.dataset.raw;
+    const type = this.dataset.type || 'text';
+    const endpoint = this.dataset.endpoint;
+    const isPrice = this.classList.contains('price-cell');
+
+    // Create input
+    const input = document.createElement('input');
+    input.type = type === 'number' ? 'number' : 'text';
+    input.className = 'form-control form-control-sm';
+    input.value = isPrice ? parsePrice(raw) : raw;
+    if (type === 'number') input.step = isPrice ? '0.01' : '1';
+
+    // Create controls container
+    const ctrl = document.createElement('div');
+    ctrl.style.display = 'flex';
+    ctrl.style.gap = '4px';
+    ctrl.style.alignItems = 'center';
+
+    // Confirm button
+    const btnOk = document.createElement('button');
+    btnOk.className = 'btn btn-sm btn-success edit-confirm';
+    btnOk.innerHTML = '<i class="bi bi-check"></i>';
+    btnOk.title = 'Save (Enter)';
+    btnOk.style.padding = '2px 6px';
+
+    // Cancel button
+    const btnX = document.createElement('button');
+    btnX.className = 'btn btn-sm btn-secondary edit-cancel';
+    btnX.innerHTML = '<i class="bi bi-x"></i>';
+    btnX.title = 'Cancel (Esc)';
+    btnX.style.padding = '2px 6px';
+
+    const origText = this.innerHTML;
+    const origCell = this;
+
+    function cancelEdit() {
+      origCell.innerHTML = origText;
+      origCell.addEventListener('click', editCell);
+    }
+
+    async function saveEdit() {
+      const val = input.value.trim();
+
+      // Validate
+      if (field.startsWith('selling_price') && val === '' && field === 'selling_price') {
+        // Allow empty selling price (NULL)
+      } else if ((field === 'selling_price' || field === 'last_cost_price') && val !== '') {
+        const num = parseFloat(val);
+        if (isNaN(num)) {
+          alert('Please enter a valid number.');
+          input.focus();
+          return;
+        }
+        if (num < 0) {
+          alert('Price cannot be negative.');
+          input.focus();
+          return;
+        }
+      }
+
+      btnOk.disabled = true;
+      btnX.disabled = true;
+      input.disabled = true;
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+          },
+          body: JSON.stringify({field: field, value: val})
+        });
+        const data = await res.json();
+        if (data.ok) {
+          // Update cell
+          if (isPrice) {
+            origCell.dataset.raw = val;
+            origCell.innerHTML = formatPrice(val);
+          } else {
+            origCell.dataset.raw = val;
+            origCell.textContent = val;
+          }
+          // Show success
+          origCell.style.backgroundColor = '#d4edda';
+          setTimeout(() => {
+            origCell.style.backgroundColor = '';
+            origCell.addEventListener('click', editCell);
+          }, 1000);
+        } else {
+          alert('Error: ' + (data.msg || 'Save failed'));
+          btnOk.disabled = false;
+          btnX.disabled = false;
+          input.disabled = false;
+          input.focus();
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+        btnOk.disabled = false;
+        btnX.disabled = false;
+        input.disabled = false;
+        input.focus();
+      }
+    }
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); saveEdit(); }
+      if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+    });
+
+    btnOk.addEventListener('click', e => { e.preventDefault(); saveEdit(); });
+    btnX.addEventListener('click', e => { e.preventDefault(); cancelEdit(); });
+
+    ctrl.appendChild(input);
+    ctrl.appendChild(btnOk);
+    ctrl.appendChild(btnX);
+    origCell.innerHTML = '';
+    origCell.appendChild(ctrl);
+    input.focus();
+    if (input.type === 'number') input.select();
+  }
+})();
+// ── End Inline Editable Cells ────────────────────────────────────────
 </script>
 
 <!-- Sync Stock Modal -->

@@ -514,7 +514,7 @@ def sync_from_file():
         return jsonify(ok=False, msg=str(e)), 400
 
 
-_ALLOWED_INV_FIELDS = {'name','category','unit','current_stock','reorder_level','last_cost_price','supplier'}
+_ALLOWED_INV_FIELDS = {'name','category','unit','current_stock','reorder_level','last_cost_price','selling_price','supplier'}
 
 @inventory_bp.route("/<int:pid>/update-field", methods=["POST"])
 @login_required
@@ -536,8 +536,15 @@ def update_field(pid):
             return jsonify(ok=True)
         if field not in _ALLOWED_INV_FIELDS:
             return jsonify(ok=False, msg="Invalid field.")
-        if field in ('current_stock', 'reorder_level', 'last_cost_price'):
-            value = float(str(value).replace(",", "") or 0)
+        if field in ('current_stock', 'reorder_level', 'last_cost_price', 'selling_price'):
+            # Parse numeric values; allow empty string for selling_price (NULL)
+            if field == 'selling_price' and str(value).strip() == '':
+                value = None
+            else:
+                value = float(str(value).replace(",", "") or 0)
+                # Validate no negative prices
+                if field in ('last_cost_price', 'selling_price') and value < 0:
+                    return jsonify(ok=False, msg=f"{field.replace('_', ' ').title()} cannot be negative.")
         # Log stock changes to audit trail
         if field == 'current_stock':
             prod = get_product(tid, pid)
@@ -550,6 +557,8 @@ def update_field(pid):
         if field == 'current_stock':
             auto_create_po_if_needed(tid)
         return jsonify(ok=True)
+    except ValueError as e:
+        return jsonify(ok=False, msg=f"Invalid value: {str(e)}")
     except Exception as e:
         return jsonify(ok=False, msg=str(e))
 
