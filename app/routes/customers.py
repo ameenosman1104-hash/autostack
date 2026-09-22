@@ -188,3 +188,66 @@ def search_api():
         }
         for c in results
     ])
+
+
+@customers_bp.route("/add-json", methods=["POST"])
+@login_required
+def add_json():
+    """JSON API for adding a customer from POS.
+
+    Request body:
+        {
+            "name": "Customer Name",
+            "phone": "optional phone",
+            "vehicle_registration": "optional registration"
+        }
+
+    Returns:
+        {
+            "success": true,
+            "customer": {
+                "id": 123,
+                "name": "Customer Name",
+                "phone": "phone",
+                "vehicle_registration": "registration"
+            }
+        }
+    """
+    tid = current_user.tenant_id
+    data = request.get_json() or {}
+
+    name = data.get("name", "").strip()
+    phone = data.get("phone", "").strip()
+    vehicle_registration = data.get("vehicle_registration", "").strip()
+
+    # Validate required field
+    if not name:
+        return jsonify({
+            "success": False,
+            "error": "Customer name is required"
+        }), 400
+
+    try:
+        customer_id = add_customer(
+            tid,
+            name=name,
+            phone=phone if phone else None,
+            vehicle_registration=vehicle_registration if vehicle_registration else None
+        )
+
+        customer = get_customer(tid, customer_id)
+
+        return jsonify({
+            "success": True,
+            "customer": {
+                "id": customer["id"],
+                "name": customer["name"],
+                "phone": customer["phone"],
+                "vehicle_registration": customer["vehicle_registration"]
+            }
+        }), 201
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500

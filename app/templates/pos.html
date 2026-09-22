@@ -206,8 +206,19 @@
             </div>
 
             <div class="checkout-panel">
-                <div id="customerDisplay">No customer selected</div>
-                <input type="hidden" id="selectedCustomerId">
+                <div class="customer-section">
+                    <label>Customer</label>
+                    <div id="customerDisplay" style="margin-bottom: 10px;">
+                        <input type="text" id="customerSearch" class="form-control" placeholder="Search name, phone, or registration..." style="margin-bottom: 8px;">
+                        <div id="customerSearchResults" class="list-group" style="display: none; max-height: 200px; overflow-y: auto; margin-bottom: 8px;"></div>
+                        <div id="customerSelected" style="display: none; padding: 8px; background: #f0f0f0; border-radius: 4px; margin-bottom: 8px;">
+                            <div id="selectedCustomerName" style="font-weight: 500;"></div>
+                            <div id="selectedCustomerDetails" style="font-size: 0.9em; color: #666;"></div>
+                            <button type="button" id="changeCustomerBtn" class="btn btn-sm btn-link" style="padding: 0; margin-top: 4px;">Change</button>
+                        </div>
+                        <button type="button" id="newCustomerBtn" class="btn btn-outline-primary btn-sm" style="width: 100%;">+ New Customer</button>
+                    </div>
+                    <input type="hidden" id="selectedCustomerId">
 
                 <div class="total-row">
                     <span>Subtotal:</span>
@@ -415,8 +426,204 @@
             setTimeout(() => { container.textContent = ""; }, 4000);
         }
 
+        // Customer Management
+        let customerSearchTimeout;
+        const customerSearchInput = document.getElementById('customerSearch');
+        const customerSearchResults = document.getElementById('customerSearchResults');
+        const customerSelected = document.getElementById('customerSelected');
+        const newCustomerBtn = document.getElementById('newCustomerBtn');
+        const changeCustomerBtn = document.getElementById('changeCustomerBtn');
+
+        customerSearchInput.addEventListener('input', (e) => {
+            clearTimeout(customerSearchTimeout);
+            const query = e.target.value.trim();
+
+            if (query.length < 2) {
+                customerSearchResults.style.display = 'none';
+                return;
+            }
+
+            customerSearchTimeout = setTimeout(() => {
+                fetch(`/customers/search?q=${encodeURIComponent(query)}`)
+                    .then(r => r.json())
+                    .then(customers => {
+                        if (customers.length === 0) {
+                            customerSearchResults.innerHTML = '<div class="list-group-item text-muted small py-2">No customers found</div>';
+                        } else {
+                            customerSearchResults.innerHTML = customers.map(c => `
+                                <div class="list-group-item list-group-item-action py-2" style="cursor: pointer;" onclick="selectCustomer(${c.id}, '${c.name}', '${c.phone}', '${c.vehicle_registration}')">
+                                    <div style="font-weight: 500;">${c.name}</div>
+                                    <div style="font-size: 0.85em; color: #666;">${c.phone || '—'} • ${c.vehicle_registration || '—'}</div>
+                                </div>
+                            `).join('');
+                        }
+                        customerSearchResults.style.display = '';
+                    });
+            }, 300);
+        });
+
+        function selectCustomer(id, name, phone, registration) {
+            document.getElementById('selectedCustomerId').value = id;
+            document.getElementById('selectedCustomerName').textContent = name;
+            document.getElementById('selectedCustomerDetails').textContent =
+                [phone, registration].filter(x => x).join(' • ') || '';
+            customerSearchInput.value = '';
+            customerSearchResults.style.display = 'none';
+            document.getElementById('customerSelected').style.display = '';
+            document.getElementById('customerDisplay').querySelector('.form-control').value = '';
+        }
+
+        changeCustomerBtn.addEventListener('click', () => {
+            document.getElementById('selectedCustomerId').value = '';
+            document.getElementById('customerSelected').style.display = 'none';
+            customerSearchInput.focus();
+        });
+
+        newCustomerBtn.addEventListener('click', () => {
+            document.getElementById('newCustomerModal').style.display = 'block';
+        });
+
+        document.getElementById('closeModal').addEventListener('click', () => {
+            document.getElementById('newCustomerModal').style.display = 'none';
+        });
+
+        document.getElementById('saveCustomerBtn').addEventListener('click', async () => {
+            const name = document.getElementById('newCustomerName').value.trim();
+            const phone = document.getElementById('newCustomerPhone').value.trim();
+            const registration = document.getElementById('newCustomerRegistration').value.trim();
+
+            if (!name) {
+                alert('Customer name is required');
+                return;
+            }
+
+            try {
+                const res = await fetch('/customers/add-json', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                    },
+                    body: JSON.stringify({
+                        name,
+                        phone: phone || null,
+                        vehicle_registration: registration || null
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    selectCustomer(data.customer.id, data.customer.name, data.customer.phone, data.customer.vehicle_registration);
+                    document.getElementById('newCustomerModal').style.display = 'none';
+                    document.getElementById('newCustomerName').value = '';
+                    document.getElementById('newCustomerPhone').value = '';
+                    document.getElementById('newCustomerRegistration').value = '';
+                    showStatus(`Customer '${data.customer.name}' created and selected`, 'success');
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error creating customer: ${err.message}`);
+            }
+        });
+
+        // Update complete sale to require customer for credit
+        const originalCompleteClick = document.getElementById('completeBtn').onclick;
+        document.getElementById('completeBtn').addEventListener('click', () => {
+            if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
+                showStatus('Please select or add a customer for a credit sale.', 'error');
+                return;
+            }
+            originalCompleteClick.call(this);
+        });
+
+        // Also update the payload to include customer_id
+        const originalCompleteHandler = document.getElementById('completeBtn').onclick;
+        document.getElementById('completeBtn').onclick = async () => {
+            if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
+                showStatus('Please select or add a customer for a credit sale.', 'error');
+                return;
+            }
+
+            if (basket.size === 0) return;
+
+            const items = Array.from(basket.values()).map(item => ({
+                type: "product",
+                id: item.productId,
+                quantity: item.quantity
+            }));
+
+            const discount = parseFloat(document.getElementById("discount").value) || 0;
+            const customerId = document.getElementById('selectedCustomerId').value;
+
+            const payload = {
+                idempotency_key: idempotencyKey,
+                items,
+                customer_id: customerId ? parseInt(customerId) : null,
+                payment_method: selectedPaymentMethod,
+                discount
+            };
+
+            try {
+                const res = await fetch("/pos/complete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const contentType = res.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.error(`Unexpected response type: ${contentType}, status: ${res.status}`);
+                    showStatus("Unable to complete sale. Please try again or contact the administrator.", "error");
+                    return;
+                }
+
+                const data = await res.json();
+
+                if (data.success) {
+                    showStatus(`Sale completed! Invoice: ${data.invoice_number}`, "success");
+                    basket.clear();
+                    renderBasket();
+                    updateTotal();
+                    document.getElementById("selectedCustomerId").value = "";
+                    document.getElementById("customerSelected").style.display = "none";
+                    customerSearchInput.value = '';
+                } else {
+                    showStatus(data.error || "Sale failed", "error");
+                    console.error("Sale error response:", data);
+                }
+            } catch (err) {
+                showStatus("Error: " + err.message, "error");
+                console.error("Complete sale exception:", err);
+            }
+        };
+
         renderBasket();
         updateTotal();
     </script>
+
+    <!-- New Customer Modal -->
+    <div id="newCustomerModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; width: 90%;">
+            <h5 style="margin-bottom: 15px;">Add New Customer</h5>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 5px;">Name *</label>
+                <input type="text" id="newCustomerName" class="form-control" placeholder="Customer name">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 5px;">Phone</label>
+                <input type="text" id="newCustomerPhone" class="form-control" placeholder="Phone number">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 5px;">Vehicle Registration</label>
+                <input type="text" id="newCustomerRegistration" class="form-control" placeholder="e.g., ABC 123 GP">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" id="closeModal" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+                <button type="button" id="saveCustomerBtn" class="btn btn-primary" style="flex: 1;">Save Customer</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
