@@ -247,6 +247,8 @@
     </div>
 
     <script>
+        console.log('POS page script starting');
+
         // Automatic CSRF token injection for same-origin POST/PUT/PATCH/DELETE requests
         const autoStackFetch = window.fetch.bind(window);
         window.fetch = function(input, options = {}) {
@@ -309,6 +311,8 @@
         }
 
         function addToBasket(productId, name, price, stock) {
+            console.log('addToBasket called - productId:', productId, 'name:', name, 'stock:', stock);
+
             if (stock <= 0) {
                 showStatus("Out of stock", "error");
                 return;
@@ -323,6 +327,7 @@
                 basket.set(productId, { name, price, quantity: 1, productId });
             }
 
+            console.log('After add, basket.size:', basket.size);
             renderBasket();
             updateTotal();
         }
@@ -381,7 +386,10 @@
 
             document.getElementById("subtotal").textContent = formatRand(subtotal);
             document.getElementById("total").textContent = formatRand(total);
-            document.getElementById("completeBtn").disabled = basket.size === 0;
+
+            const shouldBeDisabled = basket.size === 0;
+            document.getElementById("completeBtn").disabled = shouldBeDisabled;
+            console.log('updateTotal: basket.size=' + basket.size + ', completeBtn.disabled=' + shouldBeDisabled);
         }
 
         document.querySelectorAll(".payment-method button").forEach(btn => {
@@ -505,13 +513,21 @@
         });
 
         // Complete Sale handler
+        console.log('Attaching Complete Sale handler to completeBtn');
         document.getElementById('completeBtn').onclick = async () => {
+            console.log('COMPLETE SALE CLICKED - selectedPaymentMethod:', selectedPaymentMethod, 'basket.size:', basket.size);
+
             if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
+                console.log('Credit payment without customer - blocking');
                 showStatus('Please select or add a customer for a credit sale.', 'error');
                 return;
             }
 
-            if (basket.size === 0) return;
+            if (basket.size === 0) {
+                console.log('Empty basket - blocking');
+                showStatus('Add at least one item to the basket.', 'error');
+                return;
+            }
 
             const items = Array.from(basket.values()).map(item => ({
                 type: "product",
@@ -530,12 +546,16 @@
                 discount
             };
 
+            console.log('SALE PAYLOAD:', payload);
+
             try {
+                console.log('Sending POST /pos/complete');
                 const res = await fetch("/pos/complete", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
                 });
+                console.log('Response received, status:', res.status);
 
                 const contentType = res.headers.get('content-type');
                 if (!contentType || !contentType.includes('application/json')) {
