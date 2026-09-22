@@ -197,7 +197,7 @@ def test_dashboard_walkin_displays_correctly():
 
 
 def test_dashboard_missing_selling_price_count():
-    """Count products with no selling price."""
+    """Count products with no selling price (NULL only, per POS validation)."""
     app = create_app()
     app.config['TESTING'] = True
 
@@ -206,20 +206,54 @@ def test_dashboard_missing_selling_price_count():
     db_path = os.path.join(os.environ['AUTOSTACK_DATA_DIR'], f'{test_tid}.db')
     migrate_tenant_db(test_tid, db_path)
 
-    # Product with selling price
+    # Product with positive selling price
     add_product(test_tid, 'DASHBOARD-007A', 'Tyre A',
                current_stock=100, selling_price=2000.00)
 
-    # Product without selling price
+    # Product with NULL selling price (should be counted as missing)
     add_product(test_tid, 'DASHBOARD-007B', 'Tyre B',
                current_stock=100, selling_price=None)
 
     from app.routes.dashboard import _get_products_without_selling_price
     count = _get_products_without_selling_price(test_tid)
 
-    assert count == 1, f"Expected 1 product without price, got {count}"
+    # Should count only the NULL selling price product
+    assert count == 1, f"Expected 1 product without price (NULL), got {count}"
 
-    print("[OK] Missing selling price count correct")
+    print("[OK] Missing selling price count correct (NULL only)")
+
+
+def test_dashboard_selling_price_semantics():
+    """Verify dashboard matches POS: NULL=missing, 0=valid per validation, positive=valid."""
+    app = create_app()
+    app.config['TESTING'] = True
+
+    os.environ['AUTOSTACK_DATA_DIR'] = tempfile.mkdtemp()
+    test_tid = 8007
+    db_path = os.path.join(os.environ['AUTOSTACK_DATA_DIR'], f'{test_tid}.db')
+    migrate_tenant_db(test_tid, db_path)
+
+    # Product with NULL selling_price (should be counted as missing)
+    pid_null = add_product(test_tid, 'DASH-NULL', 'Null Price',
+                          current_stock=100, selling_price=None)
+
+    # Product with 0.00 selling_price (should NOT be counted, per POS validation)
+    from app.tenant_db import update_product
+    pid_zero = add_product(test_tid, 'DASH-ZERO', 'Zero Price',
+                          current_stock=100, selling_price=1000.00)
+    update_product(test_tid, pid_zero, selling_price=0.00)
+
+    # Product with positive selling_price (should NOT be counted as missing)
+    add_product(test_tid, 'DASH-POSITIVE', 'Positive Price',
+               current_stock=100, selling_price=2500.00)
+
+    from app.routes.dashboard import _get_products_without_selling_price
+    count = _get_products_without_selling_price(test_tid)
+
+    # Should count only NULL. Zero is valid per POS (only rejects < 0 and NULL)
+    assert count == 1, f"Expected 1 missing (NULL only), got {count}"
+
+    print("[OK] Dashboard semantics match POS (NULL=missing, 0=valid)")
 
 
 def test_dashboard_tenant_isolation_sales():

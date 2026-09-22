@@ -65,7 +65,7 @@ def _get_recent_sales(tid, limit=5):
                 i.id, i.invoice_number, i.customer_id, i.payment_method, i.total, i.sale_date
             FROM invoices i
             WHERE i.status='completed'
-            ORDER BY i.sale_date DESC
+            ORDER BY i.sale_date DESC, i.id DESC
             LIMIT ?
         """, (limit,)).fetchall()
         conn.close()
@@ -102,11 +102,11 @@ def _get_recent_sales(tid, limit=5):
 
 
 def _get_products_without_selling_price(tid):
-    """Count products with no selling price."""
+    """Count products with no selling price (NULL only, per POS validation)."""
     try:
         conn = get_conn(tid)
         result = conn.execute(
-            "SELECT COUNT(*) FROM products WHERE (deleted=0 OR deleted IS NULL) AND (selling_price IS NULL OR selling_price <= 0)"
+            "SELECT COUNT(*) FROM products WHERE (deleted=0 OR deleted IS NULL) AND selling_price IS NULL"
         ).fetchone()
         conn.close()
         return result[0] if result else 0
