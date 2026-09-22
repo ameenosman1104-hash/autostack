@@ -501,12 +501,10 @@
             }
 
             try {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                 const res = await fetch('/customers/add-json', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken || ''
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         name,
