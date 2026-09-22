@@ -515,41 +515,41 @@
         // Complete Sale handler
         console.log('Attaching Complete Sale handler to completeBtn');
         document.getElementById('completeBtn').onclick = async () => {
-            console.log('COMPLETE SALE CLICKED - selectedPaymentMethod:', selectedPaymentMethod, 'basket.size:', basket.size);
-
-            if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
-                console.log('Credit payment without customer - blocking');
-                showStatus('Please select or add a customer for a credit sale.', 'error');
-                return;
-            }
-
-            if (basket.size === 0) {
-                console.log('Empty basket - blocking');
-                showStatus('Add at least one item to the basket.', 'error');
-                return;
-            }
-
-            const items = Array.from(basket.values()).map(item => ({
-                type: "product",
-                id: item.productId,
-                quantity: item.quantity
-            }));
-
-            const discount = parseFloat(document.getElementById("discount").value) || 0;
-            const customerId = document.getElementById('selectedCustomerId').value;
-
-            const payload = {
-                idempotency_key: idempotencyKey,
-                items,
-                customer_id: customerId ? parseInt(customerId) : null,
-                payment_method: selectedPaymentMethod,
-                discount
-            };
-
-            console.log('SALE PAYLOAD:', payload);
-
             try {
+                console.log('COMPLETE SALE CLICKED - selectedPaymentMethod:', selectedPaymentMethod, 'basket.size:', basket.size);
+
+                if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
+                    console.log('Credit payment without customer - blocking');
+                    showStatus('Please select or add a customer for a credit sale.', 'error');
+                    return;
+                }
+
+                if (basket.size === 0) {
+                    console.log('Empty basket - blocking');
+                    showStatus('Add at least one item to the basket.', 'error');
+                    return;
+                }
+
+                const items = Array.from(basket.values()).map(item => ({
+                    type: "product",
+                    id: item.productId,
+                    quantity: item.quantity
+                }));
+
+                const discount = parseFloat(document.getElementById("discount").value) || 0;
+                const customerId = document.getElementById('selectedCustomerId').value;
+
+                const payload = {
+                    idempotency_key: idempotencyKey,
+                    items,
+                    customer_id: customerId ? parseInt(customerId) : null,
+                    payment_method: selectedPaymentMethod,
+                    discount
+                };
+
+                console.log('SALE PAYLOAD:', payload);
                 console.log('Sending POST /pos/complete');
+
                 const res = await fetch("/pos/complete", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -580,8 +580,8 @@
                     console.error("Sale error response:", data);
                 }
             } catch (err) {
-                showStatus("Error: " + err.message, "error");
                 console.error("Complete sale exception:", err);
+                showStatus("Something went wrong: " + err.message, "error");
             }
         };
 
