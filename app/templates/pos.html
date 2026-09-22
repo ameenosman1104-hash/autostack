@@ -487,7 +487,10 @@
             document.getElementById('newCustomerModal').style.display = 'none';
         });
 
-        document.getElementById('saveCustomerBtn').addEventListener('click', async () => {
+        document.getElementById('saveCustomerBtn').addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
             const name = document.getElementById('newCustomerName').value.trim();
             const phone = document.getElementById('newCustomerPhone').value.trim();
             const registration = document.getElementById('newCustomerRegistration').value.trim();
@@ -498,11 +501,12 @@
             }
 
             try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                 const res = await fetch('/customers/add-json', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                        'X-CSRFToken': csrfToken || ''
                     },
                     body: JSON.stringify({
                         name,
@@ -604,7 +608,7 @@
     </script>
 
     <!-- New Customer Modal -->
-    <div id="newCustomerModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;">
+    <div id="newCustomerModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
         <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; width: 90%;">
             <h5 style="margin-bottom: 15px;">Add New Customer</h5>
             <div style="margin-bottom: 15px;">
@@ -625,5 +629,11 @@
             </div>
         </div>
     </div>
+
+    <style>
+        #newCustomerModal[style*="display: block"] {
+            display: flex !important;
+        }
+    </style>
 </body>
 </html>
