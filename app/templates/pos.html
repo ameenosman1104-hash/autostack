@@ -394,60 +394,6 @@
 
         document.getElementById("discount").addEventListener("change", updateTotal);
 
-        document.getElementById("completeBtn").addEventListener("click", async () => {
-            if (basket.size === 0) return;
-
-            const items = Array.from(basket.values()).map(item => ({
-                type: "product",
-                id: item.productId,
-                quantity: item.quantity
-            }));
-
-            const discount = parseFloat(document.getElementById("discount").value) || 0;
-
-            const payload = {
-                idempotency_key: idempotencyKey,
-                items,
-                customer_id: selectedCustomerId,
-                payment_method: selectedPaymentMethod,
-                discount
-            };
-
-            try {
-                const res = await fetch("/pos/complete", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
-                });
-
-                // Check if response is JSON
-                const contentType = res.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    console.error(`Unexpected response type: ${contentType}, status: ${res.status}`);
-                    console.error(`Response text: ${await res.text()}`);
-                    showStatus("Unable to complete sale. Please try again or contact the administrator.", "error");
-                    return;
-                }
-
-                const data = await res.json();
-
-                if (data.success) {
-                    showStatus(`Sale completed! Invoice: ${data.invoice_number}`, "success");
-                    basket.clear();
-                    renderBasket();
-                    updateTotal();
-                    document.getElementById("selectedCustomerId").value = "";
-                    document.getElementById("customerDisplay").textContent = "No customer selected";
-                } else {
-                    showStatus(data.error || "Sale failed", "error");
-                    console.error("Sale error response:", data);
-                }
-            } catch (err) {
-                showStatus("Error: " + err.message, "error");
-                console.error("Complete sale exception:", err);
-            }
-        });
-
         function showStatus(msg, type) {
             const container = document.getElementById("statusMsg");
             container.className = type === "error" ? "error-msg" : "success-msg";
@@ -492,6 +438,7 @@
         });
 
         function selectCustomer(id, name, phone, registration) {
+            selectedCustomerId = id;
             document.getElementById('selectedCustomerId').value = id;
             document.getElementById('selectedCustomerName').textContent = name;
             document.getElementById('selectedCustomerDetails').textContent =
@@ -503,6 +450,7 @@
         }
 
         changeCustomerBtn.addEventListener('click', () => {
+            selectedCustomerId = null;
             document.getElementById('selectedCustomerId').value = '';
             document.getElementById('customerSelected').style.display = 'none';
             customerSearchInput.focus();
@@ -614,6 +562,7 @@
                     basket.clear();
                     renderBasket();
                     updateTotal();
+                    selectedCustomerId = null;
                     document.getElementById("selectedCustomerId").value = "";
                     document.getElementById("customerSelected").style.display = "none";
                     customerSearchInput.value = '';

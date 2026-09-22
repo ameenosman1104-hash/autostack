@@ -100,7 +100,7 @@ def test_save_customer_requests_add_json_endpoint():
 
 
 def test_save_customer_includes_csrf_token():
-    """Save Customer fetch should include X-CSRFToken header."""
+    """Save Customer uses global fetch wrapper for CSRF protection."""
     template_path = os.path.join(
         os.path.dirname(__file__),
         '../app/templates/pos.html'
@@ -109,16 +109,18 @@ def test_save_customer_includes_csrf_token():
     with open(template_path, 'r', encoding='utf-8') as f:
         template_content = f.read()
 
-    # Verify CSRF token is fetched and included
-    assert "'X-CSRFToken': csrfToken" in template_content or \
-           "'X-CSRFToken': document.querySelector" in template_content, \
-        "Should include X-CSRFToken header"
+    # Verify global fetch wrapper injects CSRF token
+    assert "window.fetch = function" in template_content, \
+        "Should have global fetch wrapper"
+
+    assert "'X-CSRFToken'" in template_content, \
+        "Should include X-CSRFToken header in wrapper"
 
     # Verify meta tag exists
     assert 'meta name="csrf-token"' in template_content, \
         "Should have CSRF meta tag"
 
-    print("[OK] Save Customer includes CSRF token")
+    print("[OK] Save Customer includes CSRF token via wrapper")
 
 
 def test_save_customer_prevents_default_submission():
