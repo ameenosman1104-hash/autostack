@@ -44,91 +44,110 @@
 </div>
 
 <!-- ── Page Title ───────────────────────────────────────────────────────────── -->
-<div class="page-title"><i class="bi bi-speedometer2 me-2"></i>AUTOSTACK TEST CHANGE 123</div>
+<div>
+  <div class="page-title"><i class="bi bi-speedometer2 me-2"></i>Business Overview</div>
+  <div class="text-muted small mb-3">Today's business at a glance</div>
+</div>
 
-<!-- ── Stat cards ───────────────────────────────────────────────────────────── -->
+<!-- ── Sales Overview Cards ───────────────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3">
+    <div class="stat-card" style="border-top: 3px solid #059669;">
+      <div class="stat-val text-success">R {{ "%.2f"|format(todays_sales) }}</div>
+      <div class="stat-lbl">Today's Sales</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card" style="border-top: 3px solid #0891b2;">
+      <div class="stat-val text-info">{{ todays_transaction_count }}</div>
+      <div class="stat-lbl">Transactions Today</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card" style="border-top: 3px solid #7c3aed;">
+      <div class="stat-val text-primary">R {{ "%.2f"|format(this_month_sales) }}</div>
+      <div class="stat-lbl">This Month's Sales</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card" style="border-top: 3px solid #dc2626;">
+      <div class="stat-val text-danger">R {{ "%.2f"|format(stats.total_owed) }}</div>
+      <div class="stat-lbl">Outstanding Debt</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stock Overview Cards ───────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
     <div class="stat-card">
       <div class="stat-val text-primary">{{ stats.total }}</div>
       <div class="stat-lbl">Total Products</div>
     </div>
   </div>
-  <div class="col-6 col-lg-3">
+  <div class="col-6 col-lg-4">
     <div class="stat-card">
       <div class="stat-val text-warning">{{ stats.low_stock }}</div>
       <div class="stat-lbl">Low Stock Items</div>
     </div>
   </div>
-  <div class="col-6 col-lg-3">
+  <div class="col-6 col-lg-4">
     <div class="stat-card">
       <div class="stat-val text-danger">{{ stats.out_of_stock }}</div>
       <div class="stat-lbl">Out of Stock</div>
     </div>
   </div>
-  <div class="col-6 col-lg-3">
-    <div class="stat-card">
-      <div class="stat-val" style="color:#065F46;">{{ stats.active_debtors }}</div>
-      <div class="stat-lbl">Active Debtors</div>
-    </div>
-  </div>
 </div>
 
-<div class="row g-3 mb-4">
-  <div class="col-12 col-lg-4">
-    <div class="stat-card">
-      <div class="stat-val text-danger">R {{ "%.2f"|format(stats.total_owed) }}</div>
-      <div class="stat-lbl">Total Outstanding Debt</div>
-    </div>
+<!-- ── Quick Actions ────────────────────────────────────────────────────────── -->
+<div class="mb-4">
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('pos.index') }}" class="btn btn-primary btn-lg">
+      <i class="bi bi-plus-circle me-2"></i>New Sale
+    </a>
+    <a href="{{ url_for('inventory.add') }}" class="btn btn-outline-primary">
+      <i class="bi bi-plus me-2"></i>Add Product
+    </a>
+    <a href="{{ url_for('customers.add') }}" class="btn btn-outline-primary">
+      <i class="bi bi-person-plus me-2"></i>Add Customer
+    </a>
   </div>
 </div>
 
 <!-- ── Needs Attention section ────────────────────────────────────────────────── -->
-{% if overdue_count > 0 or partially_paid_count > 0 or stats.low_stock > 0 %}
+{% if overdue_count > 0 or partially_paid_count > 0 or stats.low_stock > 0 or stats.out_of_stock > 0 or no_selling_price_count > 0 %}
 <div class="card mb-4" style="border-left: 4px solid #DC2626;">
   <div class="card-header bg-light">
     <h6 class="mb-0"><i class="bi bi-exclamation-circle-fill text-danger me-2"></i>Needs Attention</h6>
   </div>
-  <div class="card-body p-0">
-    <div class="row g-0">
-      {% if overdue_count > 0 %}
-      <div class="col-6 col-md-3 p-3 border-end">
-        <a href="{{ url_for('debtors.index', filter='active') }}" class="text-decoration-none">
+  <div class="card-body">
+    <div class="row g-3">
+      {% if no_selling_price_count > 0 %}
+      <div class="col-6 col-md-3">
+        <a href="{{ url_for('inventory.index') }}" class="text-decoration-none">
           <div class="text-center">
-            <div class="display-5 text-danger fw-bold">{{ overdue_count }}</div>
-            <div class="small text-muted">Overdue Reminders</div>
-            <div class="small text-muted">↓ Click to view</div>
-          </div>
-        </a>
-      </div>
-      {% endif %}
-
-      {% if partially_paid_count > 0 %}
-      <div class="col-6 col-md-3 p-3 {% if overdue_count > 0 %}border-end{% endif %}">
-        <a href="{{ url_for('debtors.index', filter='active') }}" class="text-decoration-none">
-          <div class="text-center">
-            <div class="display-5 text-info fw-bold">{{ partially_paid_count }}</div>
-            <div class="small text-muted">Partially Paid</div>
-            <div class="small text-muted">↓ Click to view</div>
+            <div class="display-5 text-danger fw-bold">{{ no_selling_price_count }}</div>
+            <div class="small text-muted">No Selling Price</div>
+            <div class="small text-muted">↓ Set prices</div>
           </div>
         </a>
       </div>
       {% endif %}
 
       {% if stats.low_stock > 0 %}
-      <div class="col-6 col-md-3 p-3 {% if overdue_count > 0 or partially_paid_count > 0 %}border-end{% endif %}">
+      <div class="col-6 col-md-3">
         <a href="{{ url_for('inventory.index') }}" class="text-decoration-none">
           <div class="text-center">
             <div class="display-5 text-warning fw-bold">{{ stats.low_stock }}</div>
             <div class="small text-muted">Low Stock Items</div>
-            <div class="small text-muted">↓ Click to view</div>
+            <div class="small text-muted">↓ Reorder needed</div>
           </div>
         </a>
       </div>
       {% endif %}
 
       {% if stats.out_of_stock > 0 %}
-      <div class="col-6 col-md-3 p-3">
+      <div class="col-6 col-md-3">
         <a href="{{ url_for('inventory.index') }}" class="text-decoration-none">
           <div class="text-center">
             <div class="display-5 text-danger fw-bold">{{ stats.out_of_stock }}</div>
@@ -138,10 +157,86 @@
         </a>
       </div>
       {% endif %}
+
+      {% if overdue_count > 0 %}
+      <div class="col-6 col-md-3">
+        <a href="{{ url_for('debtors.index', filter='active') }}" class="text-decoration-none">
+          <div class="text-center">
+            <div class="display-5 text-danger fw-bold">{{ overdue_count }}</div>
+            <div class="small text-muted">Overdue Reminders</div>
+            <div class="small text-muted">↓ Follow up</div>
+          </div>
+        </a>
+      </div>
+      {% endif %}
+
+      {% if partially_paid_count > 0 %}
+      <div class="col-6 col-md-3">
+        <a href="{{ url_for('debtors.index', filter='active') }}" class="text-decoration-none">
+          <div class="text-center">
+            <div class="display-5 text-info fw-bold">{{ partially_paid_count }}</div>
+            <div class="small text-muted">Partially Paid</div>
+            <div class="small text-muted">↓ Collect balance</div>
+          </div>
+        </a>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
 {% endif %}
+
+<!-- ── Recent Sales section ──────────────────────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-header">
+    <h6 class="mb-0"><i class="bi bi-receipt me-2"></i>Recent Sales</h6>
+  </div>
+  {% if recent_sales %}
+  <div class="card-body p-0">
+    <div style="overflow-x:auto;">
+      <table class="table mb-0" style="white-space:nowrap;">
+        <thead>
+          <tr style="background-color:#F9FAFB;">
+            <th class="text-muted small">Invoice</th>
+            <th class="text-muted small">Customer</th>
+            <th class="text-muted small">Payment</th>
+            <th class="text-muted small text-right">Total</th>
+            <th class="text-muted small text-right">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sale in recent_sales %}
+          <tr>
+            <td class="small fw-semibold">{{ sale.invoice_number }}</td>
+            <td class="small">{{ sale.customer_name }}</td>
+            <td class="small">
+              {% if sale.payment_method.lower() == 'cash' %}
+                <span class="badge bg-success">Cash</span>
+              {% elif sale.payment_method.lower() == 'card' %}
+                <span class="badge bg-info">Card</span>
+              {% elif sale.payment_method.lower() == 'eft' %}
+                <span class="badge bg-primary">EFT</span>
+              {% elif sale.payment_method.lower() == 'credit' %}
+                <span class="badge bg-warning">Credit</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ sale.payment_method }}</span>
+              {% endif %}
+            </td>
+            <td class="small text-right">R {{ "%.2f"|format(sale.total) }}</td>
+            <td class="small text-right text-muted">{{ sale.time }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card-body text-center text-muted py-4">
+    <i class="bi bi-inbox" style="font-size:2rem;opacity:0.5;"></i>
+    <p class="mt-2 mb-0">No sales recorded yet.</p>
+  </div>
+  {% endif %}
+</div>
 
 <!-- ── Low stock table ──────────────────────────────────────────────────────── -->
 {% if low %}
