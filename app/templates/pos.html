@@ -504,18 +504,7 @@
             }
         });
 
-        // Update complete sale to require customer for credit
-        const originalCompleteClick = document.getElementById('completeBtn').onclick;
-        document.getElementById('completeBtn').addEventListener('click', () => {
-            if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
-                showStatus('Please select or add a customer for a credit sale.', 'error');
-                return;
-            }
-            originalCompleteClick.call(this);
-        });
-
-        // Also update the payload to include customer_id
-        const originalCompleteHandler = document.getElementById('completeBtn').onclick;
+        // Complete Sale handler
         document.getElementById('completeBtn').onclick = async () => {
             if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
                 showStatus('Please select or add a customer for a credit sale.', 'error');
