@@ -276,6 +276,15 @@
             });
         }
 
+        function formatRand(value) {
+            return new Intl.NumberFormat('en-ZA', {
+                style: 'currency',
+                currency: 'ZAR',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+        }
+
         document.getElementById("productSearch").addEventListener("input", async (e) => {
             const query = e.target.value.trim();
             if (!query) {
@@ -324,6 +333,20 @@
             updateTotal();
         }
 
+        function changeQty(productId, delta) {
+            const item = basket.get(productId);
+            if (!item) return;
+
+            const newQty = item.quantity + delta;
+            if (newQty <= 0) {
+                removeFromBasket(productId);
+            } else if (newQty <= item.stock) {
+                item.quantity = newQty;
+                renderBasket();
+                updateTotal();
+            }
+        }
+
         function renderBasket() {
             const container = document.getElementById("basketItems");
             if (basket.size === 0) {
@@ -332,13 +355,19 @@
             }
 
             container.innerHTML = Array.from(basket.values()).map(item => `
-                <div class="basket-item">
-                    <div>
-                        <div class="basket-item-name">${item.name}</div>
-                        <div style="color: #666;">Qty: ${item.quantity}</div>
+                <div class="basket-item" style="border: 1px solid #e0e0e0; background: white; padding: 12px; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <div class="basket-item-name" style="flex: 1;">${item.name}</div>
+                        <div class="basket-item-price" style="font-weight: 600; min-width: 100px; text-align: right;">${formatRand(item.price * item.quantity)}</div>
                     </div>
-                    <div class="basket-item-price">R${(item.price * item.quantity).toFixed(2)}</div>
-                    <button class="basket-item-remove" onclick="removeFromBasket(${item.productId})">✕</button>
+                    <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <button type="button" onclick="changeQty(${item.productId}, -1)" style="width: 24px; height: 24px; padding: 0; border: 1px solid #ddd; background: #f5f5f5; cursor: pointer; border-radius: 3px; font-size: 12px;">−</button>
+                            <span style="width: 30px; text-align: center; font-weight: 500;">${item.quantity}</span>
+                            <button type="button" onclick="changeQty(${item.productId}, 1)" style="width: 24px; height: 24px; padding: 0; border: 1px solid #ddd; background: #f5f5f5; cursor: pointer; border-radius: 3px; font-size: 12px;">+</button>
+                        </div>
+                        <button type="button" class="basket-item-remove" onclick="removeFromBasket(${item.productId})" style="background: #f8f8f8; color: #c0392b; border: 1px solid #ddd; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; font-weight: 500;">Remove</button>
+                    </div>
                 </div>
             `).join("");
         }
@@ -350,8 +379,8 @@
             const discount = parseFloat(document.getElementById("discount").value) || 0;
             const total = Math.max(0, subtotal - discount);
 
-            document.getElementById("subtotal").textContent = subtotal.toFixed(2);
-            document.getElementById("total").textContent = total.toFixed(2);
+            document.getElementById("subtotal").textContent = formatRand(subtotal);
+            document.getElementById("total").textContent = formatRand(total);
             document.getElementById("completeBtn").disabled = basket.size === 0;
         }
 
@@ -483,9 +512,6 @@
             document.getElementById('newCustomerModal').style.display = 'block';
         });
 
-        document.getElementById('closeModal').addEventListener('click', () => {
-            document.getElementById('newCustomerModal').style.display = 'none';
-        });
 
         document.getElementById('saveCustomerBtn').addEventListener('click', async (e) => {
             e.preventDefault();
@@ -633,5 +659,12 @@
             display: flex !important;
         }
     </style>
+
+    <script>
+        // Register modal event listeners after HTML is defined
+        document.getElementById('closeModal').addEventListener('click', () => {
+            document.getElementById('newCustomerModal').style.display = 'none';
+        });
+    </script>
 </body>
 </html>
