@@ -248,9 +248,16 @@ function fetchAiInsights() {
 function renderAiInsights(data) {
   // Determine state based on data
   const hasItems = data.items && data.items.length > 0;
-  const isHealthy = data.priority === 'low' && !hasItems;
-  const isEmpty = (data.summary && data.summary.includes('insufficient')) ||
-                  (data.summary && data.summary.includes('no sales'));
+
+  // Summary is now a deterministic object with status field
+  const summary = data.summary || {};
+  const deterministicStatus = summary.status || 'healthy';
+
+  // Empty state: no products at all or no movement data
+  const isEmpty = deterministicStatus === 'no_products';
+
+  // Healthy state: no urgent attention items and status is healthy
+  const isHealthy = !hasItems && deterministicStatus === 'healthy';
 
   if (isEmpty) {
     showAiState('empty');
@@ -291,7 +298,6 @@ function renderAiInsights(data) {
     'warning': 'WARNING',
     'healthy': 'HEALTHY'
   };
-  const deterministicStatus = data.summary?.status || 'healthy';
   statusBadge.textContent = statusLabels[deterministicStatus] || 'OK';
   statusBadge.style.color = statusColors[deterministicStatus] || '#6B7280';
 

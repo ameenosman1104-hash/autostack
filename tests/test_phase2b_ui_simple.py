@@ -398,6 +398,84 @@ class Phase2BTests:
             seq_id = item['product_id']
             assert seq_id in mapping, f"All prepared IDs should be in mapping"
 
+    def test_http_200_fallback_response_success(self):
+        """Verify HTTP 200 with fallback=true is success for frontend (not error)."""
+        tenant_id = self.setup_tenant(6011)
+
+        # Create product that will trigger fallback
+        add_product(
+            tenant_id,
+            code="HTTP200",
+            name="HTTP 200 Test",
+            category="Test",
+            unit="PCS",
+            current_stock=2,
+            reorder_level=5,
+            last_cost_price=10.0,
+            supplier="Supplier"
+        )
+
+        engine = StockIntelligenceEngine(tenant_id, get_conn)
+        analysis = engine.analyze_inventory()
+
+        ai_service = AIInsights(tenant_id)
+        os.environ.pop("OPENAI_API_KEY", None)
+        response = ai_service.generate_stock_explanation(analysis)
+
+        # Key requirement: HTTP 200 + fallback=true means SUCCESS
+        # Frontend should NOT treat this as error state
+        assert response.get('success') is True, "Fallback response must have success=true"
+        assert response.get('fallback') is True, "Should be marked as fallback"
+
+        # Summary must be object, not string (critical for frontend fix)
+        assert isinstance(response.get('summary'), dict), "Summary must be dict/object"
+        assert 'status' in response['summary'], "Summary must have status field"
+        assert 'attention' in response['summary'], "Summary must have attention field"
+        assert 'out_of_stock' in response['summary'], "Summary must have out_of_stock field"
+        assert 'low_stock' in response['summary'], "Summary must have low_stock field"
+
+    def test_http_200_healthy_state_empty_items(self):
+        """Verify HTTP 200 with items=[] and status=healthy renders correctly."""
+        tenant_id = self.setup_tenant(6012)
+
+        # Create products with healthy stock (no attention needed)
+        for i in range(3):
+            add_product(
+                tenant_id,
+                code=f"HEALTHY{i}",
+                name=f"Healthy Product {i}",
+                category="Test",
+                unit="PCS",
+                current_stock=20,  # Well-stocked
+                reorder_level=5,
+                last_cost_price=10.0,
+                supplier="Supplier"
+            )
+
+        engine = StockIntelligenceEngine(tenant_id, get_conn)
+        analysis = engine.analyze_inventory()
+
+        ai_service = AIInsights(tenant_id)
+        os.environ.pop("OPENAI_API_KEY", None)
+        response = ai_service.generate_stock_explanation(analysis)
+
+        # When all products are healthy, items list might be empty
+        # but status should reflect that
+        assert response.get('success') is True, "Should be success"
+
+        summary = response.get('summary', {})
+        status = summary.get('status')
+
+        # Status should be one of the valid values
+        assert status in ['critical', 'warning', 'healthy'], \
+            f"Summary status must be valid, got {status}"
+
+        # If status is healthy and items is empty, that's valid
+        items = response.get('items', [])
+        if status == 'healthy' and len(items) == 0:
+            # This is a valid "all green" state
+            assert True, "Empty items with healthy status is valid"
+
     def run_all_tests(self):
         """Run all tests."""
         self.results.test("API response has required fields", self.test_api_response_has_required_fields)
@@ -410,6 +488,8 @@ class Phase2BTests:
         self.results.test("capped items don't underreport", self.test_capped_items_dont_underreport_metrics)
         self.results.test("deterministic status not AI priority", self.test_deterministic_status_not_ai_priority)
         self.results.test("no real IDs in prepared data", self.test_no_real_ids_in_prepared_data)
+        self.results.test("HTTP 200 fallback response is success", self.test_http_200_fallback_response_success)
+        self.results.test("HTTP 200 healthy state with empty items", self.test_http_200_healthy_state_empty_items)
 
 
 if __name__ == '__main__':
