@@ -143,8 +143,15 @@ function formatPriorityBadge(priority) {
     'medium': 'MEDIUM',
     'low': 'LOW'
   };
-  const color = colors[priority] || '#6B7280';
-  const label = labels[priority] || priority.toUpperCase();
+
+  // Defensive: validate priority is a string and is one of the known values
+  const safePriority = typeof priority === 'string' &&
+                       ['high', 'medium', 'low'].includes(priority.toLowerCase())
+                       ? priority.toLowerCase()
+                       : 'medium';  // Default to medium if missing/invalid
+
+  const color = colors[safePriority] || '#6B7280';
+  const label = labels[safePriority] || 'MEDIUM';
   return `<span class="badge" style="background-color:${color}; color:white; font-size:0.75rem; font-weight:600; padding:0.35rem 0.6rem;">${label}</span>`;
 }
 
@@ -152,7 +159,18 @@ function formatPriorityBadge(priority) {
 function renderInsightItem(item) {
   const card = document.createElement('div');
   card.className = 'card mb-3 border-start';
-  card.style.borderLeftColor = item.priority === 'high' ? '#DC2626' : (item.priority === 'medium' ? '#F59E0B' : '#10B981');
+
+  // Defensive: safely determine border color from priority
+  const safePriority = typeof item.priority === 'string' &&
+                       ['high', 'medium', 'low'].includes(item.priority.toLowerCase())
+                       ? item.priority.toLowerCase()
+                       : 'medium';
+  const borderColors = {
+    'high': '#DC2626',
+    'medium': '#F59E0B',
+    'low': '#10B981'
+  };
+  card.style.borderLeftColor = borderColors[safePriority] || '#10B981';
   card.style.borderLeftWidth = '4px';
 
   const statusBadge = formatPriorityBadge(item.priority);

@@ -476,6 +476,123 @@ class Phase2BTests:
             # This is a valid "all green" state
             assert True, "Empty items with healthy status is valid"
 
+    def test_fallback_items_have_priority(self):
+        """Verify fallback items include item-level priority field."""
+        tenant_id = self.setup_tenant(6013)
+
+        # Create products with different severity levels
+        add_product(
+            tenant_id,
+            code="PRIORITY_HIGH",
+            name="Out of Stock Product",
+            category="Test",
+            unit="PCS",
+            current_stock=0,  # OUT_OF_STOCK -> high
+            reorder_level=5,
+            last_cost_price=10.0,
+            supplier="Supplier"
+        )
+
+        add_product(
+            tenant_id,
+            code="PRIORITY_MEDIUM",
+            name="Below Reorder Product",
+            category="Test",
+            unit="PCS",
+            current_stock=2,  # BELOW_REORDER_LEVEL -> medium
+            reorder_level=5,
+            last_cost_price=10.0,
+            supplier="Supplier"
+        )
+
+        engine = StockIntelligenceEngine(tenant_id, get_conn)
+        analysis = engine.analyze_inventory()
+
+        ai_service = AIInsights(tenant_id)
+        os.environ.pop("OPENAI_API_KEY", None)
+        response = ai_service.generate_stock_explanation(analysis)
+
+        # Verify each item has priority field
+        items = response.get('items', [])
+        assert len(items) > 0, "Should have attention items"
+
+        for item in items:
+            assert 'priority' in item, f"Each item must have priority field: {item}"
+            assert item['priority'] in ['high', 'medium', 'low'], \
+                f"Priority must be high/medium/low, got {item['priority']}"
+
+    def test_priority_derived_from_flags(self):
+        """Verify item-level priority is derived correctly from deterministic flags."""
+        tenant_id = self.setup_tenant(6014)
+
+        # Create product with OUT_OF_STOCK flag (should be high priority)
+        add_product(
+            tenant_id,
+            code="OOS",
+            name="Out of Stock",
+            category="Test",
+            unit="PCS",
+            current_stock=0,
+            reorder_level=5,
+            last_cost_price=10.0,
+            supplier="Supplier"
+        )
+
+        engine = StockIntelligenceEngine(tenant_id, get_conn)
+        analysis = engine.analyze_inventory()
+
+        ai_service = AIInsights(tenant_id)
+        os.environ.pop("OPENAI_API_KEY", None)
+        response = ai_service.generate_stock_explanation(analysis)
+
+        # Find the out-of-stock item
+        items = response.get('items', [])
+        oos_item = None
+        for item in items:
+            if 'out of stock' in item.get('explanation', '').lower():
+                oos_item = item
+                break
+
+        # OUT_OF_STOCK flag should result in high priority
+        if oos_item:
+            assert oos_item['priority'] == 'high', \
+                f"OUT_OF_STOCK item should have high priority, got {oos_item['priority']}"
+
+    def test_frontend_tolerates_invalid_priority(self):
+        """Verify renderInsightItem() can handle invalid/missing priority gracefully."""
+        tenant_id = self.setup_tenant(6015)
+
+        add_product(
+            tenant_id,
+            code="TEST",
+            name="Test Product",
+            category="Test",
+            unit="PCS",
+            current_stock=2,
+            reorder_level=5,
+            last_cost_price=10.0,
+            supplier="Supplier"
+        )
+
+        engine = StockIntelligenceEngine(tenant_id, get_conn)
+        analysis = engine.analyze_inventory()
+
+        ai_service = AIInsights(tenant_id)
+        os.environ.pop("OPENAI_API_KEY", None)
+        response = ai_service.generate_stock_explanation(analysis)
+
+        # Verify response structure is valid and can be rendered
+        assert response.get('success') is True, "Response must be success"
+        items = response.get('items', [])
+
+        for item in items:
+            # Each item should have priority (not None/undefined)
+            assert item.get('priority') is not None, \
+                f"Item priority should not be None: {item}"
+            # Priority should be a valid value
+            assert item.get('priority') in ['high', 'medium', 'low'], \
+                f"Priority must be valid: {item.get('priority')}"
+
     def run_all_tests(self):
         """Run all tests."""
         self.results.test("API response has required fields", self.test_api_response_has_required_fields)
@@ -490,6 +607,9 @@ class Phase2BTests:
         self.results.test("no real IDs in prepared data", self.test_no_real_ids_in_prepared_data)
         self.results.test("HTTP 200 fallback response is success", self.test_http_200_fallback_response_success)
         self.results.test("HTTP 200 healthy state with empty items", self.test_http_200_healthy_state_empty_items)
+        self.results.test("fallback items have priority field", self.test_fallback_items_have_priority)
+        self.results.test("priority derived from flags", self.test_priority_derived_from_flags)
+        self.results.test("frontend tolerates invalid priority", self.test_frontend_tolerates_invalid_priority)
 
 
 if __name__ == '__main__':

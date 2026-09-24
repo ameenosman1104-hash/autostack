@@ -39,6 +39,7 @@ class StockInsightItem(BaseModel):
     headline: str = Field(..., description="Short product summary")
     explanation: str = Field(..., description="Explanation of stock condition")
     suggested_action: str = Field(..., description="Safe advisory action")
+    priority: str = Field(default="medium", description="Item-level priority: high|medium|low")
 
 
 class StockInsightResponse(BaseModel):
@@ -274,10 +275,11 @@ Use ONLY the product IDs and data supplied."""
             real_product_id = product_id_mapping.get(item.product_id, item.product_id)
 
             validated_items.append({
-                "product_id": real_product_id,  # Use real product ID for frontend
-                "headline": item.headline[:200],  # Sanitize length
+                "product_id": real_product_id,
+                "headline": item.headline[:200],
                 "explanation": item.explanation[:500],
-                "suggested_action": item.suggested_action[:200]
+                "suggested_action": item.suggested_action[:200],
+                "priority": self._validate_priority(item.priority)
             })
 
         # Limit items
@@ -303,6 +305,15 @@ Use ONLY the product IDs and data supplied."""
         if p in ["high", "medium", "low"]:
             return p
         return "medium"
+
+    def _derive_item_priority(self, flags: List[str]) -> str:
+        """Derive item-level priority from deterministic flags."""
+        if "OUT_OF_STOCK" in flags or "LOW_STOCK_FAST_MOVING" in flags:
+            return "high"
+        elif "BELOW_REORDER_LEVEL" in flags or "DORMANT" in flags:
+            return "medium"
+        else:
+            return "low"
 
     def _generate_fallback_response(self, prepared_data: Dict[str, Any], product_id_mapping: Dict[int, int] = None) -> Dict[str, Any]:
         """Deterministic fallback using AutoStack flags only."""
@@ -354,11 +365,15 @@ Use ONLY the product IDs and data supplied."""
                 explanation = f"{item['product_name']} requires attention."
                 action = "Review stock level"
 
+            # Derive item-level priority from flags
+            item_priority = self._derive_item_priority(flags)
+
             fallback_items.append({
                 "product_id": real_product_id,
                 "headline": item['product_name'],
                 "explanation": explanation,
-                "suggested_action": action
+                "suggested_action": action,
+                "priority": item_priority
             })
 
         return {
