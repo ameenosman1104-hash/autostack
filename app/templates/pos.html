@@ -476,48 +476,6 @@
         });
 
 
-        document.getElementById('saveCustomerBtn').addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const name = document.getElementById('newCustomerName').value.trim();
-            const phone = document.getElementById('newCustomerPhone').value.trim();
-            const registration = document.getElementById('newCustomerRegistration').value.trim();
-
-            if (!name) {
-                alert('Customer name is required');
-                return;
-            }
-
-            try {
-                const res = await fetch('/customers/add-json', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        name,
-                        phone: phone || null,
-                        vehicle_registration: registration || null
-                    })
-                });
-
-                const data = await res.json();
-
-                if (data.success) {
-                    selectCustomer(data.customer.id, data.customer.name, data.customer.phone, data.customer.vehicle_registration);
-                    document.getElementById('newCustomerModal').style.display = 'none';
-                    document.getElementById('newCustomerName').value = '';
-                    document.getElementById('newCustomerPhone').value = '';
-                    document.getElementById('newCustomerRegistration').value = '';
-                    showStatus(`Customer '${data.customer.name}' created and selected`, 'success');
-                } else {
-                    alert(`Error: ${data.error}`);
-                }
-            } catch (err) {
-                alert(`Error creating customer: ${err.message}`);
-            }
-        });
 
         async function completeSale() {
             try {
@@ -630,6 +588,49 @@
         // Register modal event listeners after HTML is defined
         document.getElementById('closeModal').addEventListener('click', () => {
             document.getElementById('newCustomerModal').style.display = 'none';
+        });
+
+        document.getElementById('saveCustomerBtn').addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const name = document.getElementById('newCustomerName').value.trim();
+            const phone = document.getElementById('newCustomerPhone').value.trim();
+            const registration = document.getElementById('newCustomerRegistration').value.trim();
+
+            if (!name) {
+                alert('Customer name is required');
+                return;
+            }
+
+            try {
+                const res = await fetch('/customers/add-json', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name,
+                        phone: phone || null,
+                        vehicle_registration: registration || null
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    selectCustomer(data.customer.id, data.customer.name, data.customer.phone, data.customer.vehicle_registration);
+                    document.getElementById('newCustomerModal').style.display = 'none';
+                    document.getElementById('newCustomerName').value = '';
+                    document.getElementById('newCustomerPhone').value = '';
+                    document.getElementById('newCustomerRegistration').value = '';
+                    showStatus(`Customer '${data.customer.name}' created and selected`, 'success');
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error creating customer: ${err.message}`);
+            }
         });
     </script>
 </body>
