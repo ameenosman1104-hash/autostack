@@ -50,6 +50,7 @@ def create_app():
     from .routes.pos            import pos_bp
     from .routes.local_file_sync_api import bp as local_file_sync_bp
     from .routes.data_sources_api import bp as data_sources_bp
+    from .routes.ai_insights import ai_insights_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp,       url_prefix="/admin")
@@ -66,6 +67,7 @@ def create_app():
     app.register_blueprint(pos_bp,         url_prefix="/pos")
     app.register_blueprint(local_file_sync_bp)
     app.register_blueprint(data_sources_bp)
+    app.register_blueprint(ai_insights_bp)
 
     # Expose enumerate to Jinja2 templates
     app.jinja_env.globals['enumerate'] = enumerate
