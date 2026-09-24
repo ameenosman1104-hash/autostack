@@ -107,21 +107,21 @@ class AIInsights:
                     logger.info(f"AI insights cache hit for tenant {self.tenant_id}")
                     return cached
 
-            # Prepare minimal data for AI
-            prepared_data = self._prepare_minimal_data(summary, attention_items)
+            # Prepare minimal data for AI (with real product ID mapping)
+            prepared_data, product_id_mapping = self._prepare_minimal_data(summary, attention_items)
             allowed_product_ids = self._extract_product_ids(prepared_data)
 
             # If API key missing, use fallback immediately
             if not self.api_key:
                 logger.warning(f"OPENAI_API_KEY not set, using fallback")
-                return self._generate_fallback_response(prepared_data)
+                return self._generate_fallback_response(prepared_data, product_id_mapping)
 
             # Call OpenAI Responses API
             try:
                 ai_response = self._call_openai_responses_api(prepared_data)
 
-                # Validate product IDs
-                validated = self._validate_product_ids(ai_response, allowed_product_ids)
+                # Validate product IDs and add deterministic summary
+                validated = self._validate_product_ids(ai_response, allowed_product_ids, product_id_mapping, summary)
 
                 # Cache result
                 self.cache[cache_key] = (validated, datetime.now())
@@ -131,7 +131,7 @@ class AIInsights:
             except Exception as e:
                 logger.error(f"AI API error: {str(e)}", exc_info=True)
                 # Fallback on any AI error
-                return self._generate_fallback_response(prepared_data)
+                return self._generate_fallback_response(prepared_data, product_id_mapping)
 
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}", exc_info=True)
@@ -166,14 +166,27 @@ class AIInsights:
                 ids.add(item["product_id"])
         return ids
 
-    def _prepare_minimal_data(self, summary: Dict, attention_items: List) -> Dict[str, Any]:
-        """Prepare minimal privacy-focused data for AI."""
+    def _prepare_minimal_data(self, summary: Dict, attention_items: List) -> tuple:
+        """Prepare minimal privacy-focused data for AI.
+
+        Returns:
+            Tuple of (prepared_data, product_id_mapping)
+            where product_id_mapping maps sequential_id -> real_product_id
+        """
         limited_items = attention_items[:self.MAX_ATTENTION_ITEMS]
 
         prepared_items = []
+        product_id_mapping = {}  # Maps sequential ID -> real product ID
+
         for i, item in enumerate(limited_items):
+            sequential_id = i + 1
+            real_id = item.get("product_id")
+
+            if real_id:
+                product_id_mapping[sequential_id] = real_id
+
             prepared_items.append({
-                "product_id": i + 1,  # Use safe sequential IDs for AI (map back if needed)
+                "product_id": sequential_id,  # Use safe sequential IDs for AI
                 "product_name": item.get("product_name", "Unknown"),
                 "current_stock": item.get("current_stock"),
                 "reorder_level": item.get("reorder_level"),
@@ -183,7 +196,7 @@ class AIInsights:
                 "flags": item.get("flags", [])
             })
 
-        return {
+        prepared_data = {
             "summary": {
                 "total": summary.get("total_products"),
                 "out_of_stock": summary.get("out_of_stock_count"),
@@ -193,6 +206,8 @@ class AIInsights:
             },
             "attention_items": prepared_items
         }
+
+        return prepared_data, product_id_mapping
 
     def _call_openai_responses_api(self, prepared_data: Dict[str, Any]) -> StockInsightResponse:
         """Call OpenAI Responses API with structured output."""
@@ -245,7 +260,7 @@ Use ONLY the product IDs and data supplied."""
             logger.error(f"OpenAI Responses API error: {str(e)}")
             raise AIInsightsException(f"OpenAI error: {str(e)}")
 
-    def _validate_product_ids(self, response: StockInsightResponse, allowed_ids: set) -> Dict[str, Any]:
+    def _validate_product_ids(self, response: StockInsightResponse, allowed_ids: set, product_id_mapping: Dict[int, int], deterministic_summary: Dict[str, Any] = None) -> Dict[str, Any]:
         """Validate that AI returned only allowed product IDs."""
         validated_items = []
 
@@ -255,8 +270,11 @@ Use ONLY the product IDs and data supplied."""
                 logger.warning(f"AI returned unknown product_id {item.product_id}, rejecting")
                 continue
 
+            # Map sequential ID back to real product ID for frontend
+            real_product_id = product_id_mapping.get(item.product_id, item.product_id)
+
             validated_items.append({
-                "product_id": item.product_id,
+                "product_id": real_product_id,  # Use real product ID for frontend
                 "headline": item.headline[:200],  # Sanitize length
                 "explanation": item.explanation[:500],
                 "suggested_action": item.suggested_action[:200]
@@ -268,7 +286,12 @@ Use ONLY the product IDs and data supplied."""
         return {
             "success": True,
             "headline": response.headline[:200],
-            "summary": response.summary[:500],
+            "summary": {
+                "attention": deterministic_summary.get('products_needing_attention', 0) if deterministic_summary else 0,
+                "out_of_stock": deterministic_summary.get('out_of_stock_count', 0) if deterministic_summary else 0,
+                "low_stock": deterministic_summary.get('low_stock_count', 0) if deterministic_summary else 0,
+                "status": deterministic_summary.get('status', 'healthy') if deterministic_summary else 'healthy'
+            },
             "priority": self._validate_priority(response.priority),
             "items": validated_items,
             "fallback": False
@@ -281,10 +304,13 @@ Use ONLY the product IDs and data supplied."""
             return p
         return "medium"
 
-    def _generate_fallback_response(self, prepared_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _generate_fallback_response(self, prepared_data: Dict[str, Any], product_id_mapping: Dict[int, int] = None) -> Dict[str, Any]:
         """Deterministic fallback using AutoStack flags only."""
         summary = prepared_data.get("summary", {})
         items = prepared_data.get("attention_items", [])
+
+        if product_id_mapping is None:
+            product_id_mapping = {}
 
         # Determine priority
         if summary.get("out_of_stock", 0) > 0:
@@ -304,6 +330,8 @@ Use ONLY the product IDs and data supplied."""
         fallback_items = []
         for item in items[:self.MAX_ATTENTION_ITEMS]:
             flags = item.get("flags", [])
+            sequential_id = item.get("product_id", 0)
+            real_product_id = product_id_mapping.get(sequential_id, sequential_id)
 
             if "OUT_OF_STOCK" in flags:
                 explanation = f"{item['product_name']} is out of stock."
@@ -327,7 +355,7 @@ Use ONLY the product IDs and data supplied."""
                 action = "Review stock level"
 
             fallback_items.append({
-                "product_id": item.get("product_id", 0),
+                "product_id": real_product_id,
                 "headline": item['product_name'],
                 "explanation": explanation,
                 "suggested_action": action
@@ -336,7 +364,12 @@ Use ONLY the product IDs and data supplied."""
         return {
             "success": True,
             "headline": headline,
-            "summary": f"{summary['attention']} products need attention.",
+            "summary": {
+                "attention": summary.get('attention', 0),
+                "out_of_stock": summary.get('out_of_stock', 0),
+                "low_stock": summary.get('low_stock', 0),
+                "status": summary.get('status', 'healthy')
+            },
             "priority": priority,
             "items": fallback_items,
             "fallback": True,

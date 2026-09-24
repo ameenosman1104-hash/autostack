@@ -1,0 +1,415 @@
+<!-- AutoStack AI Stock Intelligence Section -->
+<div id="aiInsightsSection" class="card mb-4">
+  <div class="card-body">
+    <!-- Header -->
+    <div class="d-flex align-items-center justify-content-between mb-4">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-lightning-fill" style="color:#F59E0B; font-size:1.2rem;"></i>
+        <div>
+          <h5 class="mb-0">AutoStack AI</h5>
+          <small class="text-muted">Stock Intelligence</small>
+        </div>
+      </div>
+      <div class="text-end">
+        <button id="refreshAiBtn" class="btn btn-sm btn-outline-info" onclick="refreshAiInsights()" title="Refresh insights">
+          <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+        </button>
+      </div>
+    </div>
+
+    <p class="text-muted mb-3" style="font-size:0.9rem;">
+      Your stock, prioritized using current inventory and recent sales movement.
+    </p>
+
+    <!-- Loading State -->
+    <div id="aiLoadingState" style="display:none;">
+      <div class="d-flex align-items-center gap-2 text-muted">
+        <div class="spinner-border spinner-border-sm" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <span>Analyzing your stock...</span>
+      </div>
+    </div>
+
+    <!-- Error State -->
+    <div id="aiErrorState" style="display:none;" class="alert alert-warning py-2 px-3">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      <span>Stock insights are temporarily unavailable.</span>
+      <button class="btn btn-link btn-sm p-0 ms-2" onclick="refreshAiInsights()" style="text-decoration:none;">Try again</button>
+    </div>
+
+    <!-- Empty/Insufficient Data State -->
+    <div id="aiEmptyState" style="display:none;" class="alert alert-info py-2 px-3">
+      <i class="bi bi-info-circle me-2"></i>
+      <span id="aiEmptyMessage">AutoStack needs more sales history before it can identify stock movement patterns.</span>
+    </div>
+
+    <!-- Healthy State -->
+    <div id="aiHealthyState" style="display:none;">
+      <div class="alert alert-success py-3 px-4 mb-0">
+        <div class="d-flex align-items-start gap-2">
+          <i class="bi bi-check-circle-fill" style="margin-top:0.15rem; font-size:1.1rem;"></i>
+          <div>
+            <strong>Stock looks healthy</strong>
+            <p class="mb-0 mt-1" style="font-size:0.9rem; color:inherit;">
+              No urgent stock issues were identified from your current inventory and recent sales movement.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary State -->
+    <div id="aiSummaryState" style="display:none;">
+      <!-- Summary Metrics (from deterministic Stock Intelligence) -->
+      <div id="aiMetricsContainer" style="display:none;">
+        <div class="row mb-4">
+          <div class="col-12 col-sm-6 col-lg-3 mb-3">
+            <div class="stat-card">
+              <div class="stat-val" id="aiAttentionCount">0</div>
+              <div class="stat-lbl">Needing attention</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-lg-3 mb-3">
+            <div class="stat-card">
+              <div class="stat-val" id="aiOutOfStockCount">0</div>
+              <div class="stat-lbl">Out of stock</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-lg-3 mb-3">
+            <div class="stat-card">
+              <div class="stat-val" id="aiLowStockCount">0</div>
+              <div class="stat-lbl">Low stock</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-lg-3 mb-3">
+            <div class="stat-card">
+              <div id="aiStatusBadge" class="stat-val" style="font-size:1.2rem; margin-bottom:0.5rem;"></div>
+              <div class="stat-lbl">Overall status</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Priority Insights -->
+      <div id="aiInsightsContainer" style="display:none;">
+        <h6 class="text-muted mb-3">Priority Products</h6>
+        <div id="aiItemsContainer" class="mb-3"></div>
+
+        <!-- View All Button -->
+        <button id="viewAllBtn" class="btn btn-outline-secondary btn-sm" style="display:none;" onclick="toggleViewAll()">
+          <i class="bi bi-chevron-down me-1"></i>
+          View all insights
+        </button>
+
+        <div id="allItemsContainer" style="display:none;"></div>
+      </div>
+
+      <!-- Refresh Info -->
+      <div class="text-muted small mt-4 pt-3 border-top">
+        <i class="bi bi-clock-history me-1"></i>
+        <span id="aiLastUpdate">Updated just now</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// AI Insights State Management
+const aiInsights = {
+  data: null,
+  isLoading: false,
+  allItemsExpanded: false
+};
+
+// Show/hide state divs
+function showAiState(state) {
+  document.getElementById('aiLoadingState').style.display = state === 'loading' ? 'block' : 'none';
+  document.getElementById('aiErrorState').style.display = state === 'error' ? 'block' : 'none';
+  document.getElementById('aiEmptyState').style.display = state === 'empty' ? 'block' : 'none';
+  document.getElementById('aiHealthyState').style.display = state === 'healthy' ? 'block' : 'none';
+  document.getElementById('aiSummaryState').style.display = state === 'summary' ? 'block' : 'none';
+}
+
+// Format a priority as a badge
+function formatPriorityBadge(priority) {
+  const colors = {
+    'high': '#DC2626',
+    'medium': '#F59E0B',
+    'low': '#10B981'
+  };
+  const labels = {
+    'high': 'HIGH',
+    'medium': 'MEDIUM',
+    'low': 'LOW'
+  };
+  const color = colors[priority] || '#6B7280';
+  const label = labels[priority] || priority.toUpperCase();
+  return `<span class="badge" style="background-color:${color}; color:white; font-size:0.75rem; font-weight:600; padding:0.35rem 0.6rem;">${label}</span>`;
+}
+
+// Render a single insight item
+function renderInsightItem(item) {
+  const card = document.createElement('div');
+  card.className = 'card mb-3 border-start';
+  card.style.borderLeftColor = item.priority === 'high' ? '#DC2626' : (item.priority === 'medium' ? '#F59E0B' : '#10B981');
+  card.style.borderLeftWidth = '4px';
+
+  const statusBadge = formatPriorityBadge(item.priority);
+
+  // Build metrics info from deterministic data
+  let metricsHtml = '';
+  if (item.current_stock !== undefined) {
+    metricsHtml += `<div class="small text-muted mb-2">
+      <strong>${item.current_stock}</strong> in stock
+      <span class="mx-2">•</span>
+      Reorder level: <strong>${item.reorder_level || '—'}</strong>
+    </div>`;
+  }
+
+  if (item.units_sold_30d !== undefined) {
+    metricsHtml += `<div class="small text-muted mb-2">
+      <strong>${item.units_sold_30d}</strong> sold (30d)
+      <span class="mx-2">•</span>
+      Stock cover: <strong>${item.days_remaining ? item.days_remaining.toFixed(1) + ' days' : '—'}</strong>
+    </div>`;
+  }
+
+  card.innerHTML = `
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between mb-2">
+        <div>
+          <h6 class="mb-1">${escapeHtml(item.product_name || 'Product')}</h6>
+          ${metricsHtml}
+        </div>
+        ${statusBadge}
+      </div>
+
+      ${item.explanation ? `
+        <div class="alert alert-light py-2 px-3 mb-3">
+          <small><strong>AI Insight:</strong><br>${escapeHtml(item.explanation)}</small>
+        </div>
+      ` : ''}
+
+      ${item.suggested_action ? `
+        <div class="small mb-2">
+          <strong>Suggested action:</strong> ${escapeHtml(item.suggested_action)}
+        </div>
+      ` : ''}
+
+      ${item.product_id ? `
+        <div class="mt-3">
+          <a href="/inventory/${item.product_id}/edit" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-pencil me-1"></i>View Product
+          </a>
+        </div>
+      ` : ''}
+    </div>
+  `;
+
+  return card;
+}
+
+// Escape HTML entities
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Fetch AI insights from backend
+function fetchAiInsights() {
+  showAiState('loading');
+  aiInsights.isLoading = true;
+
+  fetch('/api/ai/stock-insights')
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(json => {
+      if (!json.success) {
+        throw new Error('Insights API failed');
+      }
+      aiInsights.data = json.data;
+      renderAiInsights(json.data);
+    })
+    .catch(err => {
+      console.error('AI Insights error:', err);
+      showAiState('error');
+    })
+    .finally(() => {
+      aiInsights.isLoading = false;
+      document.getElementById('refreshAiBtn').disabled = false;
+    });
+}
+
+// Render insights based on data
+function renderAiInsights(data) {
+  // Determine state based on data
+  const hasItems = data.items && data.items.length > 0;
+  const isHealthy = data.priority === 'low' && !hasItems;
+  const isEmpty = (data.summary && data.summary.includes('insufficient')) ||
+                  (data.summary && data.summary.includes('no sales'));
+
+  if (isEmpty) {
+    showAiState('empty');
+    return;
+  }
+
+  if (isHealthy) {
+    showAiState('healthy');
+    return;
+  }
+
+  // Show summary state
+  showAiState('summary');
+
+  // Show metrics container and update with deterministic data
+  document.getElementById('aiMetricsContainer').style.display = 'block';
+
+  // Use authoritative deterministic summary from StockIntelligenceEngine
+  document.getElementById('aiAttentionCount').textContent =
+    data.summary?.attention || 0;
+
+  // Use deterministic counts from StockIntelligenceEngine summary
+  document.getElementById('aiOutOfStockCount').textContent =
+    data.summary?.out_of_stock || 0;
+  document.getElementById('aiLowStockCount').textContent =
+    data.summary?.low_stock || 0;
+
+  // Update status badge from DETERMINISTIC summary.status (StockIntelligenceEngine)
+  // NOT from AI-generated priority
+  const statusBadge = document.getElementById('aiStatusBadge');
+  const statusColors = {
+    'critical': '#DC2626',
+    'warning': '#F59E0B',
+    'healthy': '#10B981'
+  };
+  const statusLabels = {
+    'critical': 'CRITICAL',
+    'warning': 'WARNING',
+    'healthy': 'HEALTHY'
+  };
+  const deterministicStatus = data.summary?.status || 'healthy';
+  statusBadge.textContent = statusLabels[deterministicStatus] || 'OK';
+  statusBadge.style.color = statusColors[deterministicStatus] || '#6B7280';
+
+  // Render items
+  if (hasItems) {
+    document.getElementById('aiInsightsContainer').style.display = 'block';
+    const itemsContainer = document.getElementById('aiItemsContainer');
+    itemsContainer.innerHTML = '';
+
+    // Show first 3 items
+    const topItems = data.items.slice(0, 3);
+    topItems.forEach(item => {
+      itemsContainer.appendChild(renderInsightItem(item));
+    });
+
+    // Show View All button if more items exist
+    if (data.items.length > 3) {
+      document.getElementById('viewAllBtn').style.display = 'inline-block';
+
+      // Prepare all remaining items
+      const allItemsContainer = document.getElementById('allItemsContainer');
+      allItemsContainer.innerHTML = '';
+      data.items.slice(3).forEach(item => {
+        allItemsContainer.appendChild(renderInsightItem(item));
+      });
+    } else {
+      document.getElementById('viewAllBtn').style.display = 'none';
+    }
+
+    aiInsights.allItemsExpanded = false;
+  } else {
+    document.getElementById('aiInsightsContainer').style.display = 'none';
+  }
+
+  // Update last refresh time
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  document.getElementById('aiLastUpdate').textContent = `Updated at ${timeStr}`;
+}
+
+// Toggle View All
+function toggleViewAll() {
+  const allContainer = document.getElementById('allItemsContainer');
+  const btn = document.getElementById('viewAllBtn');
+  aiInsights.allItemsExpanded = !aiInsights.allItemsExpanded;
+
+  if (aiInsights.allItemsExpanded) {
+    allContainer.style.display = 'block';
+    btn.innerHTML = '<i class="bi bi-chevron-up me-1"></i>Show less';
+  } else {
+    allContainer.style.display = 'none';
+    btn.innerHTML = '<i class="bi bi-chevron-down me-1"></i>View all insights';
+  }
+}
+
+// Refresh insights
+function refreshAiInsights() {
+  if (aiInsights.isLoading) return;
+  document.getElementById('refreshAiBtn').disabled = true;
+  fetchAiInsights();
+}
+
+// Load insights on page load
+document.addEventListener('DOMContentLoaded', function() {
+  if (document.getElementById('aiInsightsSection')) {
+    fetchAiInsights();
+  }
+});
+</script>
+
+<style>
+  #aiInsightsSection .stat-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 1rem;
+    border: 1px solid #E2E8F0;
+    text-align: center;
+    transition: all 0.2s ease;
+  }
+
+  #aiInsightsSection .stat-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+
+  #aiInsightsSection .stat-val {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #1E293B;
+    line-height: 1;
+  }
+
+  #aiInsightsSection .stat-lbl {
+    font-size: 0.75rem;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 0.5rem;
+    font-weight: 600;
+  }
+
+  #aiInsightsSection .card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    transition: box-shadow 0.2s ease;
+  }
+
+  #aiInsightsSection .card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+
+  #aiInsightsSection .alert {
+    border-radius: 8px;
+    margin-bottom: 0;
+  }
+
+  #aiInsightsSection .badge {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-weight: 600;
+  }
+</style>

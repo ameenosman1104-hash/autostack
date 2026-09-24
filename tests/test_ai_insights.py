@@ -218,7 +218,7 @@ class AIInsightsTests:
             "attention_items": items
         }
 
-        prepared = ai_service._prepare_minimal_data(
+        prepared, mapping = ai_service._prepare_minimal_data(
             mock_analysis["summary"],
             mock_analysis["attention_items"]
         )
