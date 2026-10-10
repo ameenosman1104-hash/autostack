@@ -8,7 +8,7 @@ import re
 
 
 def test_pos_modal_initially_hidden():
-    """Modal should have display: none on initial page load, not display: flex."""
+    """Modal should be hidden by default via CSS, using class-based toggling."""
     template_path = os.path.join(
         os.path.dirname(__file__),
         '../app/templates/pos.html'
@@ -19,18 +19,12 @@ def test_pos_modal_initially_hidden():
 
     assert 'id="newCustomerModal"' in template_content, "Modal should be in template"
 
-    # Find the modal element and check its style
-    modal_pattern = r'<div id="newCustomerModal"[^>]*style="([^"]*)"'
-    match = re.search(modal_pattern, template_content)
-    assert match, "Could not find modal with style attribute"
+    # Verify CSS hides modal by default
+    assert 'display: none' in template_content, "Modal should be hidden by CSS"
+    assert '#newCustomerModal' in template_content, "Should have CSS for #newCustomerModal"
 
-    style = match.group(1)
-    # Verify display: none is set at the start
-    assert 'display: none' in style, f"Modal should have 'display: none', got: {style}"
-
-    # Verify no duplicate display property in inline style that would override it
-    display_count = style.count('display:')
-    assert display_count == 1, f"Inline style should have exactly 1 'display' property, found {display_count} in: {style}"
+    # Verify class-based approach is used for showing
+    assert 'modal-open' in template_content, "Should use modal-open class to show modal"
 
     print("[OK] Modal initially hidden on page load")
 
@@ -46,9 +40,12 @@ def test_modal_opens_only_on_new_customer_button():
         template_content = f.read()
 
     # Check that newCustomerBtn event listener opens modal
-    assert 'newCustomerBtn.addEventListener' in template_content, "Should have new customer button listener"
-    assert "document.getElementById('newCustomerModal').style.display = 'block'" in template_content, \
-        "Button listener should set display to block"
+    assert 'newCustomerBtn' in template_content, "Should have new customer button"
+    # Check for the new class-based approach
+    assert "openCustomerModal" in template_content or "modal-open" in template_content, \
+        "Should use class-based modal opening mechanism"
+    assert "addEventListener('click', openCustomerModal)" in template_content, \
+        "New Customer button should call openCustomerModal()"
 
     print("[OK] Modal opens only on + New Customer click")
 
@@ -69,13 +66,12 @@ def test_modal_cancel_closes_without_changes():
     match = re.search(close_pattern, template_content)
     assert match, "Close button should be type='button'"
 
-    # Verify cancel handler sets display to none (check for both old and new patterns)
-    has_listener = ("closeModalBtn.addEventListener" in template_content or
-                   "document.getElementById('closeModal').addEventListener" in template_content)
-    assert has_listener, "Close button should have event listener"
-    assert "newCustomerModal.style.display = 'none'" in template_content or \
-           "document.getElementById('newCustomerModal').style.display = 'none'" in template_content, \
-           "Modal should be hidden on close"
+    # Verify cancel handler closes modal using class-based approach
+    assert "closeCustomerModal" in template_content, "Should have closeCustomerModal function"
+    assert "closeModalBtn.addEventListener('click', closeCustomerModal)" in template_content, \
+           "Close button should call closeCustomerModal()"
+    assert "newCustomerModal.classList.remove('modal-open')" in template_content, \
+           "Modal should remove modal-open class on close"
 
     print("[OK] Cancel closes modal without side effects")
 
@@ -177,9 +173,9 @@ def test_modal_does_not_navigate_on_save():
 
     # Verify response doesn't close page or redirect on modal save
     # Modal save should just close modal and select customer
-    assert ("newCustomerModal.style.display = 'none'" in template_content or
-            "document.getElementById('newCustomerModal').style.display = 'none'" in template_content), \
-           "Modal should be hidden on close"
+    assert ("closeCustomerModal()" in template_content or
+            "newCustomerModal.classList.remove('modal-open')" in template_content), \
+           "Modal should be closed after save"
     assert "selectCustomer(" in template_content, \
            "Should select customer after save"
 

@@ -93,9 +93,9 @@ def test_save_customer_uses_fetch_wrapper():
     # Find the section with Save Customer event listener
     assert "saveCustomerBtn" in content, "Save Customer button handler should exist"
 
-    # Extract a reasonable chunk around the save handler (increased to 3500 for new modal implementation)
+    # Extract a reasonable chunk around the save handler (increased to 4500 for reconstructed modal)
     idx = content.find("saveCustomerBtn")
-    save_section = content[idx:idx+3500]
+    save_section = content[idx:idx+4500]
 
     # Verify it does NOT manually extract csrfToken
     # (it should rely on the wrapper instead)
