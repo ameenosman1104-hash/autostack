@@ -69,9 +69,13 @@ def test_modal_cancel_closes_without_changes():
     match = re.search(close_pattern, template_content)
     assert match, "Close button should be type='button'"
 
-    # Verify cancel handler sets display to none
-    assert "document.getElementById('closeModal').addEventListener" in template_content
-    assert "document.getElementById('newCustomerModal').style.display = 'none'" in template_content
+    # Verify cancel handler sets display to none (check for both old and new patterns)
+    has_listener = ("closeModalBtn.addEventListener" in template_content or
+                   "document.getElementById('closeModal').addEventListener" in template_content)
+    assert has_listener, "Close button should have event listener"
+    assert "newCustomerModal.style.display = 'none'" in template_content or \
+           "document.getElementById('newCustomerModal').style.display = 'none'" in template_content, \
+           "Modal should be hidden on close"
 
     print("[OK] Cancel closes modal without side effects")
 
@@ -173,8 +177,11 @@ def test_modal_does_not_navigate_on_save():
 
     # Verify response doesn't close page or redirect on modal save
     # Modal save should just close modal and select customer
-    assert "document.getElementById('newCustomerModal').style.display = 'none'" in template_content
-    assert "selectCustomer(" in template_content
+    assert ("newCustomerModal.style.display = 'none'" in template_content or
+            "document.getElementById('newCustomerModal').style.display = 'none'" in template_content), \
+           "Modal should be hidden on close"
+    assert "selectCustomer(" in template_content, \
+           "Should select customer after save"
 
     # Should NOT have navigation/window.location in close modal
     # Find the save handler section

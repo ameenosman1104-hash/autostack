@@ -555,46 +555,393 @@
         updateTotal();
     </script>
 
-    <!-- New Customer Modal -->
-    <div id="newCustomerModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-        <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; width: 90%;">
-            <h5 style="margin-bottom: 15px;">Add New Customer</h5>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-weight: 500; margin-bottom: 5px;">Name *</label>
-                <input type="text" id="newCustomerName" class="form-control" placeholder="Customer name">
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-weight: 500; margin-bottom: 5px;">Phone</label>
-                <input type="text" id="newCustomerPhone" class="form-control" placeholder="Phone number">
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-weight: 500; margin-bottom: 5px;">Email</label>
-                <input type="email" id="newCustomerEmail" class="form-control" placeholder="customer@example.com">
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-weight: 500; margin-bottom: 5px;">Vehicle Registration</label>
-                <input type="text" id="newCustomerRegistration" class="form-control" placeholder="e.g., ABC 123 GP">
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button type="button" id="closeModal" class="btn btn-secondary" style="flex: 1;">Cancel</button>
-                <button type="button" id="saveCustomerBtn" class="btn btn-primary" style="flex: 1;">Save Customer</button>
+    <!-- New Customer Modal (Modern Design) -->
+    <div id="newCustomerModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000;">
+        <style scoped>
+            #newCustomerModal {
+                background: rgba(0, 0, 0, 0.6);
+                align-items: center;
+                justify-content: center;
+            }
+
+            #newCustomerModal[style*="display: block"] {
+                display: flex !important;
+            }
+
+            .modal-overlay-customer {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.6);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 999;
+            }
+
+            .customer-modal-card {
+                background: #1a1a1a;
+                border-radius: 12px;
+                width: 90%;
+                max-width: 500px;
+                padding: 40px;
+                box-shadow: 0 0 40px rgba(0, 255, 100, 0.2),
+                            0 0 80px rgba(0, 255, 100, 0.1),
+                            inset 0 0 20px rgba(0, 255, 100, 0.05);
+                border: 2px solid rgba(0, 255, 100, 0.3);
+                animation: slideUpCustomer 0.4s ease-out;
+            }
+
+            @keyframes slideUpCustomer {
+                from {
+                    transform: translateY(40px);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
+            }
+
+            .customer-modal-header {
+                display: flex;
+                align-items: flex-start;
+                gap: 16px;
+                margin-bottom: 32px;
+            }
+
+            .customer-header-icon {
+                width: 56px;
+                height: 56px;
+                background: rgba(0, 255, 100, 0.15);
+                border: 2px solid #00ff64;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+
+            .customer-header-icon svg {
+                width: 32px;
+                height: 32px;
+                stroke: #00ff64;
+                stroke-width: 2;
+                fill: none;
+            }
+
+            .customer-header-text h1 {
+                font-size: 24px;
+                font-weight: 700;
+                color: #ffffff;
+                margin-bottom: 4px;
+                letter-spacing: -0.5px;
+                margin: 0;
+            }
+
+            .customer-header-text p {
+                font-size: 13px;
+                color: #888888;
+                font-weight: 400;
+                margin: 0;
+            }
+
+            .customer-form-group {
+                margin-bottom: 16px;
+            }
+
+            .customer-form-group:last-of-type {
+                margin-bottom: 32px;
+            }
+
+            .customer-input-wrapper {
+                position: relative;
+                display: flex;
+                align-items: center;
+                background: #2a2a2a;
+                border: 2px solid #00ff64;
+                border-radius: 8px;
+                transition: all 0.2s ease;
+                overflow: hidden;
+            }
+
+            .customer-input-wrapper:focus-within {
+                box-shadow: 0 0 16px rgba(0, 255, 100, 0.4),
+                            inset 0 0 12px rgba(0, 255, 100, 0.1);
+                border-color: #00ff80;
+            }
+
+            .customer-input-wrapper:hover {
+                border-color: #00ff80;
+                background: #333333;
+            }
+
+            .customer-input-icon {
+                width: 16px;
+                height: 16px;
+                margin-left: 14px;
+                margin-right: 12px;
+                flex-shrink: 0;
+                color: #00ff64;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .customer-input-icon svg {
+                width: 18px;
+                height: 18px;
+                stroke: #00ff64;
+                stroke-width: 2;
+                fill: none;
+            }
+
+            .customer-modal-card input {
+                flex: 1;
+                background: transparent;
+                border: none;
+                padding: 12px 14px 12px 0;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                font-size: 14px;
+                color: #ffffff;
+                outline: none;
+                font-weight: 500;
+            }
+
+            .customer-modal-card input::placeholder {
+                color: #666666;
+                font-weight: 400;
+            }
+
+            .customer-button-section {
+                display: flex;
+                gap: 0;
+                border-top: 1px solid #333333;
+                margin: 0 -40px -40px -40px;
+            }
+
+            .customer-btn {
+                flex: 1;
+                padding: 14px 20px;
+                border: none;
+                border-radius: 0;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+
+            .customer-btn-cancel {
+                background: transparent;
+                color: #00ff64;
+                border-right: 1px solid #333333;
+                border-radius: 0 0 0 12px;
+            }
+
+            .customer-btn-cancel:hover {
+                background: rgba(0, 255, 100, 0.05);
+                color: #00ff80;
+            }
+
+            .customer-btn-cancel:active {
+                background: rgba(0, 255, 100, 0.1);
+                transform: scale(0.98);
+            }
+
+            .customer-btn-save {
+                background: linear-gradient(135deg, #00ff64 0%, #00dd54 100%);
+                color: #000000;
+                border-radius: 0 0 12px 0;
+                font-weight: 700;
+            }
+
+            .customer-btn-save:hover {
+                background: linear-gradient(135deg, #00ff80 0%, #00ee64 100%);
+                box-shadow: 0 0 20px rgba(0, 255, 100, 0.4);
+            }
+
+            .customer-btn-save:active {
+                transform: scale(0.98);
+            }
+
+            .customer-btn-save:disabled {
+                background: #666666;
+                color: #999999;
+                cursor: not-allowed;
+                box-shadow: none;
+            }
+
+            .customer-error-msg {
+                background: #ff3333;
+                color: #ffffff;
+                padding: 10px;
+                border-radius: 6px;
+                font-size: 13px;
+                margin-bottom: 16px;
+                display: none;
+            }
+
+            @media (max-width: 600px) {
+                .customer-modal-card {
+                    width: 95%;
+                    padding: 30px;
+                }
+
+                .customer-modal-header {
+                    margin-bottom: 24px;
+                }
+
+                .customer-header-text h1 {
+                    font-size: 20px;
+                }
+
+                .customer-btn {
+                    padding: 12px 16px;
+                    font-size: 12px;
+                }
+            }
+        </style>
+
+        <div class="modal-overlay-customer">
+            <div class="customer-modal-card">
+                <!-- Header -->
+                <div class="customer-modal-header">
+                    <div class="customer-header-icon">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="12" cy="8" r="4"></circle>
+                            <path d="M 12 14 C 8 14 4 16 4 20 L 20 20 C 20 16 16 14 12 14 Z"></path>
+                        </svg>
+                    </div>
+                    <div class="customer-header-text">
+                        <h1>Add New Customer</h1>
+                        <p>Create a new customer profile</p>
+                    </div>
+                </div>
+
+                <!-- Error Message -->
+                <div class="customer-error-msg" id="customerModalError"></div>
+
+                <!-- Form -->
+                <form id="customerModalForm" style="margin: 0;">
+                    <!-- Name Field -->
+                    <div class="customer-form-group">
+                        <div class="customer-input-wrapper">
+                            <div class="customer-input-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <circle cx="12" cy="8" r="4"></circle>
+                                    <path d="M 12 14 C 8 14 4 16 4 20 L 20 20 C 20 16 16 14 12 14 Z"></path>
+                                </svg>
+                            </div>
+                            <input type="text" id="newCustomerName" placeholder="Customer Name" required>
+                        </div>
+                    </div>
+
+                    <!-- Phone Field -->
+                    <div class="customer-form-group">
+                        <div class="customer-input-wrapper">
+                            <div class="customer-input-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M 22 16.92 V 19.92 C 22 20.48 21.56 21 21 21 C 10.61 21 4 14.39 4 3 C 4 2.44 4.52 2 5.08 2 H 8.08 C 8.56 2 9 2.44 9 2.92 C 9 4.37 9.13 5.8 9.39 7.2 C 9.5 7.82 9.22 8.46 8.65 8.83 L 6.07 10.42 C 7.76 13.6 10.4 16.24 13.58 17.93 L 15.17 15.35 C 15.54 14.78 16.18 14.5 16.8 14.61 C 18.2 14.87 19.63 15 21.08 15 C 21.56 15 22 15.44 22 15.92 V 16.92 Z"></path>
+                                </svg>
+                            </div>
+                            <input type="tel" id="newCustomerPhone" placeholder="Phone Number">
+                        </div>
+                    </div>
+
+                    <!-- Email Field -->
+                    <div class="customer-form-group">
+                        <div class="customer-input-wrapper">
+                            <div class="customer-input-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                                    <path d="M 2 6 L 12 14 L 22 6"></path>
+                                </svg>
+                            </div>
+                            <input type="email" id="newCustomerEmail" placeholder="Email Address">
+                        </div>
+                    </div>
+
+                    <!-- Vehicle Registration Field -->
+                    <div class="customer-form-group">
+                        <div class="customer-input-wrapper">
+                            <div class="customer-input-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <rect x="3" y="5" width="18" height="13" rx="2"></rect>
+                                    <circle cx="7" cy="18" r="1.5"></circle>
+                                    <circle cx="17" cy="18" r="1.5"></circle>
+                                    <line x1="6" y1="9" x2="18" y2="9"></line>
+                                </svg>
+                            </div>
+                            <input type="text" id="newCustomerRegistration" placeholder="Vehicle Registration">
+                        </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="customer-button-section">
+                        <button type="button" class="customer-btn customer-btn-cancel" id="closeModal">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            Cancel
+                        </button>
+                        <button type="button" class="customer-btn customer-btn-save" id="saveCustomerBtn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            Save Customer
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
-    <style>
-        #newCustomerModal[style*="display: block"] {
-            display: flex !important;
-        }
-    </style>
-
     <script>
-        // Register modal event listeners after HTML is defined
-        document.getElementById('closeModal').addEventListener('click', () => {
-            document.getElementById('newCustomerModal').style.display = 'none';
+        // Modal event listeners
+        const newCustomerModal = document.getElementById('newCustomerModal');
+        const closeModalBtn = document.getElementById('closeModal');
+        const saveCustomerBtn = document.getElementById('saveCustomerBtn');
+        const customerModalForm = document.getElementById('customerModalForm');
+        const customerModalError = document.getElementById('customerModalError');
+
+        function closeCustomerModal() {
+            newCustomerModal.style.display = 'none';
+            customerModalError.style.display = 'none';
+            customerModalForm.reset();
+        }
+
+        function showCustomerModalError(message) {
+            customerModalError.textContent = message;
+            customerModalError.style.display = 'block';
+        }
+
+        closeModalBtn.addEventListener('click', closeCustomerModal);
+
+        // Close modal when clicking overlay
+        newCustomerModal.addEventListener('click', (e) => {
+            if (e.target === newCustomerModal) {
+                closeCustomerModal();
+            }
         });
 
-        document.getElementById('saveCustomerBtn').addEventListener('click', async (e) => {
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && newCustomerModal.style.display !== 'none') {
+                closeCustomerModal();
+            }
+        });
+
+        saveCustomerBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
 
@@ -603,10 +950,18 @@
             const email = document.getElementById('newCustomerEmail').value.trim();
             const registration = document.getElementById('newCustomerRegistration').value.trim();
 
+            // Clear previous error
+            customerModalError.style.display = 'none';
+
             if (!name) {
-                alert('Customer name is required');
+                showCustomerModalError('Customer name is required');
                 return;
             }
+
+            // Disable button and show loading state
+            saveCustomerBtn.disabled = true;
+            const originalText = saveCustomerBtn.innerHTML;
+            saveCustomerBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;"><circle cx="12" cy="12" r="10"></circle><path d="M12 2v8"></path></svg> Saving...';
 
             try {
                 const res = await fetch('/customers/add-json', {
@@ -626,19 +981,28 @@
 
                 if (data.success) {
                     selectCustomer(data.customer.id, data.customer.name, data.customer.phone, data.customer.vehicle_registration);
-                    document.getElementById('newCustomerModal').style.display = 'none';
-                    document.getElementById('newCustomerName').value = '';
-                    document.getElementById('newCustomerPhone').value = '';
-                    document.getElementById('newCustomerEmail').value = '';
-                    document.getElementById('newCustomerRegistration').value = '';
+                    closeCustomerModal();
                     showStatus(`Customer '${data.customer.name}' created and selected`, 'success');
                 } else {
-                    alert(`Error: ${data.error}`);
+                    showCustomerModalError(data.error || 'Failed to create customer');
                 }
             } catch (err) {
-                alert(`Error creating customer: ${err.message}`);
+                showCustomerModalError(`Error: ${err.message}`);
+            } finally {
+                saveCustomerBtn.disabled = false;
+                saveCustomerBtn.innerHTML = originalText;
             }
         });
+
+        // Add spin animation for loading state
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>
