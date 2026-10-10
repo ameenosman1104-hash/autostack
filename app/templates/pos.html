@@ -568,6 +568,10 @@
                 <input type="text" id="newCustomerPhone" class="form-control" placeholder="Phone number">
             </div>
             <div style="margin-bottom: 15px;">
+                <label style="display: block; font-weight: 500; margin-bottom: 5px;">Email</label>
+                <input type="email" id="newCustomerEmail" class="form-control" placeholder="customer@example.com">
+            </div>
+            <div style="margin-bottom: 15px;">
                 <label style="display: block; font-weight: 500; margin-bottom: 5px;">Vehicle Registration</label>
                 <input type="text" id="newCustomerRegistration" class="form-control" placeholder="e.g., ABC 123 GP">
             </div>
@@ -596,6 +600,7 @@
 
             const name = document.getElementById('newCustomerName').value.trim();
             const phone = document.getElementById('newCustomerPhone').value.trim();
+            const email = document.getElementById('newCustomerEmail').value.trim();
             const registration = document.getElementById('newCustomerRegistration').value.trim();
 
             if (!name) {
@@ -612,6 +617,7 @@
                     body: JSON.stringify({
                         name,
                         phone: phone || null,
+                        email: email || null,
                         vehicle_registration: registration || null
                     })
                 });
@@ -623,6 +629,7 @@
                     document.getElementById('newCustomerModal').style.display = 'none';
                     document.getElementById('newCustomerName').value = '';
                     document.getElementById('newCustomerPhone').value = '';
+                    document.getElementById('newCustomerEmail').value = '';
                     document.getElementById('newCustomerRegistration').value = '';
                     showStatus(`Customer '${data.customer.name}' created and selected`, 'success');
                 } else {

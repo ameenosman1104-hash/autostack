@@ -190,6 +190,16 @@ def search_api():
     ])
 
 
+def _is_valid_email(email):
+    """Basic email validation. Returns True if email is empty or valid format."""
+    if not email:
+        return True
+    # Simple regex check for email format
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(email_pattern, email) is not None
+
+
 @customers_bp.route("/add-json", methods=["POST"])
 @login_required
 def add_json():
@@ -199,6 +209,7 @@ def add_json():
         {
             "name": "Customer Name",
             "phone": "optional phone",
+            "email": "optional email",
             "vehicle_registration": "optional registration"
         }
 
@@ -209,6 +220,7 @@ def add_json():
                 "id": 123,
                 "name": "Customer Name",
                 "phone": "phone",
+                "email": "email",
                 "vehicle_registration": "registration"
             }
         }
@@ -218,6 +230,7 @@ def add_json():
 
     name = data.get("name", "").strip()
     phone = data.get("phone", "").strip()
+    email = data.get("email", "").strip()
     vehicle_registration = data.get("vehicle_registration", "").strip()
 
     # Validate required field
@@ -227,11 +240,19 @@ def add_json():
             "error": "Customer name is required"
         }), 400
 
+    # Validate email format if provided
+    if email and not _is_valid_email(email):
+        return jsonify({
+            "success": False,
+            "error": "Invalid email format"
+        }), 400
+
     try:
         customer_id = add_customer(
             tid,
             name=name,
             phone=phone if phone else None,
+            email=email if email else None,
             vehicle_registration=vehicle_registration if vehicle_registration else None
         )
 
@@ -243,6 +264,7 @@ def add_json():
                 "id": customer["id"],
                 "name": customer["name"],
                 "phone": customer["phone"],
+                "email": customer["email"],
                 "vehicle_registration": customer["vehicle_registration"]
             }
         }), 201

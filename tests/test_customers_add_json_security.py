@@ -207,9 +207,9 @@ def test_add_json_returns_customer_object():
         assert cust['name'] == 'Response Test Customer'
         assert cust['phone'] == '555-2222'
         assert cust['vehicle_registration'] == 'R-001'
+        assert 'email' in cust, "Response should include email"
 
         # Should NOT contain sensitive fields
-        assert 'email' not in cust, "Response should not include email"
         assert 'notes' not in cust, "Response should not include notes"
 
     print("[OK] /customers/add-json returns correct customer object")
