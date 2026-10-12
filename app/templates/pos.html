@@ -188,6 +188,138 @@
             border-radius: 4px;
             font-size: 12px;
         }
+
+        /* Customer Modal Styling - Black & Neon Green Theme */
+        #newCustomerModal {
+            background: rgba(0, 0, 0, 0.7) !important;
+            display: none !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            z-index: 1000 !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        #newCustomerModal[style*="display: block"] {
+            display: flex !important;
+        }
+
+        #newCustomerModal > div {
+            background: #1a1a1a !important;
+            border: 2px solid #00ff64 !important;
+            border-radius: 12px !important;
+            padding: 40px !important;
+            max-width: 500px !important;
+            width: 90% !important;
+            box-shadow: 0 0 40px rgba(0, 255, 100, 0.2),
+                        0 0 80px rgba(0, 255, 100, 0.1),
+                        inset 0 0 20px rgba(0, 255, 100, 0.05) !important;
+            animation: slideUpModal 0.4s ease-out;
+        }
+
+        @keyframes slideUpModal {
+            from {
+                transform: translateY(40px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        #newCustomerModal h5 {
+            color: #ffffff !important;
+            font-size: 24px !important;
+            font-weight: 700 !important;
+            margin-bottom: 30px !important;
+            letter-spacing: -0.5px !important;
+        }
+
+        #newCustomerModal .form-control {
+            background: #242424 !important;
+            border: 1px solid #333333 !important;
+            color: #ffffff !important;
+            padding: 12px !important;
+            border-radius: 6px !important;
+            font-size: 14px !important;
+            transition: all 0.3s ease !important;
+        }
+
+        #newCustomerModal .form-control:focus {
+            background: #2a2a2a !important;
+            border-color: #00ff64 !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 15px rgba(0, 255, 100, 0.3) !important;
+            outline: none !important;
+        }
+
+        #newCustomerModal .form-control::placeholder {
+            color: #666666 !important;
+        }
+
+        #newCustomerModal label {
+            color: #e0e0e0 !important;
+            font-weight: 500 !important;
+            font-size: 13px !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
+            margin-bottom: 8px !important;
+        }
+
+        #newCustomerModal .btn {
+            padding: 12px 24px !important;
+            font-weight: 600 !important;
+            border-radius: 6px !important;
+            cursor: pointer !important;
+            border: none !important;
+            transition: all 0.3s ease !important;
+            font-size: 14px !important;
+        }
+
+        #newCustomerModal .btn-secondary {
+            background: #333333 !important;
+            color: #ffffff !important;
+        }
+
+        #newCustomerModal .btn-secondary:hover {
+            background: #444444 !important;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        #newCustomerModal .btn-primary {
+            background: #00ff64 !important;
+            color: #000000 !important;
+        }
+
+        #newCustomerModal .btn-primary:hover {
+            background: #00e659 !important;
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.4) !important;
+            transform: translateY(-2px) !important;
+        }
+
+        #newCustomerModal .btn-primary:active {
+            transform: translateY(0) !important;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            #newCustomerModal > div {
+                padding: 24px !important;
+            }
+
+            #newCustomerModal h5 {
+                font-size: 20px !important;
+                margin-bottom: 20px !important;
+            }
+
+            #newCustomerModal .form-control {
+                font-size: 16px !important;
+            }
+        }
     </style>
 </head>
 <body>
