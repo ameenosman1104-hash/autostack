@@ -189,6 +189,217 @@
             font-size: 12px;
         }
 
+        /* ============ DARK THEME - POS REDESIGN ============ */
+
+        /* Main container and background */
+        body {
+            background: #1a1a1a !important;
+            color: #ffffff;
+        }
+
+        .pos-container {
+            background: #1a1a1a;
+        }
+
+        /* Search panel */
+        .search-panel {
+            background: #242424 !important;
+            border: 2px solid rgba(0, 255, 100, 0.3) !important;
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.1) !important;
+        }
+
+        .search-panel input {
+            background: #1f1f1f !important;
+            border: 1px solid #333333 !important;
+            color: #ffffff !important;
+            padding: 12px !important;
+        }
+
+        .search-panel input::placeholder {
+            color: #666666 !important;
+        }
+
+        .search-panel input:focus {
+            border-color: #00ff64 !important;
+            box-shadow: 0 0 15px rgba(0, 255, 100, 0.3) !important;
+            outline: none !important;
+        }
+
+        /* Products grid and cards */
+        .products-grid {
+            background: #1a1a1a !important;
+            border: 2px solid rgba(0, 255, 100, 0.2) !important;
+            box-shadow: inset 0 0 20px rgba(0, 255, 100, 0.05) !important;
+        }
+
+        .product-card {
+            background: #242424 !important;
+            border: 1px solid #333333 !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .product-card:hover {
+            background: #2a2a2a !important;
+            border-color: #00ff64 !important;
+            box-shadow: 0 0 15px rgba(0, 255, 100, 0.3) !important;
+            transform: translateY(-2px) !important;
+        }
+
+        .product-name {
+            color: #ffffff !important;
+        }
+
+        .product-stock {
+            color: #888888 !important;
+        }
+
+        .product-price {
+            color: #00ff64 !important;
+            font-weight: 700 !important;
+        }
+
+        /* Basket */
+        .basket {
+            background: #242424 !important;
+            border: 2px solid rgba(0, 255, 100, 0.3) !important;
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.1) !important;
+        }
+
+        .basket-title {
+            color: #00ff64 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1px !important;
+        }
+
+        .basket-item {
+            background: #1f1f1f !important;
+            border: 1px solid #333333 !important;
+            color: #ffffff !important;
+        }
+
+        .basket-item-name {
+            color: #ffffff !important;
+        }
+
+        .basket-item-price {
+            color: #00ff64 !important;
+            font-weight: 600 !important;
+        }
+
+        .basket-item-remove {
+            background: #ff4444 !important;
+            border-color: #ff4444 !important;
+        }
+
+        .basket-item-remove:hover {
+            background: #cc0000 !important;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.4) !important;
+        }
+
+        /* Checkout panel */
+        .checkout-panel {
+            background: #242424 !important;
+            border: 2px solid rgba(0, 255, 100, 0.3) !important;
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.1) !important;
+        }
+
+        .total-row {
+            color: #00ff64 !important;
+            border-top: 1px solid #333333 !important;
+            font-size: 16px !important;
+        }
+
+        /* Customer search section */
+        .customer-search {
+            background: #1f1f1f !important;
+            border: 1px solid #333333 !important;
+            color: #ffffff !important;
+            padding: 10px 12px !important;
+            border-radius: 6px !important;
+        }
+
+        /* Payment method buttons */
+        .payment-method button {
+            background: #1f1f1f !important;
+            border: 1px solid #333333 !important;
+            color: #ffffff !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .payment-method button:hover {
+            border-color: #00ff64 !important;
+            color: #00ff64 !important;
+        }
+
+        .payment-method button.active {
+            background: #00ff64 !important;
+            color: #000000 !important;
+            border-color: #00ff64 !important;
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.4) !important;
+        }
+
+        /* Checkout button */
+        .checkout-btn {
+            background: #00ff64 !important;
+            color: #000000 !important;
+            border: none !important;
+            font-weight: 700 !important;
+            transition: all 0.3s ease !important;
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.2) !important;
+        }
+
+        .checkout-btn:hover:not(:disabled) {
+            background: #00e659 !important;
+            box-shadow: 0 0 30px rgba(0, 255, 100, 0.5) !important;
+            transform: translateY(-2px) !important;
+        }
+
+        .checkout-btn:disabled {
+            background: #555555 !important;
+            color: #999999 !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
+        }
+
+        /* Messages */
+        .error-msg {
+            background: rgba(255, 68, 68, 0.2) !important;
+            border: 1px solid #ff4444 !important;
+            color: #ff8888 !important;
+        }
+
+        .success-msg {
+            background: rgba(0, 255, 100, 0.2) !important;
+            border: 1px solid #00ff64 !important;
+            color: #00ff64 !important;
+        }
+
+        /* Responsive design */
+        @media (max-width: 1024px) {
+            .pos-container {
+                grid-template-columns: 1fr 300px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .pos-container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+
+            .sidebar {
+                order: 2;
+            }
+
+            .pos-main {
+                order: 1;
+            }
+
+            .products-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+        }
+
         /* Customer Modal Styling - Black & Neon Green Theme */
         #newCustomerModal {
             background: rgba(0, 0, 0, 0.7) !important;
