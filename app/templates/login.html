@@ -6,44 +6,46 @@
   <meta name="description" content="AutoStack helps businesses track stock, manage outstanding customer balances, and organise payment follow-ups in one place.">
   <title>AutoStack — Stock &amp; Debtor Management</title>
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#1e293b">
+  <meta name="theme-color" content="#1a1a1a">
   <style>
     * { box-sizing:border-box; }
-    body { margin:0; background:#172234; color:#fff; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.6; }
+    body { margin:0; background:#1a1a1a; color:#fff; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.6; }
     a { color:inherit; }
     .page { max-width:1180px; margin:auto; padding:32px 40px; }
     header { display:flex; align-items:center; justify-content:space-between; gap:20px; }
     .brand { display:flex; align-items:center; gap:12px; font-size:24px; font-weight:800; letter-spacing:-.8px; }
     .brand img { width:48px; height:48px; border-radius:8px; }
-    .brand span span { color:#22c55e; }
-    .header-link { color:#d4deeb; font-size:14px; text-underline-offset:5px; }
+    .brand span span { color:#00ff64; }
+    .header-link { color:#e0e0e0; font-size:14px; text-underline-offset:5px; transition:color 0.2s ease; }
+    .header-link:hover { color:#00ff64; }
     main { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr); gap:72px; align-items:center; padding:64px 0; }
-    .eyebrow { color:#86efac; text-transform:uppercase; letter-spacing:2px; font-size:12px; font-weight:700; }
+    .eyebrow { color:#00ff64; text-transform:uppercase; letter-spacing:2px; font-size:12px; font-weight:700; }
     h1 { font-size:clamp(34px,4.1vw,54px); line-height:1.12; letter-spacing:-1.7px; margin:20px 0; max-width:600px; }
     .intro { color:#c4d0df; font-size:17px; max-width:530px; margin:0 0 28px; }
     .features { list-style:none; padding:0; margin:0; display:grid; gap:20px; }
     .features li { display:flex; align-items:flex-start; gap:14px; }
-    .feature-icon { color:#86efac; background:#223c3d; border:1px solid #365554; border-radius:10px; width:38px; height:38px; display:grid; place-items:center; flex-shrink:0; font-weight:700; }
+    .feature-icon { color:#00ff64; background:#2a2a2a; border:1px solid #00ff64; border-radius:10px; width:38px; height:38px; display:grid; place-items:center; flex-shrink:0; font-weight:700; }
     .features strong { font-size:15px; }
     .features p { margin:3px 0 0; color:#b6c4d6; font-size:14px; }
-    .workflow { border-top:1px solid #344256; margin-top:30px; padding-top:20px; color:#c4d0df; font-size:13px; }
-    .workflow strong { color:#fff; display:block; margin-bottom:5px; }
-    .login-card { background:#fff; color:#1e293b; border-radius:20px; padding:36px; box-shadow:0 20px 60px #080f1b40; }
-    .card-label { color:#167440; font-size:12px; text-transform:uppercase; font-weight:700; letter-spacing:1.4px; }
-    h2 { margin:8px 0; font-size:28px; letter-spacing:-.7px; }
-    .login-sub { color:#64748b; font-size:14px; margin:0 0 26px; }
-    label { display:block; font-size:14px; font-weight:600; margin-bottom:7px; }
-    input { width:100%; min-height:48px; border:1px solid #cbd5e1; border-radius:8px; padding:12px; font:inherit; font-size:15px; background:#f8fafc; color:#1e293b; }
+    .workflow { border-top:1px solid #242424; margin-top:30px; padding-top:20px; color:#c4d0df; font-size:13px; }
+    .workflow strong { color:#00ff64; display:block; margin-bottom:5px; }
+    .login-card { background:#242424; color:#fff; border-radius:20px; padding:36px; box-shadow:0 20px 60px rgba(0,255,100,0.1); border:1px solid #2a2a2a; }
+    .card-label { color:#00ff64; font-size:12px; text-transform:uppercase; font-weight:700; letter-spacing:1.4px; }
+    h2 { margin:8px 0; font-size:28px; letter-spacing:-.7px; color:#00ff64; }
+    .login-sub { color:#a0a0a0; font-size:14px; margin:0 0 26px; }
+    label { display:block; font-size:14px; font-weight:600; margin-bottom:7px; color:#e0e0e0; }
+    input { width:100%; min-height:48px; border:1px solid #2a2a2a; border-radius:8px; padding:12px; font:inherit; font-size:15px; background:#1a1a1a; color:#fff; }
+    input::placeholder { color:#a0a0a0; }
     .field { margin-bottom:20px; }
-    input:focus-visible,button:focus-visible,a:focus-visible { outline:3px solid #60a5fa; outline-offset:3px; }
-    button { width:100%; min-height:48px; border:0; border-radius:8px; background:#2563eb; color:#fff; font:inherit; font-weight:650; cursor:pointer; }
-    button:hover { background:#1d4ed8; }
-    .google-signin { display:block; text-align:center; border:1px solid #cbd5e1; border-radius:8px; padding:11px; margin:0 0 20px; color:#1e293b; text-decoration:none; font-weight:600; }
-    .google-signin:hover { background:#f1f5f9; }
-    .register { text-align:center; font-size:14px; margin:24px 0 0; padding-top:22px; border-top:1px solid #e2e8f0; color:#64748b; }
-    .register a { color:#1d4ed8; font-weight:650; }
-    .alert { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:8px; padding:12px; margin-bottom:18px; overflow-wrap:anywhere; }
-    footer { border-top:1px solid #344256; padding-top:20px; display:flex; justify-content:space-between; gap:12px; color:#aab9cc; font-size:12px; }
+    input:focus-visible,button:focus-visible,a:focus-visible { outline:3px solid #00ff64; outline-offset:3px; }
+    button { width:100%; min-height:48px; border:0; border-radius:8px; background:#00ff64; color:#1a1a1a; font:inherit; font-weight:650; cursor:pointer; transition:all 0.2s ease; }
+    button:hover { background:#00e55c; box-shadow:0 0 12px rgba(0,255,100,0.3); }
+    .google-signin { display:block; text-align:center; border:1px solid #2a2a2a; border-radius:8px; padding:11px; margin:0 0 20px; color:#e0e0e0; text-decoration:none; font-weight:600; transition:all 0.2s ease; }
+    .google-signin:hover { background:#2a2a2a; border-color:#00ff64; color:#00ff64; }
+    .register { text-align:center; font-size:14px; margin:24px 0 0; padding-top:22px; border-top:1px solid #242424; color:#a0a0a0; }
+    .register a { color:#00ff64; font-weight:650; }
+    .alert { background:rgba(239,68,68,0.1); color:#ff6b6b; border:1px solid #ef4444; border-radius:8px; padding:12px; margin-bottom:18px; overflow-wrap:anywhere; }
+    footer { border-top:1px solid #242424; padding-top:20px; display:flex; justify-content:space-between; gap:12px; color:#a0a0a0; font-size:12px; }
     @media(max-width:800px) { .page { padding:24px; } main { gap:36px; padding:40px 0; grid-template-columns:1fr; } .login-card { max-width:520px; width:100%; } h1 { max-width:620px; } }
     @media(max-width:440px) { .page { padding:20px; } .login-card { padding:26px 22px; } .brand { font-size:21px; } .header-link { font-size:13px; } h1 { font-size:36px; } footer { flex-direction:column; } }
   </style>

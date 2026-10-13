@@ -1,0 +1,616 @@
+/* AutoStack Theme — Bootstrap Overrides */
+/* This file loads AFTER Bootstrap to override its default light styles */
+
+/* ============================================
+   BODY & PAGE BACKGROUNDS
+   ============================================ */
+
+html, body {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ============================================
+   BOOTSTRAP UTILITY CLASS OVERRIDES
+   ============================================ */
+
+.bg-light {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.bg-white {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.bg-secondary {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.bg-body {
+  background: var(--bg-primary) !important;
+}
+
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+.text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+/* ============================================
+   CARD OVERRIDES (Bootstrap default: white bg)
+   ============================================ */
+
+.card {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.card-header {
+  background: var(--bg-tertiary) !important;
+  color: var(--accent-primary) !important;
+  border-bottom: 1px solid var(--bg-secondary) !important;
+}
+
+.card-body {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.card-footer {
+  background: var(--bg-tertiary) !important;
+  border-top: 1px solid var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* ============================================
+   FORM CONTROLS (Bootstrap default: white bg)
+   ============================================ */
+
+.form-control {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-control::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.form-control:focus {
+  background: var(--bg-secondary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 0 0.25rem rgba(0, 255, 100, 0.25) !important;
+}
+
+.form-select {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e0e0e0' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e") !important;
+}
+
+.form-select:focus {
+  background: var(--bg-secondary) !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 0.25rem rgba(0, 255, 100, 0.25) !important;
+}
+
+textarea.form-control {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-label {
+  color: var(--text-secondary) !important;
+}
+
+/* ============================================
+   TABLE OVERRIDES
+   ============================================ */
+
+.table {
+  color: var(--text-primary) !important;
+  border-color: var(--bg-tertiary) !important;
+}
+
+.table thead th {
+  background: var(--bg-tertiary) !important;
+  color: var(--accent-primary) !important;
+  border-bottom: 2px solid var(--bg-secondary) !important;
+}
+
+.table tbody td {
+  border-bottom: 1px solid var(--bg-tertiary) !important;
+  color: var(--text-secondary) !important;
+}
+
+.table tbody tr {
+  background: var(--bg-secondary) !important;
+}
+
+.table tbody tr:hover {
+  background: var(--bg-tertiary) !important;
+}
+
+.table tbody tr:hover td {
+  color: var(--text-primary) !important;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) {
+  background: var(--bg-secondary) !important;
+}
+
+.table-striped > tbody > tr:nth-of-type(even) {
+  background: var(--bg-tertiary) !important;
+}
+
+/* ============================================
+   DROPDOWN OVERRIDES
+   ============================================ */
+
+.dropdown-menu {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5) !important;
+}
+
+.dropdown-item {
+  color: var(--text-secondary) !important;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+  background: var(--bg-tertiary) !important;
+  color: var(--accent-primary) !important;
+}
+
+.dropdown-item.active {
+  background: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+}
+
+/* ============================================
+   BUTTON OVERRIDES (Bootstrap defaults)
+   ============================================ */
+
+.btn {
+  transition: all 0.2s ease !important;
+}
+
+.btn-primary {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  color: var(--bg-primary) !important;
+  box-shadow: 0 0 12px rgba(0, 255, 100, 0.3) !important;
+}
+
+.btn-primary:focus {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 0.25rem rgba(0, 255, 100, 0.5) !important;
+}
+
+.btn-primary:active {
+  background: var(--accent-dark) !important;
+  border-color: var(--accent-dark) !important;
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-secondary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+}
+
+.btn-success {
+  background: var(--success) !important;
+  border-color: var(--success) !important;
+  color: white !important;
+}
+
+.btn-success:hover {
+  background: #1ea853 !important;
+  border-color: #1ea853 !important;
+}
+
+.btn-danger {
+  background: var(--danger) !important;
+  border-color: var(--danger) !important;
+  color: white !important;
+}
+
+.btn-danger:hover {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+
+.btn-warning {
+  background: var(--warning) !important;
+  border-color: var(--warning) !important;
+  color: var(--bg-primary) !important;
+}
+
+.btn-warning:hover {
+  background: #f08c1f !important;
+  border-color: #f08c1f !important;
+}
+
+.btn-info {
+  background: var(--info) !important;
+  border-color: var(--info) !important;
+  color: white !important;
+}
+
+.btn-info:hover {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+}
+
+.btn-outline-primary {
+  color: var(--accent-primary) !important;
+  border: 1px solid var(--accent-primary) !important;
+}
+
+.btn-outline-primary:hover {
+  background: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+.btn-outline-secondary {
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+}
+
+.btn-outline-secondary:hover {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+}
+
+/* ============================================
+   BADGE OVERRIDES
+   ============================================ */
+
+.badge {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-secondary) !important;
+}
+
+.badge-primary {
+  background: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+}
+
+.badge-secondary {
+  background: var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+}
+
+.badge-success {
+  background: rgba(34, 197, 94, 0.15) !important;
+  color: var(--success) !important;
+  border: 1px solid var(--success) !important;
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: var(--danger) !important;
+  border: 1px solid var(--danger) !important;
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: var(--warning) !important;
+  border: 1px solid var(--warning) !important;
+}
+
+.badge-info {
+  background: rgba(59, 130, 246, 0.15) !important;
+  color: var(--info) !important;
+  border: 1px solid var(--info) !important;
+}
+
+/* ============================================
+   ALERT OVERRIDES
+   ============================================ */
+
+.alert {
+  border-radius: 8px !important;
+}
+
+.alert-success {
+  background: rgba(34, 197, 94, 0.1) !important;
+  color: var(--success) !important;
+  border: 1px solid var(--success) !important;
+}
+
+.alert-danger {
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: var(--danger) !important;
+  border: 1px solid var(--danger) !important;
+}
+
+.alert-warning {
+  background: rgba(245, 158, 11, 0.1) !important;
+  color: var(--warning) !important;
+  border: 1px solid var(--warning) !important;
+}
+
+.alert-info {
+  background: rgba(59, 130, 246, 0.1) !important;
+  color: var(--info) !important;
+  border: 1px solid var(--info) !important;
+}
+
+.alert-primary {
+  background: rgba(0, 255, 100, 0.1) !important;
+  color: var(--accent-primary) !important;
+  border: 1px solid var(--accent-primary) !important;
+}
+
+/* ============================================
+   MODAL OVERRIDES
+   ============================================ */
+
+.modal-content {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-header {
+  background: var(--bg-tertiary) !important;
+  border-bottom: 1px solid var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-footer {
+  background: var(--bg-tertiary) !important;
+  border-top: 1px solid var(--bg-secondary) !important;
+}
+
+.modal-body {
+  color: var(--text-primary) !important;
+}
+
+/* ============================================
+   LIST GROUP OVERRIDES
+   ============================================ */
+
+.list-group-item {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+  color: var(--text-secondary) !important;
+}
+
+.list-group-item:hover {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.list-group-item.active {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+}
+
+/* ============================================
+   INPUT GROUP OVERRIDES
+   ============================================ */
+
+.input-group-text {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* ============================================
+   PAGINATION OVERRIDES
+   ============================================ */
+
+.pagination {
+  background: transparent !important;
+}
+
+.page-link {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--bg-secondary) !important;
+  color: var(--accent-primary) !important;
+}
+
+.page-link:hover {
+  background: var(--bg-secondary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-hover) !important;
+}
+
+.page-item.active .page-link {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+}
+
+/* ============================================
+   BREADCRUMB OVERRIDES
+   ============================================ */
+
+.breadcrumb {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+}
+
+.breadcrumb-item {
+  color: var(--text-secondary) !important;
+}
+
+.breadcrumb-item.active {
+  color: var(--accent-primary) !important;
+}
+
+.breadcrumb-item a {
+  color: var(--text-secondary) !important;
+  text-decoration: none !important;
+}
+
+.breadcrumb-item a:hover {
+  color: var(--accent-primary) !important;
+}
+
+/* ============================================
+   PROGRESS BAR OVERRIDES
+   ============================================ */
+
+.progress {
+  background: var(--bg-tertiary) !important;
+}
+
+.progress-bar {
+  background: var(--accent-primary) !important;
+}
+
+/* ============================================
+   TOOLTIP & POPOVER OVERRIDES
+   ============================================ */
+
+.tooltip-inner {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.bs-tooltip-auto[data-popper-placement^="top"] > .tooltip-arrow::before,
+.bs-tooltip-top > .tooltip-arrow::before {
+  border-top-color: var(--bg-tertiary) !important;
+}
+
+.popover {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+}
+
+.popover-header {
+  background: var(--bg-tertiary) !important;
+  border-bottom: 1px solid var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.popover-body {
+  color: var(--text-secondary) !important;
+}
+
+/* ============================================
+   CAROUSEL OVERRIDES
+   ============================================ */
+
+.carousel-control-prev-icon,
+.carousel-control-next-icon {
+  filter: invert(1) !important;
+}
+
+/* ============================================
+   SPINNER OVERRIDES
+   ============================================ */
+
+.spinner-border {
+  border-color: var(--bg-tertiary) !important;
+  border-right-color: var(--accent-primary) !important;
+}
+
+.spinner-grow {
+  background: var(--accent-primary) !important;
+}
+
+/* ============================================
+   SCROLLBAR OVERRIDES
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary) !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary) !important;
+  border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary) !important;
+}
+
+/* ============================================
+   GENERAL TEXT & LINK OVERRIDES
+   ============================================ */
+
+a {
+  color: var(--accent-primary) !important;
+  text-decoration: none !important;
+}
+
+a:hover {
+  color: var(--accent-hover) !important;
+  text-decoration: underline !important;
+}
+
+hr {
+  border-color: var(--bg-tertiary) !important;
+  opacity: 1 !important;
+}
+
+code {
+  background: var(--bg-tertiary) !important;
+  color: var(--accent-primary) !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+}
+
+pre {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--bg-secondary) !important;
+  padding: 12px !important;
+  border-radius: 6px !important;
+}
+
+/* ============================================
+   STAT CARD OVERRIDES (AutoStack specific)
+   ============================================ */
+
+.stat-card {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+}
+
+.stat-val {
+  color: var(--accent-primary) !important;
+}
+
+.stat-lbl {
+  color: var(--text-muted) !important;
+}
+
