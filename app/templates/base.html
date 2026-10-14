@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -30,30 +30,9 @@
   <link rel="shortcut icon" href="/static/icons/icon-96.png?v=3">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/theme.css') }}" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/theme-overrides.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/theme.css', v='dark-20261013-2') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/theme-overrides.css', v='dark-20261013-2') }}" rel="stylesheet">
   <style>
-    :root {
-      --bg-primary: #1a1a1a;
-      --bg-secondary: #242424;
-      --bg-tertiary: #2a2a2a;
-      --accent-primary: #00ff64;
-      --accent-hover: #00e55c;
-      --accent-dark: #00cc52;
-      --text-primary: #ffffff;
-      --text-secondary: #e0e0e0;
-      --text-muted: #a0a0a0;
-      --text-dark: #1a1a1a;
-      --success: #22c55e;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --info: #3b82f6;
-      --nav: #1a1a1a;
-      --nav2: #242424;
-      --blue: #00ff64;
-      --gold: #f59e0b;
-    }
-
     /* Desktop-first, then override for mobile */
     html, body { height:100%; overflow:hidden; }
     body { background:var(--bg-primary); font-family:'Segoe UI',Arial,sans-serif; margin:0; padding:0; }
@@ -152,13 +131,22 @@
 
       html, body { width:100vw; overflow:hidden; background:var(--bg-primary); }
       .navbar {
-        height:auto !important;
+        height:50px !important;
         padding:0.75rem 1rem !important;
         display:flex !important;
         align-items:center !important;
         justify-content:space-between !important;
       }
-      .navbar-brand { font-size:1.25rem; letter-spacing:-0.3px; }
+      /* Keep the fixed mobile header within the content's existing 50px offset. */
+      .navbar { flex-wrap:nowrap; padding:0.35rem 0.5rem !important; }
+      .navbar-brand { font-size:1rem; letter-spacing:-0.3px; }
+      .navbar > .ms-auto { gap:0.25rem !important; }
+      .navbar .text-muted { display:none; }
+      .navbar .btn {
+        width:auto !important; min-height:32px !important;
+        padding:0.3rem 0.4rem !important; margin:0 !important;
+        font-size:0.65rem !important; white-space:nowrap;
+      }
       .nav-link { font-size:0.8rem; padding:0.4rem 0.6rem !important; }
 
       .sidebar { display:none !important; }

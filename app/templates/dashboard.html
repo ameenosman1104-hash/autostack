@@ -35,7 +35,7 @@
 
   <!-- Edit button — admin/impersonating admin only -->
   {% if current_user.is_admin %}
-  <div style="background:#F8FAFC;padding:.5rem 1rem;border-top:1px solid #E2E8F0;">
+  <div style="background:var(--bg-secondary);padding:.5rem 1rem;border-top:1px solid var(--bg-tertiary);">
     <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#carouselModal">
       <i class="bi bi-images me-1"></i>Edit Carousel Images
     </button>
@@ -305,7 +305,7 @@
           {% for i in range(1, 6) %}
           {% set s = slides[i-1] if i <= slides|length else None %}
           <div class="card mb-3" style="border:1px solid #E2E8F0;">
-            <div class="card-header py-2" style="background:#F8FAFC;font-size:.85rem;font-weight:600;color:#334155;">
+            <div class="card-header py-2" style="background:var(--bg-secondary);font-size:.85rem;font-weight:600;color:#334155;">
               Slide {{ i }} {% if i > slides|length %}<span class="text-muted fw-normal">(optional)</span>{% endif %}
             </div>
             <div class="card-body py-3">

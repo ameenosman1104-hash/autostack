@@ -1,6 +1,10 @@
 /* AutoStack Global Theme — Black & Neon Green */
 
 :root {
+  color-scheme: dark;
+  --bs-body-bg: #1a1a1a;
+  --bs-body-color: #ffffff;
+  --bs-secondary-color: #e0e0e0;
   /* Primary Colors */
   --bg-primary: #1a1a1a;
   --bg-secondary: #242424;
@@ -42,15 +46,6 @@
   --glow-md: 0 0 16px rgba(0, 255, 100, 0.3);
 }
 
-/* Light mode override (if ever needed) */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg-primary: #f5f5f5;
-    --bg-secondary: #ffffff;
-    --text-primary: #1a1a1a;
-    --text-secondary: #404040;
-  }
-}
 
 /* ============================================
    GLOBAL STYLES
@@ -420,7 +415,7 @@ body.modal-open {
 .form-control,
 .form-select,
 textarea {
-  background: var(--bg-tertiary);
+  background-color: var(--bg-tertiary);
   border: 1px solid var(--bg-secondary);
   color: var(--text-primary);
   padding: 0.6rem 0.75rem;
@@ -438,7 +433,7 @@ textarea::placeholder {
 .form-control:focus,
 .form-select:focus,
 textarea:focus {
-  background: var(--bg-secondary);
+  background-color: var(--bg-secondary);
   border-color: var(--accent-primary);
   color: var(--text-primary);
   outline: none;
@@ -457,6 +452,15 @@ label {
    ============================================ */
 
 .table {
+  /* Bootstrap paints cells with these variables, not the row background. */
+  --bs-table-bg: var(--bg-secondary);
+  --bs-table-color: var(--text-secondary);
+  --bs-table-striped-bg: var(--bg-tertiary);
+  --bs-table-striped-color: var(--text-secondary);
+  --bs-table-hover-bg: var(--bg-tertiary);
+  --bs-table-hover-color: var(--text-primary);
+  --bs-table-active-bg: var(--bg-tertiary);
+  --bs-table-active-color: var(--text-primary);
   color: var(--text-primary);
   border-color: var(--bg-tertiary);
 }

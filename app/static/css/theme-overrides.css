@@ -90,14 +90,14 @@ html, body {
 }
 
 .form-select {
-  background: var(--bg-tertiary) !important;
+  background-color: var(--bg-tertiary) !important;
   border: 1px solid var(--bg-secondary) !important;
   color: var(--text-primary) !important;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e0e0e0' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e") !important;
 }
 
 .form-select:focus {
-  background: var(--bg-secondary) !important;
+  background-color: var(--bg-secondary) !important;
   border-color: var(--accent-primary) !important;
   box-shadow: 0 0 0 0.25rem rgba(0, 255, 100, 0.25) !important;
 }
@@ -613,4 +613,3 @@ pre {
 .stat-lbl {
   color: var(--text-muted) !important;
 }
-
