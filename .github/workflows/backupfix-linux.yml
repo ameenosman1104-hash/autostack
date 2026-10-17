@@ -1,0 +1,76 @@
+name: AutoStack synthetic SQLite migration checks
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backupfix-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  synthetic-migrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout only the synthetic test inputs
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /app/__init__.py
+            /app/db_migrations.py
+            /app/tenant_db.py
+            /app/credential_store.py
+            /tests/test_migration_backups.py
+            /tests/test_migration_concurrency.py
+            /scripts/run_backupfix_linux_tests.py
+            /requirements-backupfix-tests.txt
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+
+      - name: Install minimal test dependencies in a fresh virtual environment
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/backupfix-venv"
+          "$RUNNER_TEMP/backupfix-venv/bin/python" -m pip --isolated install \
+            --disable-pip-version-check --index-url https://pypi.org/simple \
+            -r requirements-backupfix-tests.txt
+          "$RUNNER_TEMP/backupfix-venv/bin/python" -m pip --isolated freeze
+
+      - name: Run synthetic tests with no external network or inherited secrets
+        run: |
+          set -euo pipefail
+          test_python="$RUNNER_TEMP/backupfix-venv/bin/python"
+          # setup-python's Linux build can need its own libpython directory.
+          # Derive one trusted path; never inherit the ambient LD_LIBRARY_PATH.
+          test_lib="$("$test_python" -I -c 'import sys; print(sys.base_prefix + "/lib")')"
+          case "$test_lib" in
+            /opt/hostedtoolcache/Python/3.12.*/x64/lib) ;;
+            *) echo "Unexpected Python library location" >&2; exit 1 ;;
+          esac
+          test_uid="$(id -u)"
+          test_gid="$(id -g)"
+          # Create an isolated network namespace, then drop back to the runner user.
+          # Failure to establish isolation stops the job; there is no fallback.
+          sudo -n /usr/bin/unshare --net -- \
+            /usr/bin/setpriv --reuid="$test_uid" --regid="$test_gid" --init-groups \
+            /usr/bin/env -i \
+            PATH="$RUNNER_TEMP/backupfix-venv/bin:/usr/bin:/bin" \
+            LANG=C.UTF-8 TMPDIR="$RUNNER_TEMP" LD_LIBRARY_PATH="$test_lib" \
+            PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 \
+            PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 BACKUPFIX_SYNTHETIC_ONLY=1 \
+            "$test_python" -B scripts/run_backupfix_linux_tests.py

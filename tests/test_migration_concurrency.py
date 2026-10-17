@@ -1,14 +1,30 @@
 ﻿"""Real spawned-process migration tests. Disposable databases and backups only."""
 import importlib
+import hashlib
 import multiprocessing as mp
 import os
 from pathlib import Path
 import sqlite3
+import sys
 
 import pytest
 
 CTX = mp.get_context("spawn")
 LATEST = 18
+
+
+@pytest.fixture(params=[
+    "spawn",
+    pytest.param("fork", marks=pytest.mark.skipif(
+        sys.platform != "linux" or "fork" not in mp.get_all_start_methods(),
+        reason="Linux fork coverage requires a Linux host",
+    )),
+], autouse=True)
+def process_context(request, monkeypatch, tmp_path):
+    # No application, SQLite connection or background worker is started before
+    # forking. Exercise both Gunicorn-like fork and independent spawn workers.
+    monkeypatch.setattr(sys.modules[__name__], "CTX", mp.get_context(request.param))
+    monkeypatch.setenv("AUTOSTACK_DATA_DIR", str(tmp_path / "synthetic-app-data"))
 
 
 def mig():
@@ -288,4 +304,44 @@ def test_waiting_worker_retries_after_first_worker_failure(tmp_path):
         for process in (first, second):
             if process.pid is not None and process.is_alive():
                 process.terminate(); process.join(5)
+        results.close()
+
+
+def repeated_connection_worker(path, barrier, results):
+    os.environ["AUTOSTACK_DATA_DIR"] = str(Path(path).parent.parent)
+    from app.tenant_db import get_conn
+    try:
+        barrier.wait(timeout=15)
+        for _ in range(50):
+            conn = get_conn(1)
+            try:
+                assert conn.execute("SELECT current_stock FROM products WHERE code='KEEP'").fetchone()[0] == 7
+            finally:
+                conn.close()
+        results.put(("ok", 50))
+    except Exception as error:
+        results.put(("error", str(error)))
+
+
+def test_repeated_worker_connections_create_zero_backups(tmp_path):
+    path = tmp_path / "tenants" / "1.db"
+    path.parent.mkdir(parents=True)
+    seed(path, LATEST)
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    barrier, results = CTX.Barrier(2), CTX.Queue()
+    processes = [CTX.Process(target=repeated_connection_worker,
+                             args=(str(path), barrier, results)) for _ in range(2)]
+    try:
+        for process in processes:
+            process.start()
+        for process in processes:
+            join(process)
+        assert [results.get(timeout=5) for _ in processes] == [("ok", 50)] * 2
+        assert not (path.parent / ".backups").exists()
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    finally:
+        for process in processes:
+            if process.pid is not None and process.is_alive():
+                process.terminate()
+                process.join(5)
         results.close()
