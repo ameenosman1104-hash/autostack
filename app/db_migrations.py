@@ -3,8 +3,13 @@ import sqlite3
 import os
 import shutil
 import json
+import tempfile
 from datetime import datetime
 from pathlib import Path
+
+
+LATEST_SCHEMA_VERSION = 18
+MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
 def backup_database(db_path):
@@ -19,40 +24,29 @@ def backup_database(db_path):
     backup_dir = os.path.join(os.path.dirname(db_path), ".backups")
     os.makedirs(backup_dir, exist_ok=True)
 
+    # Exclusive allocation prevents simultaneous backups from overwriting one another.
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(backup_dir, f"{Path(db_path).stem}__{timestamp}.db")
-
+    fd, backup_path = tempfile.mkstemp(
+        prefix=f"{Path(db_path).stem}__{timestamp}_", suffix=".db", dir=backup_dir
+    )
+    os.close(fd)
     try:
-        # Use SQLite backup API for atomic, consistent backup including WAL data
         source = sqlite3.connect(db_path)
-        backup = sqlite3.connect(backup_path)
-
-        # Perform backup
-        with backup:
-            source.backup(backup)
-
-        source.close()
-        backup.close()
-
-        # Verify backup integrity
-        verify_backup = sqlite3.connect(backup_path)
-        result = verify_backup.execute("PRAGMA integrity_check").fetchone()[0]
-        verify_backup.close()
-
-        if result != "ok":
-            os.remove(backup_path)
-            raise RuntimeError(f"Backup verification failed: {result}")
-
-        return backup_path
-
-    except Exception as e:
-        # Clean up failed backup
-        if os.path.exists(backup_path):
+        try:
+            backup = sqlite3.connect(backup_path)
             try:
-                os.remove(backup_path)
-            except:
-                pass
-        raise RuntimeError(f"Backup failed for {db_path}: {e}")
+                source.backup(backup)
+                result = backup.execute("PRAGMA integrity_check").fetchone()[0]
+            finally:
+                backup.close()
+        finally:
+            source.close()
+        if result != "ok":
+            raise RuntimeError(f"Backup verification failed: {result}")
+        return backup_path
+    except Exception as e:
+        # Retain even failed artifacts; never remove or replace an existing backup.
+        raise RuntimeError(f"Backup failed for {db_path} (retained at {backup_path}): {e}")
 
 
 def get_schema_version(conn):
@@ -64,6 +58,18 @@ def get_schema_version(conn):
         return row[0] if row[0] else 0
     except sqlite3.OperationalError:
         return 0
+
+
+def _execute_schema_script(conn, script):
+    """Execute base DDL without executescript() implicitly committing our lock."""
+    statement = ""
+    for line in script.splitlines(keepends=True):
+        statement += line
+        if sqlite3.complete_statement(statement):
+            conn.execute(statement)
+            statement = ""
+    if statement.strip():
+        conn.execute(statement)
 
 
 def mark_migration_applied(conn, version, name):
@@ -79,32 +85,38 @@ def mark_migration_applied(conn, version, name):
         "INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)",
         (version, name)
     )
-    conn.commit()
 
 
 def migrate_tenant_db(tenant_id, db_path):
     """Apply all pending migrations to a tenant database."""
-
-    # Create backup before any changes (if DB exists and has data)
     backup_path = None
-    if os.path.exists(db_path):
-        try:
-            conn = sqlite3.connect(db_path)
-            has_tables = conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
-            ).fetchone()[0] > 0
-            conn.close()
-            if has_tables:
-                backup_path = backup_database(db_path)
-        except:
-            pass
-
+    conn = None
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=MIGRATION_BUSY_TIMEOUT_SECONDS)
+        # Current databases take neither a write lock nor a backup.
+        if get_schema_version(conn) >= LATEST_SCHEMA_VERSION:
+            return None
+
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("BEGIN IMMEDIATE")
+        # Another worker may have finished the upgrade while this one waited for the lock.
+        if get_schema_version(conn) >= LATEST_SCHEMA_VERSION:
+            conn.rollback()
+            return None
+        has_tables = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
+        ).fetchone() is not None
+        if has_tables:
+            # The writer lock excludes other writers through backup and commit.
+            try:
+                backup_path = backup_database(db_path)
+            except Exception as e:
+                raise RuntimeError("Migration requires a verified backup; no changes made") from e
+            if backup_path is None:
+                raise RuntimeError("Migration requires a verified backup; no changes made")
 
         # Initialize base schema if not exists (new databases)
-        conn.executescript("""
+        _execute_schema_script(conn, """
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT UNIQUE NOT NULL,
@@ -250,13 +262,11 @@ def migrate_tenant_db(tenant_id, db_path):
                 created_at TEXT DEFAULT (datetime('now'))
             );
         """)
-        conn.commit()
 
         current_version = get_schema_version(conn)
 
         # Migration 1: Create reminder_dispatch ledger for duplicate prevention
         if current_version < 1:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS reminder_dispatch (
@@ -272,14 +282,12 @@ def migrate_tenant_db(tenant_id, db_path):
                     )
                 """)
                 mark_migration_applied(conn, 1, "Create reminder_dispatch ledger")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 1 failed: {e}")
 
         # Migration 2: Add sync fields to debtors for existing databases
         if current_version < 2:
-            conn.execute("BEGIN")
             try:
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(debtors)").fetchall()}
 
@@ -291,14 +299,12 @@ def migrate_tenant_db(tenant_id, db_path):
                     conn.execute("ALTER TABLE debtors ADD COLUMN sync_pending INTEGER DEFAULT 0")
 
                 mark_migration_applied(conn, 2, "Add sync fields to debtors")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 2 failed: {e}")
 
         # Migration 3: Add missing product columns for existing databases
         if current_version < 3:
-            conn.execute("BEGIN")
             try:
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
 
@@ -315,14 +321,12 @@ def migrate_tenant_db(tenant_id, db_path):
                     conn.execute("ALTER TABLE products ADD COLUMN min_level_manual INTEGER DEFAULT 0")
 
                 mark_migration_applied(conn, 3, "Add product columns for existing databases")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 3 failed: {e}")
 
         # Migration 4: Encrypt existing plaintext credentials
         if current_version < 4:
-            conn.execute("BEGIN")
             try:
                 from app.credential_store import encrypt_value, should_encrypt_key, is_encrypted
 
@@ -337,14 +341,12 @@ def migrate_tenant_db(tenant_id, db_path):
                         conn.execute("UPDATE settings SET value=? WHERE key=?", (encrypted, key))
 
                 mark_migration_applied(conn, 4, "Encrypt plaintext credentials")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 4 failed: {e}")
 
         # Migration 5: Add gmail_oauth_tokens table for Gmail API integration
         if current_version < 5:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS gmail_oauth_tokens (
@@ -358,14 +360,12 @@ def migrate_tenant_db(tenant_id, db_path):
                     )
                 """)
                 mark_migration_applied(conn, 5, "Add gmail_oauth_tokens table")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 5 failed: {e}")
 
         # Migration 6: Add live_excel_connections table for Excel sync
         if current_version < 6:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS live_excel_connections (
@@ -389,14 +389,12 @@ def migrate_tenant_db(tenant_id, db_path):
                     )
                 """)
                 mark_migration_applied(conn, 6, "Add live_excel_connections table")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 6 failed: {e}")
 
         # Migration 7: Add local file connection tables for device pairing and conflict tracking
         if current_version < 7:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS local_file_connections (
@@ -447,14 +445,12 @@ def migrate_tenant_db(tenant_id, db_path):
                     )
                 """)
                 mark_migration_applied(conn, 7, "Add local file connection and conflict tables")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 7 failed: {e}")
 
         # Migration 8: Unified data source connections for local, hosted URL, and API sources
         if current_version < 8:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS data_source_connections (
@@ -508,7 +504,6 @@ def migrate_tenant_db(tenant_id, db_path):
                     )
                 """)
                 mark_migration_applied(conn, 8, "Add unified data source connections for all three types")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 8 failed: {e}")
@@ -539,7 +534,6 @@ def migrate_tenant_db(tenant_id, db_path):
 
                 conn.execute("PRAGMA foreign_keys=ON")
                 mark_migration_applied(conn, 9, "Add destination field for Stock/Debtors separation")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 9 failed: {e}")
@@ -568,14 +562,12 @@ def migrate_tenant_db(tenant_id, db_path):
 
                 conn.execute("PRAGMA foreign_keys=ON")
                 mark_migration_applied(conn, 10, "Add credentials and file handle support for saved connections")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 10 failed: {e}")
 
         # Migration 11: Create customers table for POS
         if get_schema_version(conn) < 11:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS customers (
@@ -593,14 +585,12 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email)")
                 mark_migration_applied(conn, 11, "Create customers table for POS")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 11 failed: {e}")
 
         # Migration 12: Create invoices table for POS transactions
         if get_schema_version(conn) < 12:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS invoices (
@@ -631,14 +621,12 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_debtor ON invoices(debtor_id)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_date ON invoices(sale_date)")
                 mark_migration_applied(conn, 12, "Create invoices table for POS transactions")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 12 failed: {e}")
 
         # Migration 13: Create invoice_items table for line items
         if get_schema_version(conn) < 13:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS invoice_items (
@@ -660,14 +648,12 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_items_product ON invoice_items(product_id)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_items_service ON invoice_items(service_id)")
                 mark_migration_applied(conn, 13, "Create invoice_items table for line items")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 13 failed: {e}")
 
         # Migration 14: Create services table for POS
         if get_schema_version(conn) < 14:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS services (
@@ -683,14 +669,12 @@ def migrate_tenant_db(tenant_id, db_path):
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_services_active ON services(is_active)")
                 mark_migration_applied(conn, 14, "Create services table for POS services")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 14 failed: {e}")
 
         # Migration 15: Add tyre-specific columns to products
         if get_schema_version(conn) < 15:
-            conn.execute("BEGIN")
             try:
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
 
@@ -704,14 +688,12 @@ def migrate_tenant_db(tenant_id, db_path):
                     conn.execute("ALTER TABLE products ADD COLUMN pattern TEXT DEFAULT ''")
 
                 mark_migration_applied(conn, 15, "Add tyre-specific columns to products")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 15 failed: {e}")
 
         # Migration 16: Add customer_id to debtors
         if get_schema_version(conn) < 16:
-            conn.execute("BEGIN")
             try:
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(debtors)").fetchall()}
 
@@ -720,14 +702,12 @@ def migrate_tenant_db(tenant_id, db_path):
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_debtors_customer ON debtors(customer_id)")
 
                 mark_migration_applied(conn, 16, "Add customer_id to debtors table")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 16 failed: {e}")
 
         # Migration 17: Add selling_price column to products + backfill from extra_data
         if get_schema_version(conn) < 17:
-            conn.execute("BEGIN")
             try:
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
 
@@ -755,14 +735,12 @@ def migrate_tenant_db(tenant_id, db_path):
                         pass
 
                 mark_migration_applied(conn, 17, "Add selling_price column + backfill from extra_data")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 17 failed: {e}")
 
         # Migration 18: Create invoice_sequences table for atomic invoice numbering
         if get_schema_version(conn) < 18:
-            conn.execute("BEGIN")
             try:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS invoice_sequences (
@@ -772,20 +750,26 @@ def migrate_tenant_db(tenant_id, db_path):
                     )
                 """)
                 mark_migration_applied(conn, 18, "Create invoice_sequences table for POS")
-                conn.commit()
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 18 failed: {e}")
 
-        conn.close()
+        conn.commit()
         return backup_path
 
     except Exception as e:
+        if conn is not None:
+            conn.rollback()
         # Log backup location so user can restore if needed
         error_msg = f"Database migration failed for tenant {tenant_id}. Error: {e}"
         if backup_path:
             error_msg += f"\nBackup saved to: {backup_path}"
         raise RuntimeError(error_msg)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 
 
 def verify_backup_restoration(backup_path, verification_dir):
