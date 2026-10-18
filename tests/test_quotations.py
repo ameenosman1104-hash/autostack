@@ -1,5 +1,6 @@
 """Quotation regression tests: numbering, pricing rules, workflow, PDF, print and WhatsApp share."""
 import io
+import re
 import os
 from urllib.parse import unquote
 
@@ -413,6 +414,11 @@ def test_whatsapp_country_code_defaults_to_27_and_is_configurable(app, auth_head
     assert output.whatsapp_url(quotation, shop).startswith("https://wa.me/27821234567?")
     save_setting(TID, "whatsapp_country_code", "264")
     assert output.whatsapp_url(quotation, output.shop_profile(TID)).startswith("https://wa.me/264821234567?")
+
+
+def test_sidebar_quotations_link_has_file_text_icon(app, client, auth_headers):
+    html = client.get("/quotations/").get_data(as_text=True)
+    assert re.search(r'<i class="bi bi-file-text me-2"></i>\s*Quotations', html)
 
 
 def test_staff_cannot_change_settings(app, client, auth_headers):

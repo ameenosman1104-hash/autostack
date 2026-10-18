@@ -376,7 +376,9 @@
         <a class="nav-link {% if request.endpoint and 'pos.' in request.endpoint %}active{% endif %}" href="{{ url_for('pos.index') }}">
           <i class="bi bi-cash-coin me-2"></i>Point of Sale
         </a>
-          <a class="nav-link {% if request.endpoint and 'quotations.' in request.endpoint %}active{% endif %}" href="{{ url_for('quotations.index') }}">Quotations</a>
+          <a class="nav-link {% if request.endpoint and 'quotations.' in request.endpoint %}active{% endif %}" href="{{ url_for('quotations.index') }}">
+          <i class="bi bi-file-text me-2"></i>Quotations
+        </a>
       </li>
       <li class="nav-item">
         <a class="nav-link {% if request.endpoint and 'po.' in request.endpoint %}active{% endif %}" href="{{ url_for('po.index') }}">
