@@ -1437,7 +1437,8 @@ def _allocate_invoice_number(conn, tid):
 
 def complete_sale(tid, idempotency_key, items,
                   customer_id=None, payment_method="cash", sale_date=None,
-                  discount=0, notes="", created_by=None, invoice_number=None):
+                  discount=0, notes="", created_by=None, invoice_number=None,
+                  before_commit=None):
     """
     Atomically process a complete POS transaction.
 
@@ -1468,6 +1469,8 @@ def complete_sale(tid, idempotency_key, items,
             'items_count': <int>,
             'payment_status': 'paid'|'unpaid'
         }
+
+    before_commit: optional callable(conn, result) run inside the same transaction before COMMIT.
 
     Raises:
         ValueError: Validation error (stock, customer, price, etc.)
@@ -1779,10 +1782,8 @@ def complete_sale(tid, idempotency_key, items,
                 (new_debtor_id, invoice_id)
             )
 
-        # ── 16. COMMIT ──
-        conn.commit()
-
-        return {
+        # ── 16. Optional same-transaction hook (e.g. quotation link); failure rolls back the sale ──
+        result = {
             'success': True,
             'duplicate': False,
             'invoice_id': invoice_id,
@@ -1792,6 +1793,13 @@ def complete_sale(tid, idempotency_key, items,
             'items_count': len(item_details),
             'payment_status': payment_status
         }
+        if before_commit is not None:
+            before_commit(conn, result)
+
+        # ── 17. COMMIT ──
+        conn.commit()
+
+        return result
 
     except Exception as e:
         conn.rollback()

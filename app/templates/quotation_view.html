@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+{% set h = q.header %}
+{% set sym = shop.currency %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 no-print">
+    <div>
+      <h4 class="mb-0">{{ h.quotation_number }}</h4>
+      <span class="badge text-bg-secondary">{{ h.status|capitalize }}</span>
+      <small class="text-muted ms-2">Expires {{ h.expiry_date }}</small>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      {% if h.status == 'draft' %}<a class="btn btn-outline-secondary" href="{{ url_for('quotations.index') }}{{ h.id }}/edit">Edit draft</a>{% endif %}
+      {% if h.status == 'accepted' and can_convert %}<button type="button" class="btn btn-primary" id="convertBtn">Convert to Sale</button>{% endif %}
+      <a class="btn btn-outline-dark" target="_blank" href="{{ url_for('quotations.index') }}{{ h.id }}/print?autoprint=1">Print</a>
+      <a class="btn btn-outline-dark" id="pdfLink" href="{{ url_for('quotations.index') }}{{ h.id }}/pdf">Download PDF</a>
+      {% if wa_url %}
+      <button type="button" class="btn btn-success" id="waBtn" data-wa="{{ wa_url }}" data-pdf="{{ url_for('quotations.index') }}{{ h.id }}/pdf">Share via WhatsApp</button>
+      {% else %}
+      <button type="button" class="btn btn-success" disabled title="{{ wa_error }}">Share via WhatsApp</button>
+      {% endif %}
+    </div>
+  </div>
+  {% if h.status == 'converted' %}<div class="alert alert-success no-print">Converted to sale. Invoice {{ invoice_no or h.converted_invoice_id }}.</div>{% endif %}
+  {% if wa_error %}<div class="alert alert-warning no-print">WhatsApp: {{ wa_error }}</div>{% endif %}
+  {% if wa_url %}<p class="small text-muted no-print">The PDF downloads first. Open the chat, then attach the downloaded PDF manually (WhatsApp links cannot attach files).</p>{% endif %}
+
+  <div class="card mb-3"><div class="card-body row">
+    <div class="col-md-6">
+      <div class="text-muted small">Customer</div>
+      <div class="fw-semibold">{{ h.customer_name }}</div>
+      <div>{{ h.customer_phone }}</div>
+      <div>{{ h.customer_email }}</div>
+    </div>
+    <div class="col-md-6 text-md-end">
+      <div>Quote date: {{ h.quote_date }}</div>
+      <div>Valid until: {{ h.expiry_date }}</div>
+      <div>Created by: {{ h.created_by }}</div>
+    </div>
+  </div></div>
+
+  <div class="table-responsive mb-3">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>#</th><th>Description</th><th class="text-end">Qty</th><th class="text-end">Unit price</th><th class="text-end">Disc %</th><th class="text-end">Total</th></tr></thead>
+      <tbody>
+        {% for i in q['items'] %}
+        <tr>
+          <td>{{ i.position }}</td>
+          <td><div class="fw-semibold">{{ i.description }}</div>{% if i.detail %}<small class="text-muted">{{ i.detail }}</small>{% endif %}</td>
+          <td class="text-end">{{ '%g'|format(i.quantity) }}</td>
+          <td class="text-end">{{ sym }}{{ "%.2f"|format(i.unit_price) }}</td>
+          <td class="text-end">{{ '%g'|format(i.discount_pct) }}</td>
+          <td class="text-end">{{ sym }}{{ "%.2f"|format(i.line_total) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="row justify-content-end mb-3"><div class="col-md-4">
+    <div class="d-flex justify-content-between"><span>Subtotal</span><span>{{ sym }}{{ "%.2f"|format(h.subtotal) }}</span></div>
+    <div class="d-flex justify-content-between"><span>Discount</span><span>-{{ sym }}{{ "%.2f"|format(h.discount_total) }}</span></div>
+    <div class="d-flex justify-content-between fw-bold"><span>Total</span><span>{{ sym }}{{ "%.2f"|format(h.total) }}</span></div>
+  </div></div>
+
+  {% if h.notes or h.terms %}
+  <div class="card mb-3"><div class="card-body">
+    {% if h.notes %}<div class="mb-2"><div class="text-muted small">Notes</div><div style="white-space:pre-line">{{ h.notes }}</div></div>{% endif %}
+    {% if h.terms %}<div><div class="text-muted small">Terms</div><div style="white-space:pre-line">{{ h.terms }}</div></div>{% endif %}
+  </div></div>
+  {% endif %}
+
+  {% if statuses %}
+  <div class="d-flex gap-2 mb-3 no-print">
+    {% for s in statuses|sort %}
+    <button type="button" class="btn btn-sm btn-outline-primary status-btn" data-status="{{ s }}">Mark {{ s }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <details class="no-print"><summary class="small text-muted">History</summary>
+    <ul class="small">{% for e in q.events %}<li>{{ e.created_at }} — {{ e.event }} {{ e.actor }} {{ e.detail }}</li>{% endfor %}</ul>
+  </details>
+</div>
+
+<script>
+  document.getElementById('waBtn')?.addEventListener('click', function () {
+    const link = document.createElement('a');
+    link.href = this.dataset.pdf; link.download = '';
+    document.body.appendChild(link); link.click(); link.remove();
+    window.open(this.dataset.wa, '_blank', 'noopener');
+  });
+  document.getElementById('convertBtn')?.addEventListener('click', async function () {
+    if (!confirm('Create a completed sale from this quotation? Stock will be deducted now.')) return;
+    this.disabled = true;
+    const response = await fetch('{{ url_for("quotations.index") }}{{ h.id }}/convert', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({payment_method: 'cash'})});
+    const result = await response.json().catch(() => ({}));
+    if (response.ok && result.success) { location.reload(); } else { this.disabled = false; alert(result.error || 'Could not convert this quotation.'); }
+  });
+  document.querySelectorAll('.status-btn').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      const response = await fetch('{{ url_for("quotations.index") }}{{ h.id }}/status', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status: this.dataset.status})});
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) { location.reload(); } else { alert(result.error || 'Status could not be changed.'); }
+    });
+  });
+</script>
+{% endblock %}

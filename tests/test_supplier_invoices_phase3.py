@@ -249,6 +249,9 @@ def test_search_input_validation(client,invoice):
 def test_migration_23_preserves_existing_extraction_and_is_repeatable(client,invoice):
     before=snapshot()
     conn=get_conn(10)
+    conn.execute("DROP TABLE IF EXISTS quotation_events")
+    conn.execute("DROP TABLE IF EXISTS quotation_items")
+    conn.execute("DROP TABLE IF EXISTS quotations")
     conn.execute("DROP TABLE supplier_invoice_confirmations")
     conn.execute("DROP TABLE supplier_invoice_review_events")
     conn.execute("DROP TABLE supplier_invoice_reviews")
@@ -256,7 +259,7 @@ def test_migration_23_preserves_existing_extraction_and_is_repeatable(client,inv
     conn.commit();conn.close()
     for _ in range(2):
         conn=get_conn(10)
-        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]==24
+        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]==25
         conn.close()
     assert snapshot()==before
 

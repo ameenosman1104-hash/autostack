@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LATEST_SCHEMA_VERSION = 24
+LATEST_SCHEMA_VERSION = 25
 MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -85,6 +85,63 @@ def mark_migration_applied(conn, version, name):
         "INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)",
         (version, name)
     )
+
+
+QUOTATION_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS quotation_sequence (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        next_number INTEGER NOT NULL CHECK (next_number >= 1)
+    )""",
+    "INSERT OR IGNORE INTO quotation_sequence (id, next_number) VALUES (1, 1)",
+    """CREATE TABLE IF NOT EXISTS quotations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quotation_number TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (status IN ('draft', 'sent', 'accepted', 'rejected', 'expired', 'converted')),
+        converted_invoice_id INTEGER REFERENCES invoices(id),
+        customer_id INTEGER REFERENCES customers(id),
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL DEFAULT '',
+        customer_email TEXT NOT NULL DEFAULT '',
+        quote_date TEXT NOT NULL,
+        expiry_date TEXT NOT NULL,
+        subtotal REAL NOT NULL DEFAULT 0,
+        discount_total REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        notes TEXT NOT NULL DEFAULT '',
+        terms TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL DEFAULT '',
+        sent_at TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS quotation_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quotation_id INTEGER NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        item_type TEXT NOT NULL CHECK (item_type IN ('product', 'service', 'custom')),
+        product_id INTEGER,
+        service_id INTEGER,
+        description TEXT NOT NULL,
+        detail TEXT NOT NULL DEFAULT '',
+        quantity REAL NOT NULL CHECK (quantity > 0),
+        base_price REAL NOT NULL CHECK (base_price >= 0),
+        unit_price REAL NOT NULL CHECK (unit_price >= 0),
+        discount_pct REAL NOT NULL DEFAULT 0 CHECK (discount_pct >= 0 AND discount_pct <= 100),
+        line_total REAL NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS quotation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quotation_id INTEGER NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+        event TEXT NOT NULL,
+        actor TEXT NOT NULL DEFAULT '',
+        detail TEXT NOT NULL DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_quotation_items_quote ON quotation_items(quotation_id)",
+    "CREATE INDEX IF NOT EXISTS idx_quotation_events_quote ON quotation_events(quotation_id)",
+    "CREATE INDEX IF NOT EXISTS idx_quotations_status_expiry ON quotations(status, expiry_date)",
+)
 
 
 def migrate_tenant_db(tenant_id, db_path):
@@ -823,6 +880,16 @@ def migrate_tenant_db(tenant_id, db_path):
         migrate_supplier_reference(conn)
         migrate_supplier_reviews(conn)
         migrate_supplier_confirmations(conn)
+        # Migration 25: Quotations, line items, sequential numbering and audit events
+        if get_schema_version(conn) < 25:
+            try:
+                for statement in QUOTATION_SCHEMA_STATEMENTS:
+                    conn.execute(statement)
+                mark_migration_applied(conn, 25, "Create quotation tables")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 25 failed: {e}")
+
         if conn.execute("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("Foreign key violations; migration rolled back")
         conn.commit()

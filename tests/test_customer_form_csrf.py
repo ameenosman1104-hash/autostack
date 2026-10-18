@@ -10,6 +10,18 @@ from flask_login import UserMixin
 import tempfile
 import re
 import json
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolated_data(tmp_path, monkeypatch):
+    """Point tenant and main databases at a per-test folder; monkeypatch restores everything afterwards."""
+    monkeypatch.setenv('AUTOSTACK_DATA_DIR', str(tmp_path))
+    monkeypatch.setenv('AUTOSTACK_ENV', 'test')
+    monkeypatch.delenv('RENDER', raising=False)
+    import app.main_db as main_db
+    monkeypatch.setattr(main_db, 'MAIN_DB', str(tmp_path / 'main.db'))
+    yield tmp_path
 
 
 def test_customer_add_form_contains_csrf_token():
@@ -18,7 +30,6 @@ def test_customer_add_form_contains_csrf_token():
     app.config['TESTING'] = True
     client = app.test_client()
 
-    os.environ['AUTOSTACK_DATA_DIR'] = tempfile.mkdtemp()
     test_tid = 15001
     db_path = os.path.join(os.environ['AUTOSTACK_DATA_DIR'], f'{test_tid}.db')
     migrate_tenant_db(test_tid, db_path)
@@ -57,7 +68,6 @@ def test_customer_add_without_csrf_rejected():
     app.config['TESTING'] = True
     client = app.test_client()
 
-    os.environ['AUTOSTACK_DATA_DIR'] = tempfile.mkdtemp()
     test_tid = 15002
     db_path = os.path.join(os.environ['AUTOSTACK_DATA_DIR'], f'{test_tid}.db')
     migrate_tenant_db(test_tid, db_path)
@@ -92,7 +102,6 @@ def test_customer_add_with_valid_csrf_succeeds():
     app.config['TESTING'] = True
     client = app.test_client()
 
-    os.environ['AUTOSTACK_DATA_DIR'] = tempfile.mkdtemp()
     test_tid = 15003
     db_path = os.path.join(os.environ['AUTOSTACK_DATA_DIR'], f'{test_tid}.db')
     migrate_tenant_db(test_tid, db_path)
@@ -141,7 +150,6 @@ def test_customer_created_belongs_to_tenant():
     app.config['TESTING'] = True
     client = app.test_client()
 
-    os.environ['AUTOSTACK_DATA_DIR'] = tempfile.mkdtemp()
     test_tid_a = 15004
     test_tid_b = 15005
 
@@ -194,7 +202,6 @@ def test_pos_add_json_still_works():
     app.config['TESTING'] = True
     client = app.test_client()
 
-    os.environ['AUTOSTACK_DATA_DIR'] = tempfile.mkdtemp()
     test_tid = 15006
     db_path = os.path.join(os.environ['AUTOSTACK_DATA_DIR'], f'{test_tid}.db')
     migrate_tenant_db(test_tid, db_path)

@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block content %}
+{% set editing = quotation is not none %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">{{ 'Edit draft ' ~ quotation.header.quotation_number if editing else 'New quotation' }}</h4>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('quotations.index') }}">Back to quotations</a>
+  </div>
+
+  <div id="formError" class="alert alert-danger d-none"></div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Customer</h6>
+    <div class="row g-2 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label small">Find existing customer</label>
+        <input id="customerSearch" class="form-control" placeholder="Name or phone" autocomplete="off">
+        <div id="customerResults" class="list-group position-absolute" style="z-index:20"></div>
+      </div>
+      <div class="col-md-3"><label class="form-label small">Name *</label><input id="customerName" class="form-control" maxlength="200"></div>
+      <div class="col-md-2"><label class="form-label small">Phone</label><input id="customerPhone" class="form-control" maxlength="50"></div>
+      <div class="col-md-2"><label class="form-label small">Email</label><input id="customerEmail" class="form-control" maxlength="200"></div>
+    </div>
+    <input type="hidden" id="customerId">
+  </div></div>
+
+  <div class="card mb-3"><div class="card-body">
+    <div class="row g-2 mb-3">
+      <div class="col-md-3"><label class="form-label small">Quote date</label><input type="date" id="quoteDate" class="form-control"></div>
+      <div class="col-md-3"><label class="form-label small">Expiry date</label><input type="date" id="expiryDate" class="form-control"></div>
+    </div>
+    <h6 class="text-uppercase text-muted">Items</h6>
+    <div class="row g-2 mb-2">
+      <div class="col-md-5 position-relative">
+        <input id="productSearch" class="form-control" placeholder="Search tyre by size, brand or name" autocomplete="off">
+        <div id="productResults" class="list-group position-absolute w-100" style="z-index:20"></div>
+      </div>
+      <div class="col-md-3">
+        <select id="serviceSelect" class="form-select"><option value="">Add a service…</option></select>
+      </div>
+      <div class="col-md-2"><button type="button" class="btn btn-outline-secondary w-100" id="addCustom">Custom line</button></div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Description</th><th style="width:110px">Qty</th><th style="width:140px">Unit price</th><th style="width:110px">Disc %</th><th class="text-end" style="width:130px">Line total</th><th></th></tr></thead>
+        <tbody id="itemRows"></tbody>
+      </table>
+    </div>
+    <div class="row justify-content-end">
+      <div class="col-md-4">
+        <div class="d-flex justify-content-between"><span>Subtotal</span><span id="subtotal">0.00</span></div>
+        <div class="d-flex justify-content-between"><span>Discount</span><span id="discount">0.00</span></div>
+        <div class="d-flex justify-content-between fw-bold"><span>Total</span><span id="total">0.00</span></div>
+        <small class="text-muted">Totals are recalculated by the server when you save.</small>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-body row g-2">
+    <div class="col-md-6"><label class="form-label small">Notes</label><textarea id="notes" class="form-control" rows="3" maxlength="2000"></textarea></div>
+    <div class="col-md-6"><label class="form-label small">Terms</label><textarea id="terms" class="form-control" rows="3" maxlength="4000"></textarea></div>
+  </div></div>
+
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-primary" id="saveBtn">{{ 'Save draft' if editing else 'Save quotation' }}</button>
+  </div>
+</div>
+
+<script>
+const isAdmin = {{ 'true' if is_admin else 'false' }};
+const existing = {{ (quotation|tojson) if editing else 'null' }};
+const editing = existing !== null;
+const items = [];
+const qs = (id) => document.getElementById(id);
+const money = (v) => (Math.round((Number(v) || 0) + Number.EPSILON) * 100 / 100).toFixed(2);
+const today = new Date().toISOString().slice(0, 10);
+
+function showError(message) { const box = qs('formError'); box.textContent = message; box.classList.remove('d-none'); window.scrollTo(0, 0); }
+function clearError() { qs('formError').classList.add('d-none'); }
+
+function addItem(seed) { items.push(Object.assign({item_type: 'custom', description: '', detail: '', quantity: 1, unit_price: 0, discount_pct: 0}, seed)); render(); }
+
+function render() {
+  const body = qs('itemRows'); body.innerHTML = '';
+  let subtotal = 0, total = 0;
+  items.forEach((it, idx) => {
+    const line = (Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * (1 - (Number(it.discount_pct) || 0) / 100);
+    subtotal += (Number(it.quantity) || 0) * (Number(it.unit_price) || 0); total += line;
+    const tr = document.createElement('tr');
+    const desc = document.createElement('td');
+    desc.innerHTML = '';
+    const title = document.createElement('div'); title.className = 'fw-semibold'; title.textContent = it.description;
+    desc.appendChild(title);
+    if (it.detail) { const d = document.createElement('small'); d.className = 'text-muted'; d.textContent = it.detail; desc.appendChild(d); }
+    if (it.item_type === 'custom') {
+      const input = document.createElement('input'); input.className = 'form-control form-control-sm mt-1'; input.value = it.description; input.maxLength = 200; input.placeholder = 'Description';
+      input.oninput = () => { it.description = input.value; recalc(); }; desc.appendChild(input);
+    }
+    tr.appendChild(desc);
+    tr.appendChild(inputCell(it, 'quantity', '0.0001', '1', 'number'));
+    const priceCell = inputCell(it, 'unit_price', '0', '0.01', 'number', !(isAdmin || it.item_type === 'custom'));
+    tr.appendChild(priceCell);
+    tr.appendChild(inputCell(it, 'discount_pct', '0', '0.01', 'number', false, 100));
+    const lineCell = document.createElement('td'); lineCell.className = 'text-end'; lineCell.textContent = money(line); tr.appendChild(lineCell);
+    const removeCell = document.createElement('td');
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-sm btn-outline-danger'; remove.textContent = '✕';
+    remove.onclick = () => { items.splice(idx, 1); render(); }; removeCell.appendChild(remove); tr.appendChild(removeCell);
+    body.appendChild(tr);
+  });
+  qs('subtotal').textContent = money(subtotal);
+  qs('discount').textContent = money(subtotal - total);
+  qs('total').textContent = money(total);
+}
+function recalc() { const lines = document.querySelectorAll('#itemRows tr'); const sum = items.reduce((a, it) => a + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * (1 - (Number(it.discount_pct) || 0) / 100), 0); qs('total').textContent = money(sum); }
+function inputCell(it, field, min, step, type, readonly, max) {
+  const td = document.createElement('td'); const input = document.createElement('input');
+  input.type = type; input.className = 'form-control form-control-sm'; input.value = it[field]; input.min = min; input.step = step;
+  if (max) input.max = max; if (readonly) input.readOnly = true;
+  input.oninput = () => { it[field] = input.value; recalc(); };
+  input.onchange = () => render();
+  td.appendChild(input); return td;
+}
+
+async function searchCustomers(term) {
+  const box = qs('customerResults'); box.innerHTML = '';
+  if (term.trim().length < 2) return;
+  const rows = await (await fetch('{{ url_for("quotations.api_customers") }}?q=' + encodeURIComponent(term))).json();
+  rows.forEach((c) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'list-group-item list-group-item-action';
+    b.textContent = c.name + (c.phone ? ' · ' + c.phone : '');
+    b.onclick = () => { qs('customerId').value = c.id; qs('customerName').value = c.name; qs('customerPhone').value = c.phone || ''; qs('customerEmail').value = c.email || ''; box.innerHTML = ''; qs('customerSearch').value = ''; };
+    box.appendChild(b);
+  });
+}
+
+async function searchProducts(term) {
+  const box = qs('productResults'); box.innerHTML = '';
+  if (term.trim().length < 2) return;
+  const rows = await (await fetch('{{ url_for("quotations.api_products") }}?q=' + encodeURIComponent(term))).json();
+  rows.forEach((p) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'list-group-item list-group-item-action';
+    b.textContent = [p.brand, p.tyre_size, p.name].filter(Boolean).join(' · ') + '  —  ' + money(p.selling_price);
+    b.onclick = () => { addItem({item_type: 'product', product_id: p.id, description: p.name || p.code, detail: [p.brand, p.tyre_size, p.pattern].filter(Boolean).join(' '), unit_price: Number(p.selling_price) || 0}); box.innerHTML = ''; qs('productSearch').value = ''; };
+    box.appendChild(b);
+  });
+}
+
+async function loadServices() {
+  const rows = await (await fetch('{{ url_for("quotations.api_services") }}')).json();
+  const select = qs('serviceSelect');
+  rows.forEach((s) => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name + ' (' + money(s.default_price) + ')'; o.dataset.price = s.default_price; o.dataset.name = s.name; select.appendChild(o); });
+  select.onchange = () => { const o = select.selectedOptions[0]; if (!o || !o.value) return; addItem({item_type: 'service', service_id: Number(o.value), description: o.dataset.name, unit_price: Number(o.dataset.price) || 0}); select.value = ''; };
+}
+
+qs('customerSearch').oninput = (e) => searchCustomers(e.target.value);
+qs('productSearch').oninput = (e) => searchProducts(e.target.value);
+qs('addCustom').onclick = () => addItem({item_type: 'custom', description: 'Custom item', unit_price: 0});
+qs('quoteDate').value = existing ? existing.header.quote_date : today;
+qs('expiryDate').value = existing ? existing.header.expiry_date : '';
+if (existing) {
+  const h = existing.header;
+  qs('customerId').value = h.customer_id || ''; qs('customerName').value = h.customer_name; qs('customerPhone').value = h.customer_phone; qs('customerEmail').value = h.customer_email;
+  qs('notes').value = h.notes; qs('terms').value = h.terms;
+  existing.items.forEach((i) => items.push({item_type: i.item_type, product_id: i.product_id, service_id: i.service_id, description: i.description, detail: i.detail, quantity: i.quantity, unit_price: i.unit_price, discount_pct: i.discount_pct}));
+}
+qs('saveBtn').onclick = async () => {
+  clearError();
+  const payload = {
+    customer_id: qs('customerId').value || null, customer_name: qs('customerName').value, customer_phone: qs('customerPhone').value,
+    customer_email: qs('customerEmail').value, quote_date: qs('quoteDate').value, expiry_date: qs('expiryDate').value,
+    notes: qs('notes').value, terms: qs('terms').value,
+    items: items.map((it) => ({item_type: it.item_type, product_id: it.product_id, service_id: it.service_id, description: it.description, detail: it.detail, quantity: it.quantity, unit_price: it.unit_price, discount_pct: it.discount_pct})),
+  };
+  const url = editing ? '{{ url_for("quotations.index") }}' + existing.header.id + '/save' : '{{ url_for("quotations.save_new") }}';
+  const response = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) { showError(result.error || 'Could not save the quotation.'); return; }
+  window.location.href = result.url || ('{{ url_for("quotations.index") }}' + result.id);
+};
+loadServices(); render();
+</script>
+{% endblock %}

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quotation {{ q.header.quotation_number }}</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif; font-size: 10pt; }
+  .page { max-width: 190mm; margin: 12mm auto; padding: 0 6mm; }
+  .head { display: flex; justify-content: space-between; gap: 8mm; border-bottom: 1.5px solid #000; padding-bottom: 4mm; }
+  .shop h1 { font-size: 15pt; margin: 0 0 2mm; }
+  .shop div, .meta div { font-size: 9pt; }
+  .meta { text-align: right; }
+  .meta h2 { font-size: 18pt; margin: 0 0 2mm; letter-spacing: .5px; }
+  .logo { max-height: 18mm; max-width: 45mm; margin-bottom: 2mm; }
+  .to { margin: 6mm 0; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th, td { padding: 2mm 1.5mm; border-bottom: .5px solid #666; vertical-align: top; }
+  th { border-bottom: 1.5px solid #000; text-align: left; font-size: 9pt; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .small { font-size: 8pt; color: #222; }
+  .totals { width: 70mm; margin-left: auto; margin-top: 4mm; }
+  .totals div { display: flex; justify-content: space-between; padding: 1mm 0; }
+  .totals .grand { border-top: 1.5px solid #000; font-weight: bold; margin-top: 1mm; padding-top: 2mm; }
+  .notes { margin-top: 6mm; font-size: 9pt; white-space: pre-line; }
+  .footer-note { margin-top: 8mm; font-size: 8pt; color: #333; }
+  @page { size: A4; margin: 14mm 14mm 16mm; }
+  @media print {
+    body { font-size: 9.5pt; }
+    .page { margin: 0; padding: 0; max-width: none; }
+    .no-print { display: none !important; }
+    a { color: #000; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+{% set h = q.header %}
+{% set sym = shop.currency %}
+<div class="page">
+  <div class="head">
+    <div class="shop">
+      {% if shop.logo_path %}<img class="logo" src="{{ url_for('static', filename=shop.logo_path) }}" alt="">{% endif %}
+      <h1>{{ shop.name }}</h1>
+      {% if shop.address %}<div>{{ shop.address }}</div>{% endif %}
+      {% if shop.phone %}<div>Tel: {{ shop.phone }}</div>{% endif %}
+      {% if shop.email %}<div>{{ shop.email }}</div>{% endif %}
+    </div>
+    <div class="meta">
+      <h2>QUOTATION</h2>
+      <div><strong>No:</strong> {{ h.quotation_number }}</div>
+      <div><strong>Date:</strong> {{ h.quote_date }}</div>
+      <div><strong>Valid until:</strong> {{ h.expiry_date }}</div>
+    </div>
+  </div>
+
+  <div class="to">
+    <div><strong>To:</strong> {{ h.customer_name }}</div>
+    {% if h.customer_phone %}<div>{{ h.customer_phone }}</div>{% endif %}
+    {% if h.customer_email %}<div>{{ h.customer_email }}</div>{% endif %}
+  </div>
+
+  <table>
+    <thead>
+      <tr><th style="width:8mm">#</th><th>Description</th><th class="num" style="width:16mm">Qty</th><th class="num" style="width:26mm">Unit price</th><th class="num" style="width:16mm">Disc %</th><th class="num" style="width:28mm">Total</th></tr>
+    </thead>
+    <tbody>
+      {% for i in q['items'] %}
+      <tr>
+        <td>{{ i.position }}</td>
+        <td>{{ i.description }}{% if i.detail %}<div class="small">{{ i.detail }}</div>{% endif %}</td>
+        <td class="num">{{ '%g'|format(i.quantity) }}</td>
+        <td class="num">{{ sym }}{{ "{:,.2f}".format(i.unit_price) }}</td>
+        <td class="num">{{ '%g'|format(i.discount_pct) }}</td>
+        <td class="num">{{ sym }}{{ "{:,.2f}".format(i.line_total) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div><span>Subtotal</span><span>{{ sym }}{{ "{:,.2f}".format(h.subtotal) }}</span></div>
+    <div><span>Discount</span><span>-{{ sym }}{{ "{:,.2f}".format(h.discount_total) }}</span></div>
+    <div class="grand"><span>Total</span><span>{{ sym }}{{ "{:,.2f}".format(h.total) }}</span></div>
+  </div>
+
+  {% if h.notes %}<div class="notes"><strong>Notes</strong><br>{{ h.notes }}</div>{% endif %}
+  {% if h.terms %}<div class="notes"><strong>Terms</strong><br>{{ h.terms }}</div>{% endif %}
+  <div class="footer-note">Prices are valid until {{ h.expiry_date }}. Quotation {{ h.quotation_number }}.</div>
+</div>
+<script>
+  if (new URLSearchParams(location.search).get('autoprint') === '1') { window.addEventListener('load', () => window.print()); }
+</script>
+</body>
+</html>

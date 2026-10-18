@@ -20,8 +20,11 @@ def database(tmp_path, monkeypatch):
 
 def pending(path):
     with sqlite3.connect(path) as conn:
+        conn.execute("DROP TABLE IF EXISTS quotation_events")
+        conn.execute("DROP TABLE IF EXISTS quotation_items")
+        conn.execute("DROP TABLE IF EXISTS quotations")
         conn.execute("DROP TABLE supplier_invoice_confirmations")
-        conn.execute("DELETE FROM schema_migrations WHERE version=24")
+        conn.execute("DELETE FROM schema_migrations WHERE version>=24")
 
 
 def backups(path):
@@ -155,7 +158,7 @@ def test_concurrent_pending_connections_preserve_backups(database, monkeypatch):
         finally:
             conn.close()
     with ThreadPoolExecutor(max_workers=4) as pool:
-        assert list(pool.map(connect, range(4))) == [24] * 4
+        assert list(pool.map(connect, range(4))) == [25] * 4
     saved = backups(database)
     assert len(saved) == 1
     for path in saved:

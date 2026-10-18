@@ -52,6 +52,7 @@ def create_app():
     from .routes.data_sources_api import bp as data_sources_bp
     from .routes.ai_insights import ai_insights_bp
     from .routes.supplier_invoices import supplier_invoices_bp
+    from .routes.quotations import quotations_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp,       url_prefix="/admin")
@@ -67,6 +68,7 @@ def create_app():
     app.register_blueprint(recycle_bp,     url_prefix="/recycle-bin")
     app.register_blueprint(pos_bp,         url_prefix="/pos")
     app.register_blueprint(supplier_invoices_bp)
+    app.register_blueprint(quotations_bp, url_prefix="/quotations")
     app.register_blueprint(local_file_sync_bp)
     app.register_blueprint(data_sources_bp)
     app.register_blueprint(ai_insights_bp)

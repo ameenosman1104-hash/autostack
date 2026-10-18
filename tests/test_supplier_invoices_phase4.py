@@ -285,8 +285,11 @@ def test_migration_existing_tenant_preserves_data(app,client,ready):
     from app.db_migrations import migrate_tenant_db
     from app.tenant_db import _db_path
     conn=get_conn(10)
+    conn.execute("DROP TABLE IF EXISTS quotation_events")
+    conn.execute("DROP TABLE IF EXISTS quotation_items")
+    conn.execute("DROP TABLE IF EXISTS quotations")
     conn.execute("DROP TABLE supplier_invoice_confirmations")
-    conn.execute("DELETE FROM schema_migrations WHERE version=24")
+    conn.execute("DELETE FROM schema_migrations WHERE version>=24")
     conn.commit();conn.close()
     before=snapshot_without_migration()
     migrate_tenant_db(10,_db_path(10))
