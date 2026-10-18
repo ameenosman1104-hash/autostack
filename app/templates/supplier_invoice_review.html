@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/supplier-invoice-review.css', v='phase4-2') }}">
+<div class="invoice-review">
+  <div class="review-heading">
+    <div><div class="review-eyebrow">SUPPLIER INVOICES / REVIEW</div><h1 class="page-title mb-1">Check the details. Choose your products.</h1><p class="text-muted mb-0">Compare with the original, correct the extraction, and save your progress.</p></div>
+    <span class="badge text-bg-secondary" id="draft-state">{{ 'Saved draft' if state.draft.version else 'Unsaved review' }}</span>
+  </div>
+  <div class="review-safety"><i class="bi bi-shield-check"></i><div><strong>Review only. Your inventory has not changed.</strong><div class="small">Selecting a match or proposing a product does not create products or add stock. Save the draft, then open the final confirmation to add stock.</div></div></div>
+  <div class="review-layout">
+    <aside class="review-original card">
+      <details open><summary class="card-header">Original invoice</summary><div class="card-body">
+        <a class="small" href="{{ url_for('supplier_invoices.original_invoice', invoice_id=state.invoice_id) }}" target="_blank" rel="noopener">Open original in a new tab <i class="bi bi-box-arrow-up-right"></i></a>
+        {% if mime_type == 'application/pdf' %}<iframe title="Original supplier invoice PDF" src="{{ url_for('supplier_invoices.original_invoice', invoice_id=state.invoice_id) }}" class="original-preview"></iframe>
+        {% else %}<img alt="Original supplier invoice" src="{{ url_for('supplier_invoices.original_invoice', invoice_id=state.invoice_id) }}" class="original-preview">{% endif %}
+        <p class="small text-muted mb-0">Use the original to verify quantities, tax and product details.</p>
+      </div></details>
+    </aside>
+    <form id="review-form" class="review-editor" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <fieldset id="review-fields">
+        <section class="card mb-3"><div class="card-body">
+          <h2 class="h5 mb-3">Invoice details</h2>
+          <div class="review-metadata">
+          {% for field,label,type in [('supplier_name','Supplier name','text'),('invoice_number','Invoice number','text'),('invoice_date','Invoice date (YYYY-MM-DD)','text')] %}
+            <div><label class="form-label" for="{{ field }}">{{ label }}</label><input class="form-control" id="{{ field }}" name="{{ field }}" type="{{ type }}" maxlength="200" value="{{ state.draft[field] or '' }}" {% if field=='invoice_date' %}placeholder="YYYY-MM-DD" inputmode="numeric"{% endif %}></div>
+          {% endfor %}
+          </div>
+          <div class="review-totals mt-3">
+          {% for field,label in [('subtotal','Subtotal'),('vat','Invoice VAT'),('invoice_total','Invoice total')] %}
+            <div><label class="form-label" for="{{ field }}">{{ label }}</label><input class="form-control" id="{{ field }}" name="{{ field }}" type="number" min="0" step="0.01" inputmode="decimal" value="{{ state.draft[field] if state.draft[field] is not none else '' }}"></div>
+          {% endfor %}
+          </div>
+          <label class="form-label mt-3" for="line_totals_include_vat">Printed line totals</label><select class="form-select" id="line_totals_include_vat"><option value="">Select VAT basis</option><option value="false" {% if state.draft.line_totals_include_vat is sameas false %}selected{% endif %}>Exclude VAT</option><option value="true" {% if state.draft.line_totals_include_vat is sameas true %}selected{% endif %}>Include VAT</option></select><small class="text-muted">Unit costs must exclude VAT for inventory costing.</small>
+        </div></section>
+        <section class="card mb-3"><div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between gap-2 mb-2"><h2 class="h5 mb-0">Products &amp; matching</h2><span class="text-muted small">{{ state.draft['items']|length }} invoice lines</span></div>
+          <p class="small text-muted">Amber lines need attention. Suggested products are not selected until you choose them.</p>
+          <div id="line-empty" {% if state.draft['items'] %}hidden{% endif %} class="alert alert-warning">No product lines were extracted. This invoice needs a new extraction before confirmation.</div>
+          <table class="table review-table"><thead><tr><th scope="col">Product details</th><th scope="col">Quantity &amp; costs</th><th scope="col">Product match &amp; stock preview</th></tr></thead><tbody id="review-lines"></tbody></table>
+        </div></section>
+      </fieldset>
+      <section class="card mb-3"><div class="card-body"><h2 class="h5">Review checks</h2><p class="small text-muted">Warnings are checked again by the server when you save.</p><ul id="review-warnings" class="small mb-0"></ul>
+        <details class="mt-3"><summary class="small text-muted">Original AI extraction flags</summary><ul class="small mt-2">{% for flag in state.source_flags %}<li>{{ flag }}</li>{% else %}<li>No original flags.</li>{% endfor %}</ul></details>
+      </div></section>
+      <div class="review-savebar">
+        <div><span class="small text-muted">Estimated purchase cost</span><div class="h5 mb-0" id="purchase-estimate"></div><small id="estimate-note" class="text-muted">Preview only</small></div>
+        <div class="review-actions"><a class="btn btn-success" id="open-confirmation" href="{{ url_for('supplier_invoices.confirm_supplier_invoice',invoice_id=state.invoice_id) }}">Confirm &amp; Add Stock</a><a class="btn btn-outline-secondary" id="cancel-review" href="{{ url_for('supplier_invoices.review_index') }}">Cancel</a><button type="submit" id="save-review" class="btn btn-primary"><i class="bi bi-save me-1"></i>Save Draft</button></div>
+      </div>
+      <p id="review-message" role="status" aria-live="polite" class="mt-3"></p>
+      <a href="{{ url_for('supplier_invoices.review_page', invoice_id=state.invoice_id) }}" id="reload-draft" hidden>Reload the latest saved draft (discards unsaved edits)</a>
+    </form>
+  </div>
+</div>
+<template id="review-line-template"><tr>
+  <td class="line-details"><div class="d-flex flex-wrap gap-2 align-items-center mb-3"><strong class="line-number"></strong><span class="badge text-bg-warning line-uncertainty">Check AI extraction</span></div>
+    <div class="line-source-warnings small text-warning mb-2"></div>
+    <div class="review-field"><label class="form-label">Description</label><input data-field="product_description" class="form-control" maxlength="500"></div>
+    <div class="review-field"><label class="form-label">Supplier product code</label><input data-field="product_code" class="form-control" maxlength="100"></div>
+    <div class="line-attributes">
+      <div><label class="form-label">Brand</label><input data-field="brand" class="form-control" maxlength="100"></div>
+      <div><label class="form-label">Tyre size</label><input data-field="tyre_size" class="form-control" maxlength="100"></div>
+      <div><label class="form-label">Pattern / model</label><input data-field="pattern_model" class="form-control" maxlength="100"></div>
+    </div>
+  </td>
+  <td class="line-costs"><div class="line-numbers">
+    <div><label class="form-label">Quantity to add</label><input data-field="quantity" type="number" min="0.001" max="1000000" step="0.001" inputmode="decimal" class="form-control"></div>
+    <div><label class="form-label">Unit cost (excl. VAT)</label><input data-field="unit_cost" type="number" min="0" step="0.0001" inputmode="decimal" class="form-control"></div>
+    <div><label class="form-label">Line total</label><input data-field="line_total" type="number" min="0" step="0.01" inputmode="decimal" class="form-control"></div>
+    <div><label class="form-label">Line VAT</label><input data-field="vat" type="number" min="0" step="0.01" inputmode="decimal" class="form-control"></div>
+  </div><div class="line-estimate small text-muted mt-3"></div><div class="line-check small text-warning mt-2"></div></td>
+  <td class="line-match">
+    <div class="match-selection mb-2" aria-live="polite"></div>
+    <div class="d-flex flex-wrap gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-secondary clear-match">Clear match</button><button type="button" class="btn btn-sm btn-outline-primary propose-product">Propose new product</button></div>
+    <label class="form-label search-label">Find an existing product</label><input class="form-control product-search" type="search" placeholder="Search code, size, brand or pattern" autocomplete="off" maxlength="120">
+    <div class="small text-muted mt-2 match-caption">Suggested matches (not selected)</div><div class="match-results" aria-live="polite"></div>
+    <dl class="stock-preview"><div><dt>Current stock</dt><dd class="stock-current"></dd></div><div><dt>To add (preview)</dt><dd class="stock-add"></dd></div><div><dt>Projected stock</dt><dd class="stock-after"></dd></div></dl>
+    <p class="small text-muted mb-0">Stock shown is a preview, not a reservation.</p>
+  </td>
+</tr></template>
+{% endblock %}
+{% block scripts %}
+<script id="review-state" type="application/json">{{ state|tojson }}</script>
+<script>window.invoiceReviewUrls = {save: {{ url_for('supplier_invoices.save_review_draft', invoice_id=state.invoice_id)|tojson }}, products: {{ url_for('supplier_invoices.search_review_products')|tojson }}};</script>
+<script src="{{ url_for('static', filename='js/supplier-invoice-review.js', v='phase4-2') }}" defer></script>
+{% endblock %}

@@ -32,6 +32,13 @@ self.addEventListener('activate', event => {
             return caches.delete(key);
           })
       );
+    }).then(async () => {
+      for (const name of await caches.keys()) {
+        const cache = await caches.open(name);
+        for (const request of await cache.keys()) {
+          if (new URL(request.url).pathname.startsWith('/suppliers/invoices')) await cache.delete(request);
+        }
+      }
     }).then(() => self.clients.claim())
   );
 });
@@ -40,6 +47,13 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Invoice reviews, search responses and originals must never enter browser caches.
+  if (url.origin === self.location.origin && url.pathname.startsWith('/suppliers/invoices')) {
+    event.respondWith(fetch(request, { cache: 'no-store' }).catch(() =>
+      new Response('Invoice review requires a connection.', { status: 503 })));
+    return;
+  }
 
   // Only handle GET requests
   if (request.method !== 'GET') {

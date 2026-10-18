@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LATEST_SCHEMA_VERSION = 18
+LATEST_SCHEMA_VERSION = 24
 MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -92,12 +92,14 @@ def migrate_tenant_db(tenant_id, db_path):
     backup_path = None
     conn = None
     try:
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(db_path, timeout=MIGRATION_BUSY_TIMEOUT_SECONDS)
         # Current databases take neither a write lock nor a backup.
         if get_schema_version(conn) >= LATEST_SCHEMA_VERSION:
             return None
 
-        conn.execute("PRAGMA foreign_keys = ON")
+        # Table rebuilds need FK enforcement off before BEGIN; the FK check below still runs before commit.
+        conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("BEGIN IMMEDIATE")
         # Another worker may have finished the upgrade while this one waited for the lock.
         if get_schema_version(conn) >= LATEST_SCHEMA_VERSION:
@@ -754,6 +756,75 @@ def migrate_tenant_db(tenant_id, db_path):
                 conn.rollback()
                 raise RuntimeError(f"Migration 18 failed: {e}")
 
+        # Migration 19: Create supplier_invoices table for purchase invoices
+        if get_schema_version(conn) < 19:
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS supplier_invoices (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        supplier_id INTEGER,
+                        supplier_name TEXT NOT NULL,
+                        invoice_number TEXT NOT NULL,
+                        invoice_date TEXT,
+                        upload_date TEXT DEFAULT (datetime('now')),
+                        file_name TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        file_size INTEGER DEFAULT 0,
+                        mime_type TEXT DEFAULT 'application/octet-stream',
+                        extracted_json TEXT DEFAULT '{}',
+                        status TEXT DEFAULT 'uploaded',
+                        confirmation_date TEXT,
+                        created_by TEXT NOT NULL,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_supplier_invoices_supplier ON supplier_invoices(supplier_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_supplier_invoices_invoice_number ON supplier_invoices(invoice_number)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_supplier_invoices_status ON supplier_invoices(status)")
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_invoices_unique ON supplier_invoices(supplier_id, invoice_number)")
+                mark_migration_applied(conn, 19, "Create supplier_invoices table for purchase invoices")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 19 failed: {e}")
+
+        # Migration 20: Create supplier_invoice_items table for line items
+        if get_schema_version(conn) < 20:
+            try:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS supplier_invoice_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        supplier_invoice_id INTEGER NOT NULL,
+                        product_code TEXT,
+                        product_description TEXT,
+                        brand TEXT,
+                        tyre_size TEXT,
+                        pattern_model TEXT,
+                        quantity REAL DEFAULT 0,
+                        unit_cost REAL DEFAULT 0,
+                        line_total REAL DEFAULT 0,
+                        matched_product_id INTEGER,
+                        extraction_confidence TEXT DEFAULT 'high',
+                        requires_review INTEGER DEFAULT 0,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (supplier_invoice_id) REFERENCES supplier_invoices(id) ON DELETE CASCADE,
+                        FOREIGN KEY (matched_product_id) REFERENCES products(id) ON DELETE SET NULL
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_supplier_invoice_items_invoice ON supplier_invoice_items(supplier_invoice_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_supplier_invoice_items_product ON supplier_invoice_items(matched_product_id)")
+                mark_migration_applied(conn, 20, "Create supplier_invoice_items table for line items")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 20 failed: {e}")
+
+        from app.services.supplier_invoice_schema import migrate_supplier_invoices, migrate_supplier_reference, migrate_supplier_reviews, migrate_supplier_confirmations
+        migrate_supplier_invoices(conn)
+        migrate_supplier_reference(conn)
+        migrate_supplier_reviews(conn)
+        migrate_supplier_confirmations(conn)
+        if conn.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("Foreign key violations; migration rolled back")
         conn.commit()
         return backup_path
 

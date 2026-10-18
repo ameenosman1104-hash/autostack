@@ -383,6 +383,11 @@
         </a>
       </li>
       <li class="nav-item">
+        <a class="nav-link {% if request.endpoint and 'supplier_invoices.' in request.endpoint %}active{% endif %}" href="{{ url_for('supplier_invoices.review_index') }}">
+          <i class="bi bi-file-earmark-text me-2"></i>Supplier Invoice History
+        </a>
+      </li>
+      <li class="nav-item">
         <a class="nav-link {% if 'customers' in request.endpoint %}active{% endif %}" href="{{ url_for('customers.index') }}">
           <i class="bi bi-person-check me-2"></i>Customers
         </a>

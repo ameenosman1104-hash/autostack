@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">Confirm supplier invoice</div>
+{% if error %}<div class="alert alert-warning" role="alert">{{ error }} No stock has been added by this request.</div><a class="btn btn-outline-primary" href="{{ url_for('supplier_invoices.review_page',invoice_id=invoice_id) }}">Return to review</a>
+{% else %}
+<p class="text-muted">{{ state.draft.supplier_name }} · {{ state.draft.invoice_number }} · {{ state.draft.invoice_date }} · Draft v{{ state.draft.version }}</p>
+<div class="alert alert-warning">This action adds stock. Check every line against the original invoice. Existing selling prices will stay unchanged. Unit costs below exclude VAT. New products have no selling price until you set one in inventory.</div>
+<div class="card"><div class="card-body"><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Product</th><th>Quantity</th><th>Unit cost</th><th>Line total</th><th>VAT</th><th>Current stock</th><th>Projected stock</th></tr></thead><tbody>
+{% for line in state.lines %}<tr><td><strong>{{ line.code }}</strong><div>{{ line.name }}</div>{% if line.new %}<span class="badge text-bg-warning">New product — approval required</span>{% endif %}</td><td>{{ line.quantity }}</td><td>{{ line.unit_cost }}</td><td>{{ line.line_total }}</td><td>{{ line.vat }}</td><td>{{ line.current_stock }}</td><td>{{ line.projected_stock }}</td></tr>{% endfor %}
+</tbody></table></div><p>Subtotal: {{ state.draft.subtotal }} · VAT: {{ state.draft.vat }} · Invoice total: <strong>{{ state.draft.invoice_total }}</strong></p><p class="small text-muted">Stock may change during other sales. Confirmation adds these quantities to the actual current balances. Repeated lines for the same product apply costs in invoice order; the final line becomes its latest cost.</p>
+<form id="confirm-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><fieldset id="confirmation-fields">
+{% for line in state.lines if line.new %}<label class="d-block mb-3"><input type="checkbox" class="approve-new" value="{{ line.index }}" required> I approve creating {{ line.code }} — {{ line.name }}.</label>{% endfor %}
+<label class="d-block mb-3"><input type="checkbox" id="explicit-confirmation" required> I checked this invoice and authorize adding these quantities to stock.</label>
+<div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('supplier_invoices.review_page',invoice_id=state.invoice_id) }}">Back to review</a><button class="btn btn-success" type="submit">Confirm &amp; Add Stock</button></div></fieldset></form>
+<p id="confirmation-message" role="status" aria-live="polite" class="mt-3"></p><a id="receipt-link" hidden>View invoice details</a>
+</div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% if state is defined %}<script>
+document.getElementById('confirm-form').addEventListener('submit',async event=>{
+ event.preventDefault(); const fields=document.getElementById('confirmation-fields'), message=document.getElementById('confirmation-message');
+ const payload={token:{{ state.token|tojson }},confirmed:document.getElementById('explicit-confirmation').checked,approved_new_lines:Array.from(document.querySelectorAll('.approve-new:checked'),input=>Number(input.value))};
+ fields.disabled=true; message.textContent='Confirming invoice…';
+ try { const response=await fetch({{ url_for('supplier_invoices.confirm_supplier_invoice',invoice_id=state.invoice_id)|tojson }},{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('[name=csrf_token]').value},body:JSON.stringify(payload),cache:'no-store'}); const result=await response.json(); if(!response.ok)throw new Error(result.error||'Confirmation failed. Reload the invoice before retrying.');
+ message.textContent=(result.already_processed?'Already processed. No additional stock was added. ':'Stock added successfully. ')+ 'Invoice '+result.invoice_number+' · '+result.products_updated+' products updated.';
+ const link=document.getElementById('receipt-link');link.href=result.details_url||result.receipt_url;link.hidden=false;
+ }catch(error){message.textContent=error.message;fields.disabled=false;}
+});
+</script>{% endif %}{% endblock %}

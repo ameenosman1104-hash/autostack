@@ -26,6 +26,7 @@
     <button class="btn btn-outline-success" onclick="syncStockNow()" title="Fetch latest data from connected source">
       <i class="bi bi-arrow-repeat me-1"></i>Sync Now
     </button>
+    <a href="{{ url_for('supplier_invoices.review_index') }}" class="btn btn-outline-secondary">Supplier Invoice History</a>
     <a href="{{ url_for('inventory.import_csv') }}" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import CSV</a>
     <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#defaultMinModal">
       <i class="bi bi-sliders me-1"></i>Set Default Min Level

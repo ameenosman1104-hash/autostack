@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">Processed supplier invoice</div>
+<div class="alert alert-success">Invoice {{ receipt.invoice_number }} was processed successfully. {{ receipt.products_updated }} products updated. This invoice is read only.</div>
+<p>Invoice date: {{ receipt.invoice_date }} · Subtotal: {{ receipt.subtotal }} · VAT: {{ receipt.vat }} · Total: {{ receipt.invoice_total }}</p>
+<p>{{ receipt.supplier_name }} · Reference #{{ receipt.invoice_id }} · {{ receipt.processed_at }} · {{ receipt.actor }}</p>
+<div class="card"><div class="card-body"><div class="table-responsive"><table class="table"><thead><tr><th>Product</th><th>Quantity received</th><th>Unit cost</th><th>Stock before</th><th>Stock after</th></tr></thead><tbody>{% for line in receipt.lines %}<tr><td>{{ line.code }} — {{ line.name }}</td><td>{{ line.quantity }}</td><td>{{ line.unit_cost }}</td><td>{{ line.current_stock }}</td><td>{{ line.projected_stock }}</td></tr>{% endfor %}</tbody></table></div></div></div>
+<div class="d-flex gap-2 mt-3"><a class="btn btn-primary" href="{{ url_for('supplier_invoices.invoice_details_page',invoice_id=receipt.invoice_id) }}">Invoice details and audit trail</a><a class="btn btn-outline-primary" href="{{ url_for('supplier_invoices.original_invoice',invoice_id=receipt.invoice_id) }}" target="_blank" rel="noopener">Original invoice</a><a class="btn btn-outline-secondary" href="{{ url_for('supplier_invoices.review_index') }}">Invoice history</a></div>
+{% endblock %}
