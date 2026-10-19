@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h4 class="mb-0">Job Cards</h4>
+    <a class="btn btn-primary" href="{{ url_for('job_cards.new') }}">New job card</a>
+  </div>
+
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-12 col-md-3">
+      <select name="status" class="form-select" aria-label="Filter by status">
+        <option value="">All statuses</option>
+        {% for s in statuses %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s|replace('_', ' ')|capitalize }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-6">
+      <input name="q" value="{{ search }}" class="form-control" placeholder="Search job number, registration or customer" aria-label="Search job cards">
+    </div>
+    <div class="col-12 col-md-3 d-grid"><button class="btn btn-outline-secondary">Filter</button></div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr><th>Job</th><th>Vehicle</th><th class="d-none d-md-table-cell">Customer</th><th>Status</th><th class="d-none d-md-table-cell">Opened</th><th class="text-end">Total</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr style="cursor:pointer" onclick="location.href='{{ url_for('job_cards.index') }}{{ r.id }}'">
+          <td class="fw-semibold">{{ r.job_number }}</td>
+          <td>{{ r.registration }}</td>
+          <td class="d-none d-md-table-cell">{{ r.customer_name }}</td>
+          <td><span class="badge text-bg-{{ {'open':'secondary','in_progress':'info','ready':'warning','completed':'success','cancelled':'danger'}[r.status] }}">{{ r.status|replace('_', ' ')|capitalize }}</span></td>
+          <td class="d-none d-md-table-cell">{{ (r.opened_at or '')[:10] }}</td>
+          <td class="text-end">{{ "%.2f"|format(r.total) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted text-center py-4">No job cards match. <a href="{{ url_for('job_cards.new') }}">Create one</a>.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

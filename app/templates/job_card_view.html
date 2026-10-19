@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block content %}
+{% set h = job.header %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h4 class="mb-0">{{ h.job_number }}</h4>
+      <span class="badge text-bg-secondary">{{ h.status|replace('_', ' ')|capitalize }}</span>
+      <small class="text-muted ms-2">Opened {{ (h.opened_at or '')[:10] }}</small>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      {% if h.status in ['open', 'in_progress'] %}<a class="btn btn-outline-secondary" href="{{ url_for('job_cards.index') }}{{ h.id }}/edit">Edit</a>{% endif %}
+      <a class="btn btn-outline-secondary" href="{{ url_for('job_cards.index') }}">All job cards</a>
+    </div>
+  </div>
+
+  {% if job['warnings'] %}
+  <div class="alert alert-warning" role="alert">
+    Stock is short for: {% for w in job['warnings'] %}{{ w.description }} (need {{ '%g'|format(w.needed) }}, have {{ '%g'|format(w.available) }}){% if not loop.last %}; {% endif %}{% endfor %}.
+    No stock has been reserved or deducted.
+  </div>
+  {% endif %}
+
+  <div class="card mb-3"><div class="card-body row g-3">
+    <div class="col-12 col-md-4">
+      <div class="text-muted small">Customer</div>
+      <div class="fw-semibold">{{ h.customer_name }}</div>
+      <div>{{ h.customer_phone }}</div>
+    </div>
+    <div class="col-12 col-md-4">
+      <div class="text-muted small">Vehicle</div>
+      <div class="fw-semibold">{{ h.registration }}</div>
+      <div class="small">Mileage in: {{ h.mileage_in if h.mileage_in is not none else '—' }} km{% if h.mileage_out is not none %} · out: {{ h.mileage_out }} km{% endif %}</div>
+    </div>
+    <div class="col-12 col-md-4">
+      <div class="text-muted small">Technician</div>
+      <div class="fw-semibold">{{ h.technician or 'Not assigned' }}</div>
+      <div class="small">Promised: {{ h.promised_date or '—' }}</div>
+    </div>
+  </div></div>
+
+  <div class="table-responsive mb-3">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>#</th><th>Description</th><th class="text-end">Qty</th><th class="text-end">Price</th><th class="text-end">Disc %</th><th class="text-end">Total</th></tr></thead>
+      <tbody>
+        {% for i in job['items'] %}
+        <tr>
+          <td>{{ i.position }}</td>
+          <td><div class="fw-semibold">{{ i.description }}</div>{% if i.detail %}<small class="text-muted">{{ i.detail }}</small>{% endif %}</td>
+          <td class="text-end">{{ '%g'|format(i.quantity) }}</td>
+          <td class="text-end">R{{ "%.2f"|format(i.unit_price) }}</td>
+          <td class="text-end">{{ '%g'|format(i.discount_pct) }}</td>
+          <td class="text-end">R{{ "%.2f"|format(i.line_total) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="row justify-content-end mb-3"><div class="col-12 col-md-4 d-flex justify-content-between fw-bold">
+    <span>Total</span><span>R{{ "%.2f"|format(h.total) }}</span>
+  </div></div>
+
+  {% if h.work_performed or h.notes %}
+  <div class="card mb-3"><div class="card-body">
+    {% if h.work_performed %}<div class="mb-2"><div class="text-muted small">Work to be done</div><div style="white-space:pre-line">{{ h.work_performed }}</div></div>{% endif %}
+    {% if h.notes %}<div><div class="text-muted small">Internal notes</div><div style="white-space:pre-line">{{ h.notes }}</div></div>{% endif %}
+  </div></div>
+  {% endif %}
+
+  {% if h.status != 'cancelled' and h.status != 'completed' %}
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Workshop</h6>
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-5">
+        <label class="form-label small" for="techInput">Technician</label>
+        <div class="d-flex gap-2"><input id="techInput" class="form-control" maxlength="100" value="{{ h.technician }}"><button class="btn btn-outline-secondary" id="saveTech" type="button">Save</button></div>
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      {% for s in statuses|sort %}
+        {% if s != 'cancelled' or can_cancel %}
+        <button type="button" class="btn btn-sm {% if s == 'cancelled' %}btn-outline-danger{% else %}btn-outline-primary{% endif %} status-btn" data-status="{{ s }}">
+          {% if s == 'completed' %}Mark collected{% elif s == 'ready' %}Mark ready for collection{% elif s == 'in_progress' %}Start work{% elif s == 'cancelled' %}Cancel job{% else %}Mark {{ s|replace('_', ' ') }}{% endif %}
+        </button>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <small class="text-muted d-block mt-2">Collected means the car has left the workshop. Payment is recorded on the invoice, not here.</small>
+  </div></div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-12 col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h6 class="text-uppercase text-muted">Vehicle history</h6>
+        <ul class="list-unstyled small mb-0">
+          {% for j in history %}
+          <li class="mb-2">
+            <a href="{{ url_for('job_cards.index') }}{{ j.id }}">{{ j.job_number }}</a> · {{ j.status|replace('_', ' ') }} · {{ (j.opened_at or '')[:10] }}
+            {% if j.mileage_in is not none %} · {{ j.mileage_in }} km{% endif %}
+          </li>
+          {% else %}
+          <li class="text-muted">No earlier jobs for this vehicle.</li>
+          {% endfor %}
+        </ul>
+      </div></div>
+    </div>
+    <div class="col-12 col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h6 class="text-uppercase text-muted">History</h6>
+        <ul class="list-unstyled small mb-0">
+          {% for e in job['events'] %}
+          <li class="mb-1">{{ e.created_at }} · {{ e.event|replace('status:', 'Status: ')|replace('_', ' ') }} · {{ e.actor }}{% if e.detail %} · {{ e.detail }}{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.status-btn').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      if (this.dataset.status === 'cancelled' && !confirm('Cancel this job card? This cannot be undone.')) return;
+      const response = await fetch('{{ url_for("job_cards.index") }}{{ h.id }}/status', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status: this.dataset.status})});
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) { location.reload(); } else { alert(result.error || 'The status could not be changed.'); }
+    });
+  });
+  const saveTech = document.getElementById('saveTech');
+  if (saveTech) saveTech.addEventListener('click', async function () {
+    const response = await fetch('{{ url_for("job_cards.index") }}{{ h.id }}/technician', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({technician: document.getElementById('techInput').value})});
+    const result = await response.json().catch(() => ({}));
+    if (response.ok) { location.reload(); } else { alert(result.error || 'The technician could not be saved.'); }
+  });
+</script>
+{% endblock %}

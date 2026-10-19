@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block content %}
+{% set editing = job is not none %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">{{ 'Edit ' ~ job.header.job_number if editing else 'New job card' }}</h4>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('job_cards.index') }}">Back to job cards</a>
+  </div>
+  <div id="formError" class="alert alert-danger d-none" role="alert"></div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Customer and vehicle</h6>
+    <div class="row g-2">
+      <div class="col-12 col-md-5 position-relative">
+        <label class="form-label small" for="customerSearch">Find customer</label>
+        <input id="customerSearch" class="form-control" placeholder="Name or phone" autocomplete="off">
+        <div id="customerResults" class="list-group position-absolute w-100" style="z-index:20"></div>
+      </div>
+      <div class="col-12 col-md-7">
+        <label class="form-label small" for="customerName">Selected customer</label>
+        <div class="d-flex gap-2">
+          <input id="customerName" class="form-control" placeholder="Name" maxlength="200">
+          <input id="customerPhone" class="form-control" placeholder="Phone" maxlength="50">
+        </div>
+        <input type="hidden" id="customerId">
+        <small class="text-muted">Pick an existing customer or type a new name and phone to create one.</small>
+      </div>
+      <div class="col-12 col-md-5">
+        <label class="form-label small" for="vehicleSelect">Vehicle</label>
+        <select id="vehicleSelect" class="form-select"><option value="">Choose a vehicle…</option></select>
+      </div>
+      <div class="col-12 col-md-7">
+        <label class="form-label small" for="regInput">Add vehicle</label>
+        <div class="row g-2">
+          <div class="col-6 col-md-4"><input id="regInput" class="form-control" placeholder="Registration" maxlength="20"></div>
+          <div class="col-6 col-md-4"><input id="makeInput" class="form-control" placeholder="Make" maxlength="60"></div>
+          <div class="col-6 col-md-2"><input id="modelInput" class="form-control" placeholder="Model" maxlength="60"></div>
+          <div class="col-6 col-md-2"><button type="button" class="btn btn-outline-secondary w-100" id="addVehicle">Add</button></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Workshop</h6>
+    <div class="row g-2">
+      <div class="col-6 col-md-3"><label class="form-label small" for="mileageIn">Mileage in (km)</label><input id="mileageIn" type="number" min="0" max="2000000" inputmode="numeric" class="form-control"></div>
+      <div class="col-6 col-md-3"><label class="form-label small" for="technician">Technician</label><input id="technician" class="form-control" maxlength="100" placeholder="Name"></div>
+      <div class="col-12 col-md-3"><label class="form-label small" for="promisedDate">Promised date</label><input id="promisedDate" type="date" class="form-control"></div>
+    </div>
+    <div class="row g-2 mt-1">
+      <div class="col-12 col-md-6"><label class="form-label small" for="workPerformed">Work to be done</label><textarea id="workPerformed" class="form-control" rows="3" maxlength="4000"></textarea></div>
+      <div class="col-12 col-md-6"><label class="form-label small" for="notes">Internal notes</label><textarea id="notes" class="form-control" rows="3" maxlength="2000"></textarea></div>
+    </div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Tyres and services</h6>
+    <div class="row g-2 mb-2">
+      <div class="col-12 col-md-5 position-relative">
+        <input id="productSearch" class="form-control" placeholder="Search tyre by size, brand or name" autocomplete="off" aria-label="Search tyres">
+        <div id="productResults" class="list-group position-absolute w-100" style="z-index:20"></div>
+      </div>
+      <div class="col-12 col-md-5"><select id="serviceSelect" class="form-select" aria-label="Add a service"><option value="">Add a service…</option></select></div>
+    </div>
+    <div class="table-responsive d-none d-md-block">
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Description</th><th style="width:90px">Qty</th><th style="width:120px">Price</th><th style="width:90px">Disc %</th><th class="text-end" style="width:110px">Total</th><th></th></tr></thead>
+        <tbody id="itemRows"></tbody>
+      </table>
+    </div>
+    <div id="itemCards" class="d-md-none"></div>
+    <div class="row justify-content-end"><div class="col-12 col-md-4">
+      <div class="d-flex justify-content-between fw-bold"><span>Total</span><span id="total">0.00</span></div>
+      <small class="text-muted">Prices are checked and totals recalculated by the server when you save. Only administrators can change a price.</small>
+    </div></div>
+  </div></div>
+
+  <div class="d-grid d-md-flex gap-2">
+    <button type="button" class="btn btn-primary" id="saveBtn">{{ 'Save changes' if editing else 'Create job card' }}</button>
+  </div>
+</div>
+
+<script>
+const isAdmin = {{ 'true' if is_admin else 'false' }};
+const existing = {{ (job|tojson) if editing else 'null' }};
+const prefill = {{ (prefill|tojson) }};
+const editing = existing !== null;
+const items = [];
+const qs = (id) => document.getElementById(id);
+const money = (v) => ((Math.round((Number(v) || 0) + Number.EPSILON) * 100) / 100).toFixed(2);
+const bail = (message) => { qs('formError').textContent = message; qs('formError').classList.remove('d-none'); window.scrollTo(0, 0); };
+const clearError = () => qs('formError').classList.add('d-none');
+
+function lineTotal(it) { return (Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * (1 - (Number(it.discount_pct) || 0) / 100); }
+function addItem(seed) { items.push(Object.assign({item_type: 'service', description: '', detail: '', quantity: 1, unit_price: 0, discount_pct: 0}, seed)); render(); }
+
+function render() {
+  const body = qs('itemRows'); body.innerHTML = '';
+  const cards = qs('itemCards'); cards.innerHTML = '';
+  let total = 0;
+  items.forEach((it, idx) => {
+    total += lineTotal(it);
+    const tr = document.createElement('tr');
+    const desc = document.createElement('td');
+    const title = document.createElement('div'); title.className = 'fw-semibold'; title.textContent = it.description; desc.appendChild(title);
+    if (it.detail) { const d = document.createElement('small'); d.className = 'text-muted'; d.textContent = it.detail; desc.appendChild(d); }
+    tr.appendChild(desc);
+    tr.appendChild(field(it, 'quantity', '0.0001', 'any', false));
+    tr.appendChild(field(it, 'unit_price', '0', '0.01', !isAdmin));
+    tr.appendChild(field(it, 'discount_pct', '0', '0.01', false, 100));
+    const lt = document.createElement('td'); lt.className = 'text-end'; lt.textContent = money(lineTotal(it)); tr.appendChild(lt);
+    const rm = document.createElement('td'); const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm btn-outline-danger'; b.textContent = '✕'; b.setAttribute('aria-label', 'Remove line');
+    b.onclick = () => { items.splice(idx, 1); render(); }; rm.appendChild(b); tr.appendChild(rm);
+    body.appendChild(tr);
+
+    // Mobile: a stacked card per line, with labelled inputs that never squeeze.
+    const card = document.createElement('div'); card.className = 'border rounded p-2 mb-2';
+    const head = document.createElement('div'); head.className = 'd-flex justify-content-between align-items-start';
+    const name = document.createElement('div'); name.className = 'fw-semibold'; name.textContent = it.description;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-sm btn-outline-danger'; remove.textContent = '✕'; remove.setAttribute('aria-label', 'Remove line');
+    remove.style.setProperty('width', 'auto', 'important'); remove.style.setProperty('min-width', '0', 'important');
+    remove.onclick = () => { items.splice(idx, 1); render(); };
+    head.appendChild(name); head.appendChild(remove); card.appendChild(head);
+    if (it.detail) { const d = document.createElement('small'); d.className = 'text-muted d-block mb-2'; d.textContent = it.detail; card.appendChild(d); }
+    const grid = document.createElement('div');
+    grid.style.display = 'grid'; grid.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))'; grid.style.gap = '8px';
+    [['Qty', 'quantity', '0.0001', 'any', false, undefined], ['Price', 'unit_price', '0', '0.01', !isAdmin, undefined], ['Disc %', 'discount_pct', '0', '0.01', false, 100]].forEach(([label, key, min, step, ro, max]) => {
+      const col = document.createElement('div'); col.style.minWidth = '0';
+      const l = document.createElement('label'); l.className = 'form-label small mb-0'; l.textContent = label; col.appendChild(l);
+      const input = document.createElement('input'); input.type = 'number'; input.className = 'form-control form-control-sm'; input.value = it[key]; input.min = min; input.step = step;
+      if (max) input.max = max; if (ro) input.readOnly = true; input.setAttribute('aria-label', label);
+      input.style.width = '100%'; input.style.minWidth = '0';
+      input.oninput = () => { it[key] = input.value; qs('total').textContent = money(items.reduce((a, x) => a + lineTotal(x), 0)); };
+      input.onchange = () => render();
+      col.appendChild(input); grid.appendChild(col);
+    });
+    card.appendChild(grid);
+    const lineAmount = document.createElement('div'); lineAmount.className = 'text-end small mt-1'; lineAmount.textContent = 'Line total ' + money(lineTotal(it));
+    card.appendChild(lineAmount);
+    cards.appendChild(card);
+  });
+  qs('total').textContent = money(total);
+}
+function field(it, key, min, step, readonly, max) {
+  const td = document.createElement('td'); const input = document.createElement('input');
+  input.type = 'number'; input.className = 'form-control form-control-sm'; input.value = it[key]; input.min = min; input.step = step;
+  input.style.minWidth = '72px';
+  if (max) input.max = max; if (readonly) input.readOnly = true;
+  input.setAttribute('aria-label', key.replace('_', ' '));
+  input.oninput = () => { it[key] = input.value; qs('total').textContent = money(items.reduce((a, x) => a + lineTotal(x), 0)); };
+  input.onchange = () => render();
+  td.appendChild(input); return td;
+}
+
+async function getJSON(url) { const r = await fetch(url); return r.json(); }
+
+async function searchCustomers(term) {
+  const box = qs('customerResults'); box.innerHTML = '';
+  if (term.trim().length < 2) return;
+  const rows = await getJSON('{{ url_for("job_cards.api_customers") }}?q=' + encodeURIComponent(term));
+  rows.forEach((c) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'list-group-item list-group-item-action';
+    b.textContent = c.name + (c.phone ? ' · ' + c.phone : '');
+    b.onclick = () => selectCustomer(c); box.appendChild(b);
+  });
+}
+async function selectCustomer(c) {
+  qs('customerId').value = c.id; qs('customerName').value = c.name; qs('customerPhone').value = c.phone || '';
+  qs('customerResults').innerHTML = ''; qs('customerSearch').value = '';
+  const vehicles = await getJSON('{{ url_for("job_cards.api_vehicles") }}?customer_id=' + c.id);
+  const select = qs('vehicleSelect'); select.innerHTML = '<option value="">Choose a vehicle…</option>';
+  vehicles.forEach((v) => { const o = document.createElement('option'); o.value = v.id; o.textContent = v.registration + (v.make ? ' · ' + v.make + ' ' + (v.model || '') : ''); select.appendChild(o); });
+}
+async function addVehicle() {
+  clearError();
+  const cid = qs('customerId').value;
+  if (!cid) { bail('Choose or create the customer before adding a vehicle.'); return; }
+  const response = await fetch('{{ url_for("job_cards.api_save_vehicle") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({customer_id: Number(cid), registration: qs('regInput').value, make: qs('makeInput').value, model: qs('modelInput').value})});
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) { bail(result.error || 'Could not add the vehicle.'); return; }
+  const o = document.createElement('option'); o.value = result.id; o.textContent = result.registration + (result.make ? ' · ' + result.make + ' ' + (result.model || '') : '');
+  qs('vehicleSelect').appendChild(o); qs('vehicleSelect').value = result.id;
+  qs('regInput').value = ''; qs('makeInput').value = ''; qs('modelInput').value = '';
+}
+async function searchProducts(term) {
+  const box = qs('productResults'); box.innerHTML = '';
+  if (term.trim().length < 2) return;
+  const rows = await getJSON('{{ url_for("job_cards.api_products") }}?q=' + encodeURIComponent(term));
+  rows.forEach((p) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'list-group-item list-group-item-action';
+    b.textContent = [p.brand, p.tyre_size, p.name].filter(Boolean).join(' · ') + '  —  ' + money(p.selling_price);
+    b.onclick = () => { addItem({item_type: 'product', product_id: p.id, description: p.name || p.code, detail: [p.brand, p.tyre_size, p.pattern].filter(Boolean).join(' '), unit_price: Number(p.selling_price) || 0}); box.innerHTML = ''; qs('productSearch').value = ''; };
+    box.appendChild(b);
+  });
+}
+async function loadServices() {
+  const rows = await getJSON('{{ url_for("job_cards.api_services") }}');
+  const select = qs('serviceSelect');
+  rows.forEach((s) => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name + ' (' + money(s.default_price) + ')'; o.dataset.price = s.default_price; o.dataset.name = s.name; select.appendChild(o); });
+  select.onchange = () => { const o = select.selectedOptions[0]; if (!o || !o.value) return; addItem({item_type: 'service', service_id: Number(o.value), description: o.dataset.name, unit_price: Number(o.dataset.price) || 0}); select.value = ''; };
+}
+
+qs('customerSearch').oninput = (e) => searchCustomers(e.target.value);
+qs('productSearch').oninput = (e) => searchProducts(e.target.value);
+qs('addVehicle').onclick = addVehicle;
+
+if (existing) {
+  const h = existing.header;
+  qs('customerId').value = h.customer_id; qs('customerName').value = h.customer_name; qs('customerPhone').value = h.customer_phone;
+  qs('mileageIn').value = h.mileage_in ?? ''; qs('technician').value = h.technician; qs('promisedDate').value = h.promised_date || '';
+  qs('workPerformed').value = h.work_performed; qs('notes').value = h.notes;
+  existing.items.forEach((i) => items.push({item_type: i.item_type, product_id: i.product_id, service_id: i.service_id, description: i.description, detail: i.detail, quantity: i.quantity, unit_price: i.unit_price, discount_pct: i.discount_pct}));
+  getJSON('{{ url_for("job_cards.api_vehicles") }}?customer_id=' + h.customer_id).then((vehicles) => {
+    const select = qs('vehicleSelect'); vehicles.forEach((v) => { const o = document.createElement('option'); o.value = v.id; o.textContent = v.registration; select.appendChild(o); });
+    select.value = h.vehicle_id;
+  });
+}
+
+qs('saveBtn').onclick = async () => {
+  clearError();
+  const payload = {
+    customer_id: qs('customerId').value ? Number(qs('customerId').value) : null,
+    vehicle_id: qs('vehicleSelect').value ? Number(qs('vehicleSelect').value) : null,
+    mileage_in: qs('mileageIn').value, technician: qs('technician').value, promised_date: qs('promisedDate').value,
+    work_performed: qs('workPerformed').value, notes: qs('notes').value,
+    items: items.map((it) => ({item_type: it.item_type, product_id: it.product_id, service_id: it.service_id, quantity: it.quantity, unit_price: it.unit_price, discount_pct: it.discount_pct})),
+  };
+  if (!payload.customer_id) { bail('Choose a customer first.'); return; }
+  if (!payload.vehicle_id) { bail('Choose a vehicle first.'); return; }
+  const url = editing ? '{{ url_for("job_cards.index") }}' + existing.header.id + '/save' : '{{ url_for("job_cards.save_new") }}';
+  const response = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success) { bail(result.error || 'Could not save the job card.'); return; }
+  window.location.href = result.url;
+};
+loadServices(); render();
+</script>
+{% endblock %}

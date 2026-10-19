@@ -406,7 +406,10 @@ def set_technician(tid, job_id, technician, actor):
 def get_job(tid, job_id):
     conn = get_conn(tid)
     try:
-        header = conn.execute("""SELECT j.*, i.invoice_number FROM job_cards j
+        header = conn.execute("""SELECT j.*, i.invoice_number, v.registration, v.make AS vehicle_make,
+                                        v.model AS vehicle_model
+                                 FROM job_cards j
+                                 JOIN vehicles v ON v.id = j.vehicle_id
                                  LEFT JOIN invoices i ON i.id = j.invoice_id WHERE j.id=?""", (int(job_id),)).fetchone()
         if not header:
             return None
