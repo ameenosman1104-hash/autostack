@@ -9,6 +9,7 @@ from flask_login import current_user, login_required
 
 from ..services import job_card_output as jco
 from ..services import job_cards as jc
+from ..services import job_conversion as jconv
 from ..services import quotation_output as qo
 from ..services import quotations as engine
 from ..tenant_db import get_setting
@@ -16,10 +17,18 @@ from ..tenant_db import get_setting
 job_cards_bp = Blueprint("job_cards", __name__)
 logger = logging.getLogger(__name__)
 CANCEL_SETTING = "job_staff_can_cancel"
+CONVERT_SETTING = "job_staff_can_convert"
 
 
 def _actor():
     return current_user.username
+
+
+def _can_convert():
+    """Admins convert to invoices by default. Staff only when an admin has enabled it in settings."""
+    if current_user.is_admin:
+        return True
+    return get_setting(current_user.tenant_id, CONVERT_SETTING, "0") == "1"
 
 
 def _can_cancel():
@@ -104,7 +113,8 @@ def view(jid):
         wa_error = str(exc)
     return render_template("job_card_view.html", job=detail, wa_url=wa_url, wa_error=wa_error,
                            statuses=jc.TRANSITIONS.get(detail["header"]["status"], set()),
-                           can_cancel=_can_cancel(), is_admin=current_user.is_admin, history=history)
+                           can_cancel=_can_cancel(), can_convert=_can_convert(),
+                           is_admin=current_user.is_admin, history=history)
 
 
 @job_cards_bp.route("/<int:jid>/status", methods=["POST"])
@@ -204,3 +214,31 @@ def pdf(jid):
     filename = f"{detail['header']['job_number']}.pdf"
     return Response(content, mimetype="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})
+
+
+@job_cards_bp.route("/<int:jid>/invoice")
+@login_required
+def invoice_screen(jid):
+    """Conversion screen. Only authorised users see it; everyone else is sent back to the job card."""
+    if not _can_convert():
+        flash("You are not authorised to convert job cards to invoices.", "warning")
+        return redirect(url_for("job_cards.view", jid=jid))
+    try:
+        data = jconv.preview(current_user.tenant_id, jid, current_user.is_admin, True)
+    except jc.JobCardError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("job_cards.view", jid=jid))
+    return render_template("job_card_convert.html", data=data, is_admin=current_user.is_admin)
+
+
+@job_cards_bp.route("/<int:jid>/convert", methods=["POST"])
+@login_required
+def convert(jid):
+    """Invoice a ready or completed job card through the POS engine. Repeat requests return the same invoice."""
+    data = request.get_json(silent=True) or {}
+    result = jconv.convert_job(
+        current_user.tenant_id, jid, _actor(), data.get("payment_method", ""),
+        can_convert=_can_convert(), is_admin=current_user.is_admin,
+        payment_confirmed=bool(data.get("payment_confirmed")),
+        confirm_price_changes=bool(data.get("confirm_price_changes")))
+    return jsonify({"success": True, **result}), (200 if result.get("duplicate") else 201)

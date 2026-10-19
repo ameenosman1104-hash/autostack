@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block content %}
+{% set h = data['job']['header'] %}
+{% set sym = 'R' %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h4 class="mb-0">Convert {{ h.job_number }} to invoice</h4>
+      <small class="text-muted">Creates a sales invoice through the POS engine and deducts stock once.</small>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('job_cards.index') }}{{ h.id }}">Back to job card</a>
+  </div>
+
+  <div id="convertError" class="alert alert-danger d-none" role="alert"></div>
+  <div id="convertDone" class="alert alert-success d-none" role="status"></div>
+
+  <div class="card mb-3"><div class="card-body row g-3">
+    <div class="col-12 col-md-6">
+      <div class="text-muted small">Customer</div>
+      <div class="fw-semibold">{{ h.customer_name }}</div>
+      <div>{{ h.customer_phone }}</div>
+    </div>
+    <div class="col-12 col-md-6">
+      <div class="text-muted small">Vehicle</div>
+      <div class="fw-semibold">{{ h.registration }}</div>
+      <div class="small">{{ (h.vehicle_make or '') ~ ' ' ~ (h.vehicle_model or '') }}</div>
+    </div>
+  </div></div>
+
+  {% if data['changes'] %}
+  <div class="alert alert-warning" role="alert">
+    <strong>Prices have changed since the job was agreed.</strong>
+    <ul class="mb-1">
+      {% for c in data['changes'] %}
+      <li>{{ c.description }}: was R{{ "%.2f"|format(c.old) }}, now R{{ "%.2f"|format(c.new) }}</li>
+      {% endfor %}
+    </ul>
+    {% if is_admin %}
+    <div class="form-check mt-2">
+      <input class="form-check-input" type="checkbox" id="confirmPrices" style="width:1.1em;height:1.1em;flex:none">
+      <label class="form-check-label" for="confirmPrices">I approve these new prices. The agreed prices stay on the job card, and this approval is recorded with my name and the time.</label>
+    </div>
+    {% else %}
+    <small>An administrator must confirm the new prices before this job can be invoiced.</small>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data['shortages'] %}
+  <div class="alert alert-warning" role="alert">
+    <strong>Stock shortages:</strong>
+    {% for s in data['shortages'] %}
+      {{ s.description }}{% if is_admin %} (need {{ '%g'|format(s.needed) }}, have {{ '%g'|format(s.available) }}){% endif %}{% if not loop.last %}; {% endif %}
+    {% endfor %}
+    <div class="small">The sale will be refused if stock is still short when you confirm.</div>
+  </div>
+  {% endif %}
+
+  <div class="table-responsive mb-2">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>#</th><th>Description</th><th class="text-end">Qty</th><th class="text-end d-none d-md-table-cell">Agreed price</th><th class="text-end d-none d-md-table-cell">Approved price</th><th class="text-end">Price on invoice</th><th class="text-end d-none d-md-table-cell">Line disc %</th><th class="text-end">Line total</th></tr></thead>
+      <tbody>
+        {% for l in data['lines'] %}
+        <tr>
+          <td>{{ l.position }}</td>
+          <td>{{ l.description }}{% if l.changed %} <span class="badge text-bg-warning">price changed</span>{% endif %}</td>
+          <td class="text-end">{{ '%g'|format(l.quantity) }}</td>
+          <td class="text-end d-none d-md-table-cell">R{{ "%.2f"|format(l.agreed_price) }}</td>
+          <td class="text-end d-none d-md-table-cell">R{{ "%.2f"|format(l.approved_price) }}</td>
+          <td class="text-end fw-semibold">R{{ "%.2f"|format(l.final_price) }}</td>
+          <td class="text-end d-none d-md-table-cell">{{ '%g'|format(l.discount_pct) }}</td>
+          <td class="text-end">R{{ "%.2f"|format(l.line_total) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="row justify-content-end mb-3"><div class="col-12 col-md-5">
+    <div class="d-flex justify-content-between"><span>Subtotal at invoice prices</span><span>R{{ "%.2f"|format(data['subtotal']) }}</span></div>
+    <div class="d-flex justify-content-between"><span>Invoice-level discount</span><span>-R{{ "%.2f"|format(data['discount']) }}</span></div>
+    <div class="d-flex justify-content-between fw-bold"><span>Final invoice total</span><span>R{{ "%.2f"|format(data['total']) }}</span></div>
+    <div class="small text-muted mt-1">The invoice-level discount is the sum of the line discounts. It is applied to the invoice total, so the invoice item rows show full prices.</div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Payment</h6>
+    <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Payment method">
+      {% for m, label in [('cash', 'Cash'), ('card', 'Card'), ('eft', 'EFT'), ('credit', 'Credit (debtor)')] %}
+      <label class="d-flex align-items-center gap-2 mb-0" for="pay_{{ m }}">
+        <input type="radio" name="payment" id="pay_{{ m }}" value="{{ m }}" style="width:1.1em !important;height:1.1em !important;margin:0;flex:none" {% if loop.first %}checked{% endif %}>
+        <span>{{ label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <label id="payConfirmBox" class="d-flex align-items-start gap-2 mt-3 mb-0 d-none" for="payConfirmed">
+      <input type="checkbox" id="payConfirmed" style="width:1.1em !important;height:1.1em !important;margin:.2em 0 0;flex:none">
+      <span>I confirm that staff received this card or EFT payment. <strong>Manual confirmation, not bank verification.</strong></span>
+    </label>
+    <div id="creditNote" class="small text-muted mt-2 d-none">Credit records an unpaid invoice and a debtor for this customer, as on the POS.</div>
+  </div></div>
+
+  <button type="button" class="btn btn-primary btn-lg w-100" id="convertBtn" {% if not data['can_convert'] %}disabled{% endif %}>Create invoice</button>
+</div>
+
+<script>
+  const jobId = {{ h.id }};
+  const convertUrl = '{{ url_for("job_cards.index") }}' + jobId + '/convert';
+  const viewUrl = '{{ url_for("job_cards.index") }}' + jobId;
+  const btn = document.getElementById('convertBtn');
+  const showError = (message) => { const box = document.getElementById('convertError'); box.textContent = message; box.classList.remove('d-none'); };
+  const selectedPayment = () => document.querySelector('input[name="payment"]:checked').value;
+  const refreshPayment = () => {
+    const m = selectedPayment();
+    document.getElementById('payConfirmBox').classList.toggle('d-none', !(m === 'card' || m === 'eft'));
+    document.getElementById('creditNote').classList.toggle('d-none', m !== 'credit');
+  };
+  document.querySelectorAll('input[name="payment"]').forEach((r) => r.addEventListener('change', refreshPayment));
+  refreshPayment();
+
+  btn.addEventListener('click', async () => {
+    document.getElementById('convertError').classList.add('d-none');
+    const method = selectedPayment();
+    const priceBox = document.getElementById('confirmPrices');
+    const body = {
+      payment_method: method,
+      payment_confirmed: document.getElementById('payConfirmed').checked,
+      confirm_price_changes: priceBox ? priceBox.checked : false,
+    };
+    if ((method === 'card' || method === 'eft') && !body.payment_confirmed) {
+      showError('Confirm that staff received the ' + method.toUpperCase() + ' payment. This is a manual confirmation, not bank verification.');
+      return;
+    }
+    if (!confirm('Create the invoice for ' + {{ h.job_number|tojson }} + '? Stock will be deducted now.')) return;
+    btn.disabled = true; btn.textContent = 'Creating invoice…';
+    try {
+      const response = await fetch(convertUrl, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) {
+        showError(result.error || 'The job card could not be invoiced. Nothing was saved.');
+        btn.disabled = false; btn.textContent = 'Create invoice';
+        return;
+      }
+      const done = document.getElementById('convertDone');
+      done.textContent = (result.duplicate ? 'Already invoiced as ' : 'Invoice created: ') + (result.invoice_number || '') + '.';
+      done.classList.remove('d-none');
+      btn.textContent = 'Invoiced';
+      setTimeout(() => { window.location.href = viewUrl; }, 1500);
+    } catch (e) {
+      showError('Network error. The job card may or may not have been invoiced. Check the job card before trying again.');
+      btn.disabled = false; btn.textContent = 'Create invoice';
+    }
+  });
+</script>
+{% endblock %}

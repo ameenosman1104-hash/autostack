@@ -365,6 +365,8 @@ def set_status(tid, job_id, new_status, actor, can_cancel=False, mileage_out=Non
                 raise JobCardError("You are not authorised to cancel job cards")
             if row["invoice_id"] is not None:
                 raise JobCardError("An invoiced job card cannot be cancelled")
+        if row["invoice_id"] is not None and new_status != "completed":
+            raise JobCardError("An invoiced job card can only be marked collected")
         extra_sql, params = "", []
         if new_status == "completed":
             extra_sql = ", completed_at=datetime('now')"
@@ -420,7 +422,10 @@ def get_job(tid, job_id):
                                                (int(job_id),)).fetchall()]
         events = [dict(r) for r in conn.execute("SELECT event, actor, detail, created_at FROM job_card_events "
                                                 "WHERE job_card_id=? ORDER BY id DESC", (int(job_id),)).fetchall()]
-        return {"header": dict(header), "items": items, "events": events,
+        approvals = [dict(r) for r in conn.execute(
+            "SELECT item_position, description, old_price, new_price, approved_by, approved_at, invoice_id "
+            "FROM job_card_price_approvals WHERE job_card_id=? ORDER BY id", (int(job_id),)).fetchall()]
+        return {"header": dict(header), "items": items, "events": events, "approvals": approvals,
                 "warnings": stock_shortages(conn, items)}
     finally:
         conn.close()

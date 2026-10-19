@@ -17,6 +17,11 @@
       {% else %}
       <button type="button" class="btn btn-success" disabled title="{{ wa_error }}">Send WhatsApp update</button>
       {% endif %}
+      {% if h.invoice_number %}
+      <span class="btn btn-success disabled">Invoiced: {{ h.invoice_number }}</span>
+      {% elif h.status in ['ready', 'completed'] and can_convert %}
+      <a class="btn btn-primary" href="{{ url_for('job_cards.index') }}{{ h.id }}/invoice">Convert to invoice</a>
+      {% endif %}
       <a class="btn btn-outline-secondary" href="{{ url_for('job_cards.index') }}">All job cards</a>
     </div>
   </div>
@@ -64,8 +69,32 @@
     </table>
   </div>
   <div class="row justify-content-end mb-3"><div class="col-12 col-md-4 d-flex justify-content-between fw-bold">
-    <span>Total</span><span>R{{ "%.2f"|format(h.total) }}</span>
+    <span>Agreed total</span><span>R{{ "%.2f"|format(h.total) }}</span>
   </div></div>
+
+  {% if job['approvals'] %}
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Approved price changes</h6>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Item</th><th class="text-end">Old price</th><th class="text-end">New price</th><th>Approved by</th><th>When</th><th>Invoice</th></tr></thead>
+        <tbody>
+          {% for a in job['approvals'] %}
+          <tr>
+            <td>{{ a.description }}</td>
+            <td class="text-end">R{{ "%.2f"|format(a.old_price) }}</td>
+            <td class="text-end">R{{ "%.2f"|format(a.new_price) }}</td>
+            <td>{{ a.approved_by }}</td>
+            <td>{{ a.approved_at }}</td>
+            <td>{{ a.invoice_id or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <small class="text-muted">The agreed prices above are unchanged. The approved prices were used on the invoice.</small>
+  </div></div>
+  {% endif %}
 
   {% if h.work_performed or h.notes %}
   <div class="card mb-3"><div class="card-body">

@@ -314,6 +314,8 @@ def list_quotations(tid, status=None, search=None, limit=200):
 
 def _mark_converted(conn, quotation_id, invoice_id, actor, number):
     """Runs inside the POS sale transaction: the link and the sale commit or roll back together."""
+    if conn.execute("SELECT 1 FROM job_cards WHERE quotation_id=?", (quotation_id,)).fetchone():
+        raise QuotationError("This quotation has a job card. Convert the job card instead.")
     cursor = conn.execute(
         "UPDATE quotations SET status='converted', converted_invoice_id=?, updated_at=datetime('now') "
         "WHERE id=? AND status='accepted'", (invoice_id, quotation_id))
@@ -336,6 +338,13 @@ def convert_to_sale(tid, quotation_id, actor, payment_method="cash"):
     if not detail:
         raise QuotationError("Quotation not found")
     header = detail["header"]
+    conn = get_conn(tid)
+    try:
+        has_job = conn.execute("SELECT 1 FROM job_cards WHERE quotation_id=?", (quotation_id,)).fetchone()
+    finally:
+        conn.close()
+    if has_job and header["status"] != "converted":
+        raise QuotationError("This quotation has a job card. Convert the job card instead.")
     if header["status"] == "converted":
         return {"success": True, "duplicate": True, "quotation_number": header["quotation_number"],
                 "invoice_id": header["converted_invoice_id"], "invoice_number": invoice_number(tid, header["converted_invoice_id"])}

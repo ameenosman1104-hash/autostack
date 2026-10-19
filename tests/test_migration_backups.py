@@ -158,7 +158,7 @@ def test_concurrent_pending_connections_preserve_backups(database, monkeypatch):
         finally:
             conn.close()
     with ThreadPoolExecutor(max_workers=4) as pool:
-        assert list(pool.map(connect, range(4))) == [27] * 4
+        assert list(pool.map(connect, range(4))) == [28] * 4
     saved = backups(database)
     assert len(saved) == 1
     for path in saved:

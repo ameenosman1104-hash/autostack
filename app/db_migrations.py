@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LATEST_SCHEMA_VERSION = 27
+LATEST_SCHEMA_VERSION = 28
 MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -221,6 +221,22 @@ JOB_CARD_SCHEMA_STATEMENTS = (
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_job_cards_quotation ON job_cards(quotation_id) WHERE quotation_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS idx_job_card_items_job ON job_card_items(job_card_id)",
     "CREATE INDEX IF NOT EXISTS idx_job_card_events_job ON job_card_events(job_card_id)",
+)
+
+
+JOB_PRICE_APPROVAL_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS job_card_price_approvals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_card_id INTEGER NOT NULL REFERENCES job_cards(id) ON DELETE CASCADE,
+        item_position INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        old_price REAL NOT NULL CHECK (old_price >= 0),
+        new_price REAL NOT NULL CHECK (new_price >= 0),
+        approved_by TEXT NOT NULL,
+        approved_at TEXT NOT NULL DEFAULT (datetime('now')),
+        invoice_id INTEGER REFERENCES invoices(id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_job_price_approvals_job ON job_card_price_approvals(job_card_id)",
 )
 
 
@@ -990,6 +1006,16 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 27 failed: {e}")
+
+        # Migration 28: append-only price approval history for job cards. Additive; nothing existing changes.
+        if get_schema_version(conn) < 28:
+            try:
+                for statement in JOB_PRICE_APPROVAL_STATEMENTS:
+                    conn.execute(statement)
+                mark_migration_applied(conn, 28, "Create job card price approval history")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 28 failed: {e}")
 
         if conn.execute("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("Foreign key violations; migration rolled back")

@@ -74,7 +74,7 @@ def test_migration_26_creates_job_card_tables_and_version(data_dir):
     conn = get_conn(10)
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"vehicles", "job_cards", "job_card_items", "job_card_events", "job_card_sequence"} <= tables
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 27
+    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 28
     conn.close()
 
 
@@ -97,7 +97,7 @@ def test_migration_26_on_populated_schema_25_keeps_existing_data(data_dir):
     migrate_tenant_db(20, str(path))
 
     conn = sqlite3.connect(path)
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 27
+    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 28
     assert conn.execute("SELECT id, name, phone FROM customers ORDER BY id").fetchall() == before
     assert conn.execute("SELECT current_stock FROM products WHERE code='KEEP'").fetchone()[0] == 9
     assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
