@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LATEST_SCHEMA_VERSION = 25
+LATEST_SCHEMA_VERSION = 26
 MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -141,6 +141,86 @@ QUOTATION_SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_quotation_items_quote ON quotation_items(quotation_id)",
     "CREATE INDEX IF NOT EXISTS idx_quotation_events_quote ON quotation_events(quotation_id)",
     "CREATE INDEX IF NOT EXISTS idx_quotations_status_expiry ON quotations(status, expiry_date)",
+)
+
+
+JOB_CARD_SCHEMA_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS vehicles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL REFERENCES customers(id),
+        registration TEXT NOT NULL UNIQUE,
+        make TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        year INTEGER CHECK (year IS NULL OR (year >= 1950 AND year <= 2100)),
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS job_card_sequence (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        next_number INTEGER NOT NULL CHECK (next_number >= 1)
+    )""",
+    "INSERT OR IGNORE INTO job_card_sequence (id, next_number) VALUES (1, 1)",
+    """CREATE TABLE IF NOT EXISTS job_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_number TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'open'
+            CHECK (status IN ('open', 'in_progress', 'ready', 'completed', 'cancelled')),
+        customer_id INTEGER NOT NULL REFERENCES customers(id),
+        vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL DEFAULT '',
+        customer_email TEXT NOT NULL DEFAULT '',
+        mileage_in INTEGER CHECK (mileage_in IS NULL OR mileage_in >= 0),
+        mileage_out INTEGER CHECK (mileage_out IS NULL OR mileage_out >= 0),
+        technician TEXT NOT NULL DEFAULT '',
+        quotation_id INTEGER REFERENCES quotations(id),
+        invoice_id INTEGER REFERENCES invoices(id),
+        promised_date TEXT,
+        work_performed TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        subtotal REAL NOT NULL DEFAULT 0,
+        discount_total REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        price_confirmed_by TEXT NOT NULL DEFAULT '',
+        price_confirmed_at TEXT,
+        created_by TEXT NOT NULL DEFAULT '',
+        opened_at TEXT DEFAULT (datetime('now')),
+        completed_at TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS job_card_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_card_id INTEGER NOT NULL REFERENCES job_cards(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        item_type TEXT NOT NULL CHECK (item_type IN ('product', 'service')),
+        product_id INTEGER REFERENCES products(id),
+        service_id INTEGER REFERENCES services(id),
+        description TEXT NOT NULL,
+        detail TEXT NOT NULL DEFAULT '',
+        quantity REAL NOT NULL CHECK (quantity > 0),
+        base_price REAL NOT NULL CHECK (base_price >= 0),
+        unit_price REAL NOT NULL CHECK (unit_price >= 0),
+        discount_pct REAL NOT NULL DEFAULT 0 CHECK (discount_pct >= 0 AND discount_pct <= 100),
+        line_total REAL NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS job_card_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_card_id INTEGER NOT NULL REFERENCES job_cards(id) ON DELETE CASCADE,
+        event TEXT NOT NULL,
+        actor TEXT NOT NULL DEFAULT '',
+        detail TEXT NOT NULL DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_vehicles_customer ON vehicles(customer_id)",
+    "CREATE INDEX IF NOT EXISTS idx_job_cards_customer ON job_cards(customer_id)",
+    "CREATE INDEX IF NOT EXISTS idx_job_cards_vehicle ON job_cards(vehicle_id)",
+    "CREATE INDEX IF NOT EXISTS idx_job_cards_status ON job_cards(status)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_job_cards_invoice ON job_cards(invoice_id) WHERE invoice_id IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_job_cards_quotation ON job_cards(quotation_id) WHERE quotation_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_job_card_items_job ON job_card_items(job_card_id)",
+    "CREATE INDEX IF NOT EXISTS idx_job_card_events_job ON job_card_events(job_card_id)",
 )
 
 
@@ -889,6 +969,16 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 25 failed: {e}")
+
+        # Migration 26: Vehicles and job cards (workshop). No stock movement occurs here.
+        if get_schema_version(conn) < 26:
+            try:
+                for statement in JOB_CARD_SCHEMA_STATEMENTS:
+                    conn.execute(statement)
+                mark_migration_applied(conn, 26, "Create vehicles and job card tables")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 26 failed: {e}")
 
         if conn.execute("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("Foreign key violations; migration rolled back")
