@@ -1,0 +1,41 @@
+{% set status_labels = {'open': 'Open', 'in_progress': 'In progress', 'ready': 'Ready for collection', 'completed': 'Collected', 'cancelled': 'Cancelled'} %}
+{% set status_colours = {'open': 'secondary', 'in_progress': 'info', 'ready': 'warning', 'completed': 'success', 'cancelled': 'danger'} %}
+{% if jobs %}
+  {% for j in jobs %}
+  <div class="border rounded p-3 mb-3" data-job="{{ j.job_number }}">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <div>
+        <a class="fw-semibold text-decoration-none" href="{{ url_for('job_cards.view', jid=j.id) }}">{{ j.job_number }}</a>
+        {% if show_vehicle %}<span class="ms-2 small text-muted">{{ j.registration }}</span>{% endif %}
+      </div>
+      <span class="badge text-bg-{{ status_colours.get(j.status, 'secondary') }}">{{ status_labels.get(j.status, j.status) }}</span>
+    </div>
+    <div class="small text-muted mb-2">
+      Opened {{ (j.opened_at or '')[:10] or '—' }}{% if j.completed_at %} · Collected {{ j.completed_at[:10] }}{% endif %}
+      {% if j.mileage_in is not none %} · {{ j.mileage_in }} km in{% endif %}
+      {% if j.mileage_out is not none %} · {{ j.mileage_out }} km out{% endif %}
+      {% if j.technician %} · Technician {{ j.technician }}{% endif %}
+    </div>
+    <div class="row g-2 small">
+      <div class="col-12 col-md-6"><strong>Services:</strong> {{ j.services|join(', ') if j.services else '—' }}</div>
+      <div class="col-12 col-md-6"><strong>Tyres fitted:</strong> {{ j.tyres|join(', ') if j.tyres else '—' }}</div>
+      {% if j.work_performed %}
+      <div class="col-12"><strong>Work performed:</strong> <span style="white-space:pre-line">{{ j.work_performed }}</span></div>
+      {% endif %}
+    </div>
+    <div class="small mt-2">
+      {% if j.invoice_number %}
+        Invoice <strong>{{ j.invoice_number }}</strong> · R{{ "%.2f"|format(j.invoice_total or 0) }}
+        · {{ (j.payment_method or '')|capitalize }} · {{ (j.payment_status or '')|capitalize }}
+      {% else %}
+        <span class="text-muted">Not invoiced</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="text-center py-4 text-muted">
+    <i class="bi bi-wrench" style="font-size:2rem; opacity:0.3;"></i>
+    <p class="mt-2 mb-0">No job cards yet.</p>
+  </div>
+{% endif %}

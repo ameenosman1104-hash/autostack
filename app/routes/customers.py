@@ -12,6 +12,7 @@ Features:
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from datetime import date
+from ..services import workshop_history as wh
 from ..tenant_db import (
     add_customer, get_customer, get_all_customers, update_customer, search_customers,
     get_debtor_by_customer_id, get_debtors_by_customer_id, customer_total_outstanding,
@@ -143,9 +144,11 @@ def detail(cid):
 
     # Get transaction history (invoices)
     invoices = list_invoices_by_customer(tid, cid)
+    workshop = wh.customer_workshop_history(tid, cid, request.args.get("order", "newest"))
 
     return render_template(
         "customer_detail.html",
+        workshop=workshop,
         customer=customer,
         debtors=debtors,
         outstanding_balance=outstanding if outstanding > 0 else None,

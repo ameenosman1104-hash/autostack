@@ -3,7 +3,10 @@
 <div class="container-fluid py-3">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h4 class="mb-0">Job Cards</h4>
-    <a class="btn btn-primary" href="{{ url_for('job_cards.new') }}">New job card</a>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('workshop_history.search') }}">Vehicle history</a>
+      <a class="btn btn-primary" href="{{ url_for('job_cards.new') }}">New job card</a>
+    </div>
   </div>
 
   <form class="row g-2 mb-3" method="get">

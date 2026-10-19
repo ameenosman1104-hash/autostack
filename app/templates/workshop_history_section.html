@@ -1,0 +1,37 @@
+<div class="card mb-4" id="workshop-history">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span><i class="bi bi-wrench me-2"></i>Workshop History</span>
+    {% if workshop %}
+    <span class="btn-group btn-group-sm" role="group" aria-label="Sort order">
+      <a class="btn btn-outline-secondary {% if workshop.order == 'newest' %}active{% endif %}"
+         href="{{ url_for('customers.detail', cid=customer.id, order='newest') }}#workshop-history">Newest first</a>
+      <a class="btn btn-outline-secondary {% if workshop.order == 'oldest' %}active{% endif %}"
+         href="{{ url_for('customers.detail', cid=customer.id, order='oldest') }}#workshop-history">Oldest first</a>
+    </span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if not workshop %}
+      <p class="text-muted mb-0">Workshop history is not available for this customer.</p>
+    {% else %}
+      <h6 class="text-uppercase text-muted small">Vehicles</h6>
+      {% if workshop.vehicles %}
+        <ul class="list-unstyled mb-4">
+          {% for v in workshop.vehicles %}
+          <li class="mb-1">
+            <a class="fw-semibold text-decoration-none" href="{{ url_for('workshop_history.history', vid=v.id) }}">{{ v.registration }}</a>
+            <span class="small text-muted">{{ [v.make, v.model, v.year]|select|join(' ') or 'Details not recorded' }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted small">No vehicles recorded for this customer yet. Vehicles are added when a job card is opened.</p>
+      {% endif %}
+
+      <h6 class="text-uppercase text-muted small">Job cards</h6>
+      {% with jobs=workshop.jobs, show_vehicle=true %}
+        {% include 'workshop_jobs.html' %}
+      {% endwith %}
+    {% endif %}
+  </div>
+</div>

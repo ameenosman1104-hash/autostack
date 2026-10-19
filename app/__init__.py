@@ -54,6 +54,7 @@ def create_app():
     from .routes.supplier_invoices import supplier_invoices_bp
     from .routes.quotations import quotations_bp
     from .routes.job_cards import job_cards_bp
+    from .routes.workshop_history import workshop_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp,       url_prefix="/admin")
@@ -71,6 +72,7 @@ def create_app():
     app.register_blueprint(supplier_invoices_bp)
     app.register_blueprint(quotations_bp, url_prefix="/quotations")
     app.register_blueprint(job_cards_bp, url_prefix="/jobs")
+    app.register_blueprint(workshop_bp, url_prefix="/vehicles")
     app.register_blueprint(local_file_sync_bp)
     app.register_blueprint(data_sources_bp)
     app.register_blueprint(ai_insights_bp)
