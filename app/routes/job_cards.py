@@ -4,10 +4,12 @@ Phase 2 scope: no stock deduction and no invoice conversion. Those arrive in Pha
 """
 import logging
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
+from ..services import job_card_output as jco
 from ..services import job_cards as jc
+from ..services import quotation_output as qo
 from ..services import quotations as engine
 from ..tenant_db import get_setting
 
@@ -94,7 +96,14 @@ def view(jid):
         flash("Job card not found.", "warning")
         return redirect(url_for("job_cards.index"))
     history = jc.vehicle_history(current_user.tenant_id, detail["header"]["vehicle_id"])
-    return render_template("job_card_view.html", job=detail, statuses=jc.TRANSITIONS.get(detail["header"]["status"], set()),
+    shop = qo.shop_profile(current_user.tenant_id)
+    wa_url, wa_error = None, None
+    try:
+        wa_url = jco.job_whatsapp_url(detail, shop)
+    except jco.PhoneError as exc:
+        wa_error = str(exc)
+    return render_template("job_card_view.html", job=detail, wa_url=wa_url, wa_error=wa_error,
+                           statuses=jc.TRANSITIONS.get(detail["header"]["status"], set()),
                            can_cancel=_can_cancel(), is_admin=current_user.is_admin, history=history)
 
 
@@ -165,3 +174,33 @@ def api_products():
 @login_required
 def api_services():
     return jsonify(engine.search_services(current_user.tenant_id))
+
+
+def _print_shop():
+    """Shop details for printing. The logo is used only if it resolves inside app/static."""
+    shop = qo.shop_profile(current_user.tenant_id)
+    shop["logo_path"] = shop["logo_path"] if qo.logo_file(shop["logo_path"]) else ""
+    return shop
+
+
+@job_cards_bp.route("/<int:jid>/print")
+@login_required
+def print_view(jid):
+    detail = jc.get_job(current_user.tenant_id, jid)
+    if not detail:
+        abort(404)
+    status = detail["header"]["status"]
+    return render_template("job_card_print.html", job=detail, shop=_print_shop(),
+                           status_label=jco.STATUS_LABELS.get(status, status))
+
+
+@job_cards_bp.route("/<int:jid>/pdf")
+@login_required
+def pdf(jid):
+    detail = jc.get_job(current_user.tenant_id, jid)
+    if not detail:
+        abort(404)
+    content = jco.render_job_card_pdf(detail, _print_shop())
+    filename = f"{detail['header']['job_number']}.pdf"
+    return Response(content, mimetype="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})

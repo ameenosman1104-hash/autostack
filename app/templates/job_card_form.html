@@ -49,8 +49,9 @@
       <div class="col-12 col-md-3"><label class="form-label small" for="promisedDate">Promised date</label><input id="promisedDate" type="date" class="form-control"></div>
     </div>
     <div class="row g-2 mt-1">
-      <div class="col-12 col-md-6"><label class="form-label small" for="workPerformed">Work to be done</label><textarea id="workPerformed" class="form-control" rows="3" maxlength="4000"></textarea></div>
-      <div class="col-12 col-md-6"><label class="form-label small" for="notes">Internal notes</label><textarea id="notes" class="form-control" rows="3" maxlength="2000"></textarea></div>
+      <div class="col-12 col-md-6"><label class="form-label small" for="complaint">Customer complaint</label><textarea id="complaint" class="form-control" rows="3" maxlength="2000" placeholder="What the customer reported"></textarea></div>
+      <div class="col-12 col-md-6"><label class="form-label small" for="workPerformed">Work performed</label><textarea id="workPerformed" class="form-control" rows="3" maxlength="4000"></textarea></div>
+      <div class="col-12"><label class="form-label small" for="notes">Internal notes</label><textarea id="notes" class="form-control" rows="2" maxlength="2000"></textarea></div>
     </div>
   </div></div>
 
@@ -210,7 +211,7 @@ if (existing) {
   const h = existing.header;
   qs('customerId').value = h.customer_id; qs('customerName').value = h.customer_name; qs('customerPhone').value = h.customer_phone;
   qs('mileageIn').value = h.mileage_in ?? ''; qs('technician').value = h.technician; qs('promisedDate').value = h.promised_date || '';
-  qs('workPerformed').value = h.work_performed; qs('notes').value = h.notes;
+  qs('complaint').value = h.customer_complaint || ''; qs('workPerformed').value = h.work_performed; qs('notes').value = h.notes;
   existing.items.forEach((i) => items.push({item_type: i.item_type, product_id: i.product_id, service_id: i.service_id, description: i.description, detail: i.detail, quantity: i.quantity, unit_price: i.unit_price, discount_pct: i.discount_pct}));
   getJSON('{{ url_for("job_cards.api_vehicles") }}?customer_id=' + h.customer_id).then((vehicles) => {
     const select = qs('vehicleSelect'); vehicles.forEach((v) => { const o = document.createElement('option'); o.value = v.id; o.textContent = v.registration; select.appendChild(o); });
@@ -224,7 +225,7 @@ qs('saveBtn').onclick = async () => {
     customer_id: qs('customerId').value ? Number(qs('customerId').value) : null,
     vehicle_id: qs('vehicleSelect').value ? Number(qs('vehicleSelect').value) : null,
     mileage_in: qs('mileageIn').value, technician: qs('technician').value, promised_date: qs('promisedDate').value,
-    work_performed: qs('workPerformed').value, notes: qs('notes').value,
+    customer_complaint: qs('complaint').value, work_performed: qs('workPerformed').value, notes: qs('notes').value,
     items: items.map((it) => ({item_type: it.item_type, product_id: it.product_id, service_id: it.service_id, quantity: it.quantity, unit_price: it.unit_price, discount_pct: it.discount_pct})),
   };
   if (!payload.customer_id) { bail('Choose a customer first.'); return; }

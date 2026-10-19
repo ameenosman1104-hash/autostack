@@ -321,7 +321,7 @@ def test_existing_database_upgrade_preserves_records_and_is_repeatable(tmp_path)
     assert conn.execute("SELECT COUNT(*) FROM supplier_invoices").fetchone()[0] == 1
     assert conn.execute("SELECT product_description FROM supplier_invoice_items").fetchone()[0] == 'Legacy tyre'
     assert conn.execute("SELECT current_stock FROM products").fetchone()[0] == 7
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 26
+    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 27
     assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     conn.close()
 

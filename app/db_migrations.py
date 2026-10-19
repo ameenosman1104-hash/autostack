@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LATEST_SCHEMA_VERSION = 26
+LATEST_SCHEMA_VERSION = 27
 MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -979,6 +979,17 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 26 failed: {e}")
+
+        # Migration 27: customer complaint on job cards (additive column, existing rows keep ''):
+        if get_schema_version(conn) < 27:
+            try:
+                columns = {r[1] for r in conn.execute("PRAGMA table_info(job_cards)").fetchall()}
+                if "customer_complaint" not in columns:
+                    conn.execute("ALTER TABLE job_cards ADD COLUMN customer_complaint TEXT NOT NULL DEFAULT ''")
+                mark_migration_applied(conn, 27, "Add customer complaint to job cards")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 27 failed: {e}")
 
         if conn.execute("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("Foreign key violations; migration rolled back")

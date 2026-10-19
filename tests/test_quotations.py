@@ -88,7 +88,7 @@ def test_migration_creates_quotation_tables(app, auth_headers):
     conn = get_conn(TID)
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"quotations", "quotation_items", "quotation_events", "quotation_sequence"} <= tables
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 26
+    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 27
     conn.close()
 
 

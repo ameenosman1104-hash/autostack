@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job card {{ job.header.job_number }}</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif; font-size: 10pt; }
+  .page { max-width: 190mm; margin: 12mm auto; padding: 0 6mm; }
+  .head { display: flex; justify-content: space-between; gap: 8mm; border-bottom: 1.5px solid #000; padding-bottom: 4mm; }
+  .shop h1 { font-size: 15pt; margin: 0 0 2mm; }
+  .shop div, .meta div { font-size: 9pt; }
+  .meta { text-align: right; }
+  .meta h2 { font-size: 18pt; margin: 0 0 2mm; letter-spacing: .5px; }
+  .logo { max-height: 18mm; max-width: 45mm; margin-bottom: 2mm; }
+  .details { display: flex; gap: 6mm; margin: 5mm 0; }
+  .details > div { flex: 1; border: .6px solid #444; padding: 2.5mm; font-size: 9pt; }
+  .details .label { font-size: 7.5pt; text-transform: uppercase; color: #333; margin-bottom: 1mm; }
+  h3 { font-size: 10pt; margin: 5mm 0 1.5mm; border-bottom: .5px solid #000; padding-bottom: 1mm; }
+  .text { white-space: pre-line; font-size: 9pt; min-height: 4mm; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th, td { padding: 1.8mm 1.5mm; border-bottom: .5px solid #666; vertical-align: top; }
+  th { border-bottom: 1.5px solid #000; text-align: left; font-size: 9pt; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .small { font-size: 8pt; color: #222; }
+  .totals { width: 70mm; margin-left: auto; margin-top: 3mm; }
+  .totals div { display: flex; justify-content: space-between; padding: 1mm 0; }
+  .totals .grand { border-top: 1.5px solid #000; font-weight: bold; margin-top: 1mm; padding-top: 2mm; }
+  .signatures { display: flex; gap: 10mm; margin-top: 12mm; break-inside: avoid; }
+  .signatures > div { flex: 1; font-size: 9pt; }
+  .signatures .line { border-top: .8px solid #000; height: 14mm; }
+  .signatures .date { margin-top: 2mm; }
+  .controls { text-align: center; margin: 6mm 0 0; }
+  .controls button, .controls a { font-size: 11pt; padding: 3mm 5mm; margin: 0 2mm; }
+  @page { size: A4; margin: 14mm 14mm 16mm; }
+  @media print {
+    body { font-size: 9.5pt; }
+    .page { margin: 0; padding: 0; max-width: none; }
+    .no-print { display: none !important; }
+    a { color: #000; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+{% set h = job.header %}
+{% set sym = shop.currency %}
+<div class="controls no-print">
+  <button type="button" onclick="window.print()">Print</button>
+  <a href="{{ url_for('job_cards.index') }}{{ h.id }}">Back to job card</a>
+</div>
+<div class="page">
+  <div class="head">
+    <div class="shop">
+      {% if shop.logo_path %}<img class="logo" src="{{ url_for('static', filename=shop.logo_path) }}" alt="">{% endif %}
+      <h1>{{ shop.name }}</h1>
+      {% if shop.address %}<div>{{ shop.address }}</div>{% endif %}
+      {% if shop.phone %}<div>Tel: {{ shop.phone }}</div>{% endif %}
+      {% if shop.email %}<div>{{ shop.email }}</div>{% endif %}
+    </div>
+    <div class="meta">
+      <h2>JOB CARD</h2>
+      <div><strong>No:</strong> {{ h.job_number }}</div>
+      <div><strong>Opened:</strong> {{ (h.opened_at or '')[:10] or '—' }}</div>
+      <div><strong>Promised:</strong> {{ h.promised_date or '—' }}</div>
+      <div><strong>Status:</strong> {{ status_label }}</div>
+    </div>
+  </div>
+
+  <div class="details">
+    <div>
+      <div class="label">Customer</div>
+      <div><strong>{{ h.customer_name or '—' }}</strong></div>
+      <div>{{ h.customer_phone or '—' }}</div>
+      {% if h.customer_email %}<div>{{ h.customer_email }}</div>{% endif %}
+    </div>
+    <div>
+      <div class="label">Vehicle</div>
+      <div><strong>{{ h.registration or '—' }}</strong></div>
+      <div>Make / model: {{ ((h.vehicle_make or '') ~ ' ' ~ (h.vehicle_model or ''))|trim or '—' }}</div>
+      <div>Year: {{ h.vehicle_year or '—' }}</div>
+      <div>Mileage in: {{ (h.mileage_in ~ ' km') if h.mileage_in is not none else '—' }}{% if h.mileage_out is not none %} · out: {{ h.mileage_out }} km{% endif %}</div>
+      <div>Technician: {{ h.technician or 'Not assigned' }}</div>
+    </div>
+  </div>
+
+  <h3>Customer complaint</h3>
+  <div class="text">{{ h.customer_complaint or 'Not recorded' }}</div>
+
+  <h3>Tyres and services</h3>
+  <table>
+    <thead>
+      <tr><th style="width:8mm">#</th><th>Description</th><th class="num" style="width:16mm">Qty</th><th class="num" style="width:26mm">Price</th><th class="num" style="width:16mm">Disc %</th><th class="num" style="width:28mm">Total</th></tr>
+    </thead>
+    <tbody>
+      {% for i in job['items'] %}
+      <tr>
+        <td>{{ i.position }}</td>
+        <td>{{ i.description }}{% if i.detail %}<div class="small">{{ i.detail }}</div>{% endif %}</td>
+        <td class="num">{{ '%g'|format(i.quantity) }}</td>
+        <td class="num">{{ sym }}{{ "{:,.2f}".format(i.unit_price) }}</td>
+        <td class="num">{{ '%g'|format(i.discount_pct) }}</td>
+        <td class="num">{{ sym }}{{ "{:,.2f}".format(i.line_total) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">No items recorded</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="totals">
+    <div><span>Subtotal</span><span>{{ sym }}{{ "{:,.2f}".format(h.subtotal) }}</span></div>
+    <div><span>Discount</span><span>-{{ sym }}{{ "{:,.2f}".format(h.discount_total) }}</span></div>
+    <div class="grand"><span>Total</span><span>{{ sym }}{{ "{:,.2f}".format(h.total) }}</span></div>
+  </div>
+
+  <h3>Work performed</h3>
+  <div class="text">{{ h.work_performed or 'Not recorded' }}</div>
+  {% if h.notes %}
+  <h3>Internal notes</h3>
+  <div class="text">{{ h.notes }}</div>
+  {% endif %}
+
+  <div class="signatures">
+    <div><div class="line"></div>Customer signature<div class="date">Date: ____________________</div></div>
+    <div><div class="line"></div>Technician signature<div class="date">Date: ____________________</div></div>
+  </div>
+</div>
+<script>
+  if (new URLSearchParams(location.search).get('autoprint') === '1') { window.addEventListener('load', () => window.print()); }
+</script>
+</body>
+</html>

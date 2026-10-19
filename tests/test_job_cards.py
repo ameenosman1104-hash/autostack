@@ -74,7 +74,7 @@ def test_migration_26_creates_job_card_tables_and_version(data_dir):
     conn = get_conn(10)
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"vehicles", "job_cards", "job_card_items", "job_card_events", "job_card_sequence"} <= tables
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 26
+    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 27
     conn.close()
 
 
@@ -86,7 +86,7 @@ def test_migration_26_on_populated_schema_25_keeps_existing_data(data_dir):
     conn = sqlite3.connect(path)
     for statement in ("DROP TABLE job_card_events", "DROP TABLE job_card_items", "DROP TABLE job_cards",
                       "DROP TABLE job_card_sequence", "DROP TABLE vehicles",
-                      "DELETE FROM schema_migrations WHERE version=26"):
+                      "DELETE FROM schema_migrations WHERE version>=26"):
         conn.execute(statement)
     conn.execute("INSERT INTO customers (name, phone) VALUES ('Existing Customer', '0110000000')")
     conn.execute("INSERT INTO products (code, name, selling_price, current_stock, deleted) VALUES ('KEEP', 'Keep me', 50, 9, 0)")
@@ -97,7 +97,7 @@ def test_migration_26_on_populated_schema_25_keeps_existing_data(data_dir):
     migrate_tenant_db(20, str(path))
 
     conn = sqlite3.connect(path)
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 26
+    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 27
     assert conn.execute("SELECT id, name, phone FROM customers ORDER BY id").fetchall() == before
     assert conn.execute("SELECT current_stock FROM products WHERE code='KEEP'").fetchone()[0] == 9
     assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -115,7 +115,7 @@ def test_migration_26_backs_up_before_changing_a_populated_database(data_dir):
     conn.execute("DROP TABLE job_cards")
     conn.execute("DROP TABLE job_card_sequence")
     conn.execute("DROP TABLE vehicles")
-    conn.execute("DELETE FROM schema_migrations WHERE version=26")
+    conn.execute("DELETE FROM schema_migrations WHERE version>=26")
     conn.execute("INSERT INTO customers (name) VALUES ('Has data')")
     conn.commit()
     conn.close()

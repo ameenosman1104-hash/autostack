@@ -23,7 +23,7 @@ TRANSITIONS = {
 EDITABLE_STATUSES = {"open", "in_progress"}
 REGISTRATION_RE = re.compile(r"^[A-Z0-9]{2,12}$")
 MAX_MILEAGE = 2_000_000
-MAX_TEXT = {"technician": 100, "work_performed": 4000, "notes": 2000, "make": 60, "model": 60, "vehicle_notes": 500}
+MAX_TEXT = {"technician": 100, "customer_complaint": 2000, "work_performed": 4000, "notes": 2000, "make": 60, "model": 60, "vehicle_notes": 500}
 
 
 class JobCardError(ValueError):
@@ -269,6 +269,7 @@ def _header_fields(conn, data, customer_id, vehicle_id):
         "technician": _text(data.get("technician"), "technician"),
         "promised_date": promised,
         "work_performed": _text(data.get("work_performed"), "work_performed"),
+        "customer_complaint": _text(data.get("customer_complaint"), "customer_complaint"),
         "notes": _text(data.get("notes"), "notes"),
     }
 
@@ -299,12 +300,12 @@ def create_job(tid, data, actor, is_admin):
         number = _next_job_number(conn)
         cur = conn.execute("""INSERT INTO job_cards (job_number, status, customer_id, vehicle_id, customer_name,
                               customer_phone, customer_email, mileage_in, technician, quotation_id, promised_date,
-                              work_performed, notes, subtotal, discount_total, total, created_by)
-                              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                              work_performed, notes, subtotal, discount_total, total, created_by, customer_complaint)
+                              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                            (number, "open", customer_id, vehicle_id, header["customer_name"], header["customer_phone"],
                             header["customer_email"], header["mileage_in"], header["technician"], quotation_id,
                             header["promised_date"], header["work_performed"], header["notes"], subtotal,
-                            discount_total, total, actor or ""))
+                            discount_total, total, actor or "", header["customer_complaint"]))
         job_id = cur.lastrowid
         _insert_items(conn, job_id, items)
         _event(conn, job_id, "created", actor, number)
@@ -332,9 +333,9 @@ def update_job(tid, job_id, data, actor, is_admin):
         subtotal, discount_total, total = _totals(items)
         shortages = stock_shortages(conn, items)
         conn.execute("""UPDATE job_cards SET mileage_in=?, technician=?, promised_date=?, work_performed=?, notes=?,
-                        subtotal=?, discount_total=?, total=?, updated_at=datetime('now') WHERE id=?""",
+                        customer_complaint=?, subtotal=?, discount_total=?, total=?, updated_at=datetime('now') WHERE id=?""",
                      (header["mileage_in"], header["technician"], header["promised_date"], header["work_performed"],
-                      header["notes"], subtotal, discount_total, total, int(job_id)))
+                      header["notes"], header["customer_complaint"], subtotal, discount_total, total, int(job_id)))
         conn.execute("DELETE FROM job_card_items WHERE job_card_id=?", (int(job_id),))
         _insert_items(conn, int(job_id), items)
         _event(conn, int(job_id), "updated", actor)
@@ -407,9 +408,11 @@ def get_job(tid, job_id):
     conn = get_conn(tid)
     try:
         header = conn.execute("""SELECT j.*, i.invoice_number, v.registration, v.make AS vehicle_make,
-                                        v.model AS vehicle_model
+                                        v.model AS vehicle_model, v.year AS vehicle_year,
+                                        c.phone AS current_phone
                                  FROM job_cards j
                                  JOIN vehicles v ON v.id = j.vehicle_id
+                                 LEFT JOIN customers c ON c.id = j.customer_id
                                  LEFT JOIN invoices i ON i.id = j.invoice_id WHERE j.id=?""", (int(job_id),)).fetchone()
         if not header:
             return None
