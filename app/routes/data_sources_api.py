@@ -10,8 +10,8 @@ bp = Blueprint("data_sources_api", __name__)
 @login_required
 def preview_source():
     """Preview data source to confirm columns."""
-    data = request.get_json() or {}
-    source_type = data.get("source_type", "").strip()
+    data = request.get_json(silent=True) or {}
+    source_type = (data.get("source_type") or request.form.get("source_type") or "").strip()
     config = data.get("config", {})
 
     if not source_type:
@@ -19,8 +19,14 @@ def preview_source():
 
     try:
         if source_type == "local_file":
-            from ..services.file_snapshot import read_snapshot
-            rows = read_snapshot(config.get("file_path"), sheet=config.get("worksheet_name"))
+            from ..services.file_snapshot import read_uploaded_file
+            if "file_path" in config or "file_path" in request.form or "file_path" in data:
+                return jsonify({"error": "Upload the file itself. Server file paths are not accepted."}), 400
+            upload = request.files.get("file")
+            if upload is None or not upload.filename:
+                return jsonify({"error": "file upload required"}), 400
+            sheet = request.form.get("worksheet_name") or config.get("worksheet_name") or None
+            rows = read_uploaded_file(upload, sheet=sheet)
             preview = rows[:5] if rows else []
             return jsonify({
                 "preview": preview,
@@ -379,12 +385,12 @@ def list_connections():
         return jsonify({"error": str(e)}), 500
 
 
-@bp.route("/api/connections/{id}/test", methods=["POST"])
+@bp.route("/api/connections/<int:id>/test", methods=["POST"])
 @login_required
 def test_connection(id):
     """Test a connection and preview data without saving."""
     tid = current_user.tenant_id
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
 
     try:
         from ..services.data_sources import get_data_source
@@ -404,8 +410,13 @@ def test_connection(id):
 
         # Validate based on type
         if source_type == "local_file":
-            from ..services.file_snapshot import read_snapshot
-            rows = read_snapshot(config.get("file_path"), sheet=config.get("worksheet_name"))
+            # The server cannot read a file on the user's computer, so the file must be uploaded for the check.
+            from ..services.file_snapshot import read_uploaded_file
+            upload = request.files.get("file")
+            if upload is None or not upload.filename:
+                return jsonify({"error": "Upload the file to check it. The server cannot read files on your computer."}), 400
+            sheet = request.form.get("worksheet_name") or config.get("worksheet_name") or None
+            rows = read_uploaded_file(upload, sheet=sheet)
             if not rows:
                 return jsonify({"error": "File is empty or unreadable"}), 400
 
@@ -477,7 +488,7 @@ def save_connection():
         return jsonify({"error": str(e)}), 400
 
 
-@bp.route("/api/connections/{id}", methods=["DELETE"])
+@bp.route("/api/connections/<int:id>", methods=["DELETE"])
 @login_required
 def delete_connection(id):
     """Delete a saved connection."""

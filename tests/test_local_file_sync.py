@@ -416,11 +416,11 @@ class TestLocalFileSyncAPI:
             temp_path = f.name
 
         try:
-            with app.app_context():
+            with app.app_context(), open(temp_path, "rb") as handle:
                 response = client.post(
                     "/api/local-file/preview",
-                    json={"file_path": temp_path},
-                    content_type="application/json"
+                    data={"file": (handle, "debtors.csv")},
+                    content_type="multipart/form-data"
                 )
 
             assert response.status_code == 200

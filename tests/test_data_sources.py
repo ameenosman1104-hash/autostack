@@ -381,11 +381,11 @@ class TestDataSourcesAPI:
             temp_path = f.name
 
         try:
-            with app.app_context():
+            with app.app_context(), open(temp_path, "rb") as handle:
                 response = client.post(
                     "/api/data-sources/preview",
-                    json={"source_type": "local_file", "config": {"file_path": temp_path}},
-                    content_type="application/json"
+                    data={"source_type": "local_file", "file": (handle, "debtors.csv")},
+                    content_type="multipart/form-data"
                 )
 
             assert response.status_code == 200

@@ -9,19 +9,19 @@ bp = Blueprint("local_file_sync_api", __name__)
 @bp.route("/api/local-file/preview", methods=["POST"])
 @login_required
 def preview_file():
-    """Preview file contents to help with column mapping."""
-    data = request.get_json() or {}
-    file_path = data.get("file_path", "").strip()
-    worksheet_name = data.get("worksheet_name")
-
-    if not file_path:
-        return jsonify({"error": "file_path required"}), 400
+    """Preview an uploaded CSV or XLSX file. The browser sends the file; the server never opens a path."""
+    if request.get_json(silent=True) is not None or "file_path" in request.form:
+        return jsonify({"error": "Upload the file itself. Server file paths are not accepted."}), 400
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify({"error": "file upload required"}), 400
+    worksheet_name = request.form.get("worksheet_name") or None
 
     try:
-        from ..services.file_snapshot import read_snapshot
+        from ..services.file_snapshot import read_uploaded_file
 
         # Read first few rows for preview
-        rows = read_snapshot(file_path, sheet=worksheet_name)
+        rows = read_uploaded_file(upload, sheet=worksheet_name)
         preview = rows[:5] if rows else []
 
         return jsonify({

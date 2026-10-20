@@ -5,7 +5,6 @@ import re
 import zipfile
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 
 MAX_BYTES = 10 * 1024 * 1024
 MAX_ROWS = 10000
@@ -39,19 +38,35 @@ def amount(value):
     except (ValueError, InvalidOperation):
         raise ValueError("Invalid amount.")
 
-def read_snapshot(path, sheet=None):
-    """Return normalized rows, with explicit rejection of ambiguous/incomplete data."""
-    path = Path(path)
-    if path.suffix.lower() not in (".csv", ".xlsx"):
-        raise ValueError("Select a CSV or XLSX file.")
-    before = path.stat()
-    if before.st_size > MAX_BYTES: raise ValueError("File exceeds 10 MB.")
-    raw = path.read_bytes()
-    after = path.stat()
-    if (before.st_size,before.st_mtime_ns) != (after.st_size,after.st_mtime_ns):
-        raise ValueError("File is still being saved; retry on the next check.")
+def detect_format(raw):
+    """Return 'xlsx' or 'csv' from the file contents. The file name is never trusted."""
+    if raw[:4] == b"PK\x03\x04":
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                if "xl/workbook.xml" in archive.namelist():
+                    return "xlsx"
+        except zipfile.BadZipFile:
+            pass
+        raise ValueError("Upload a valid CSV or XLSX file.")
+    if b"\x00" in raw[:8192]:
+        raise ValueError("Upload a CSV or XLSX file.")
+    try:
+        raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError("Upload a CSV or XLSX file.")
+    return "csv"
+
+
+def read_snapshot_bytes(raw, sheet=None):
+    """Return normalized rows from uploaded file contents, rejecting ambiguous or incomplete data.
+
+    The server never opens a file by path. Callers pass the bytes the browser uploaded.
+    """
+    if len(raw) > MAX_BYTES:
+        raise ValueError("File exceeds 10 MB.")
+    kind = detect_format(raw)
     workbook = None
-    if path.suffix.lower() == ".csv":
+    if kind == "csv":
         text = raw.decode("utf-8-sig")
         try: dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t")
         except csv.Error: dialect = csv.excel
@@ -106,3 +121,11 @@ def read_snapshot(path, sheet=None):
         return rows
     finally:
         if workbook: workbook.close()
+
+
+def read_uploaded_file(file_storage, sheet=None):
+    """Read a multipart upload with a hard size limit, then parse it. Nothing is written to disk."""
+    raw = file_storage.stream.read(MAX_BYTES + 1)
+    if len(raw) > MAX_BYTES:
+        raise ValueError("File exceeds 10 MB.")
+    return read_snapshot_bytes(raw, sheet=sheet)
