@@ -283,9 +283,10 @@ def upload_snapshot():
         if not tid:
             return jsonify({"error": "Invalid or revoked token"}), 401
 
+        # A revoked source is no longer 'active', so its token is rejected the same way as an unknown one.
         source = get_data_source(tid, source_id)
         if not source:
-            return jsonify({"error": "Source not found"}), 404
+            return jsonify({"error": "Invalid or revoked token"}), 401
 
         config = source["config"]
         mapping = source["column_mapping"]

@@ -5,6 +5,31 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 import re
+import functools
+from datetime import date as _real_date
+
+
+def _frozen_date(day):
+    """A date class whose today() is fixed, so overdue and upcoming states do not depend on the calendar."""
+    fixed = _real_date.fromisoformat(day)
+
+    class FrozenDate(_real_date):
+        @classmethod
+        def today(cls):
+            return fixed
+    return FrozenDate
+
+
+def at_date(day):
+    """Run a test with the reminder clock set to a fixed day."""
+    def wrap(test):
+        @functools.wraps(test)
+        def inner(self, *args, **kwargs):
+            with patch("app.tenant_db.date", _frozen_date(day)):
+                return test(self, *args, **kwargs)
+        return inner
+    return wrap
+
 
 class LaunchSafety(unittest.TestCase):
     @classmethod
@@ -17,12 +42,7 @@ class LaunchSafety(unittest.TestCase):
         })
         cls.env.start()
 
-        # Reload modules after patching environment
-        import sys
-        for mod in list(sys.modules.keys()):
-            if mod.startswith('app'):
-                del sys.modules[mod]
-
+        # The app modules are not reloaded: conftest.py points each test at its own data folder.
         from app import create_app
         from app import tenant_db, main_db
         cls.db = tenant_db
@@ -158,6 +178,7 @@ class LaunchSafety(unittest.TestCase):
         deleted_value = self.db.get_setting(self.tid, "email_password", default="")
         self.assertEqual(deleted_value, "", "Password should be deleted")
 
+    @at_date("2026-09-10")  # the schedule dates below are upcoming on this day
     def test_reminder_display_ignores_stale_interval_cache(self):
         self.db.save_setting(self.tid, "default_reminder_days", "28")
         self.db.update_debtor(self.tid, self.did, reminder_mode="custom_interval",
@@ -177,6 +198,33 @@ class LaunchSafety(unittest.TestCase):
         page=self.client.get("/debtors/").get_data(as_text=True)
         self.assertIn("18 Sep 2026",page)
         self.assertIn("Custom reminder date",page)
+
+    @at_date("2026-10-20")
+    def test_overdue_schedule_is_shown_as_overdue(self):
+        self.db.update_debtor(self.tid, self.did, reminder_mode="manual", next_reminder_date="2026-09-16")
+        self.assertEqual(self.db.next_reminder(self.db.get_debtor(self.tid, self.did), self.tid)[1], "overdue")
+        self.login()
+        page = self.client.get("/debtors/").get_data(as_text=True)
+        self.assertIn(">OVERDUE<", page)
+
+    @at_date("2026-09-10")
+    def test_upcoming_schedule_shows_its_date(self):
+        self.db.update_debtor(self.tid, self.did, reminder_mode="manual", next_reminder_date="2026-09-18")
+        self.assertEqual(self.db.next_reminder(self.db.get_debtor(self.tid, self.did), self.tid)[1], "ok")
+        self.login()
+        page = self.client.get("/debtors/").get_data(as_text=True)
+        self.assertIn("18 Sep 2026</span>", page)
+        self.assertNotIn(">OVERDUE<", page)
+
+    @at_date("2026-09-27")
+    def test_already_sent_reminder_moves_to_next_date(self):
+        self.db.update_debtor(self.tid, self.did, reminder_mode="custom_interval",
+                              reminder_interval_days=7, last_reminded="2026-09-25")
+        self.assertEqual(self.db.calculate_next_reminder(self.tid, self.did), "2026-09-30")
+        self.login()
+        page = self.client.get("/debtors/").get_data(as_text=True)
+        self.assertIn("30 Sep 2026</span>", page)
+        self.assertNotIn(">OVERDUE<", page)
 
     def test_custom_save_advances_past_successful_send(self):
         self.db.update_debtor(self.tid,self.did,last_reminded="2026-09-25")

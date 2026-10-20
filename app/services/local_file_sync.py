@@ -158,11 +158,14 @@ def list_connections(tid):
 
 
 def revoke_connection(tid, connection_id):
-    """Revoke a connection (soft delete). Device cannot sync after this."""
+    """Revoke a connection (soft delete). Device cannot sync after this, and its token stops resolving."""
     from ..tenant_db import get_conn
+    from ..main_db import get_conn as get_main_conn
 
     conn = get_conn(tid)
     try:
+        row = conn.execute("SELECT pairing_token_hash FROM local_file_connections WHERE id = ?",
+                           (connection_id,)).fetchone()
         conn.execute("""
             UPDATE local_file_connections
             SET status = 'revoked', updated_at = datetime('now')
@@ -170,10 +173,21 @@ def revoke_connection(tid, connection_id):
         """, (connection_id,))
         conn.commit()
         conn.close()
-        return True
     except:
         conn.close()
         return False
+
+    # Remove the token from the central lookup as well. Matching on the hash and tenant avoids touching
+    # another connection's token, because connection ids are not unique across source types.
+    if row and row[0]:
+        main_conn = get_main_conn()
+        try:
+            main_conn.execute("DELETE FROM local_file_pairing_tokens WHERE token_hash = ? AND tenant_id = ?",
+                              (row[0], tid))
+            main_conn.commit()
+        finally:
+            main_conn.close()
+    return True
 
 
 def update_sync_status(tid, connection_id, status, error=None):
@@ -294,7 +308,7 @@ def get_unresolved_conflicts(tid):
     conn = get_conn(tid)
     try:
         rows = conn.execute("""
-            SELECT id, connection_id, debtor_id, invoice_id, autostack_values, source_values
+            SELECT id, connection_id, debtor_id, invoice_id, autostack_values, source_values, resolution
             FROM local_file_conflicts
             WHERE resolution IS NULL
             ORDER BY created_at DESC
@@ -307,7 +321,9 @@ def get_unresolved_conflicts(tid):
             "debtor_id": row[2],
             "invoice_id": row[3],
             "autostack_values": json.loads(row[4]),
-            "source_values": json.loads(row[5])
+            "source_values": json.loads(row[5]),
+            # Always None here, because only unresolved conflicts are returned.
+            "resolution": row[6]
         } for row in rows]
     except:
         conn.close()

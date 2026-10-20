@@ -89,9 +89,10 @@ def upload_snapshot():
             return jsonify({"error": "Invalid or revoked pairing token"}), 401
 
         # Fetch connection metadata
+        # A revoked connection is no longer 'active', so its token is rejected the same way as an unknown one.
         conn_data = get_connection_by_token(tid, pairing_token)
         if not conn_data:
-            return jsonify({"error": "Connection not found"}), 404
+            return jsonify({"error": "Invalid or revoked pairing token"}), 401
 
         # Build config dict for detect_and_apply_changes
         config = {

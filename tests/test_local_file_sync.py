@@ -1,6 +1,7 @@
 """Tests for local file connection pairing and synchronization."""
 import pytest
 import json
+import re
 import tempfile
 import os
 from pathlib import Path
@@ -49,13 +50,19 @@ def auth_user(client, app):
         tid, err = create_tenant("Test Business", "testuser", "test@example.com", "password123")
         assert not err, f"Failed to create tenant: {err}"
 
-        # Log in
+        # Log in with the CSRF token from the login form, as a browser would
+        page = client.get("/login").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
         response = client.post(
             "/login",
-            data={"username": "testuser", "password": "password123"},
+            data={"username": "testuser", "password": "password123", "csrf_token": token},
             follow_redirects=True
         )
         assert response.status_code == 200
+        # The app's own AJAX calls send the page's CSRF token in this header; the test client does the same.
+        meta = re.search(r'name="csrf-token" content="([^"]+)"', response.get_data(as_text=True))
+        assert meta, "logged-in page should expose a CSRF token"
+        client.environ_base["HTTP_X_CSRFTOKEN"] = meta.group(1)
 
     return tid
 
@@ -388,10 +395,14 @@ class TestLocalFileSyncAPI:
 
     def test_pair_device_requires_auth(self, client):
         """Pair endpoint requires authentication."""
+        # An anonymous visitor still has a CSRF token, so the request reaches the login check.
+        page = client.get("/login").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
         response = client.post(
             "/api/local-file/pair",
             json={"name": "Test", "file_path": "/tmp/test.csv"},
-            content_type="application/json"
+            content_type="application/json",
+            headers={"X-CSRFToken": token}
         )
         assert response.status_code in (401, 302)  # Redirect to login or 401
 

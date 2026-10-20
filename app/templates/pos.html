@@ -609,7 +609,10 @@
         const basket = new Map();
         let selectedPaymentMethod = "cash";
         let selectedCustomerId = null;
-        const idempotencyKey = generateUUID();
+        // One key per sale. It is kept while a sale is retried, and replaced once a sale completes,
+        // so the next sale on this page is not mistaken for a duplicate of the last one.
+        let idempotencyKey = generateUUID();
+        let saleInFlight = false;
 
         function generateUUID() {
             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -821,6 +824,17 @@
 
 
         async function completeSale() {
+            // A second click while the first request is pending does nothing, so one tap sends one sale.
+            if (saleInFlight) return;
+            saleInFlight = true;
+            try {
+                await submitSale();
+            } finally {
+                saleInFlight = false;
+            }
+        }
+
+        async function submitSale() {
             try {
                 if (selectedPaymentMethod === 'credit' && !document.getElementById('selectedCustomerId').value) {
                     showStatus('Please select or add a customer for a credit sale.', 'error');
@@ -865,6 +879,7 @@
 
                 if (data.success) {
                     showStatus(`Sale completed! Invoice: ${data.invoice_number}`, "success");
+                    idempotencyKey = generateUUID();  // the next sale gets its own key
                     basket.clear();
                     renderBasket();
                     updateTotal();

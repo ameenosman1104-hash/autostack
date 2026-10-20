@@ -32,15 +32,9 @@ def test_tenant_id():
 
 
 @pytest.fixture
-def test_db_path(test_tenant_id):
-    """Create a test database."""
-    temp_dir = tempfile.mkdtemp()
-    db_path = os.path.join(temp_dir, f"{test_tenant_id}.db")
-    yield db_path
-    # Cleanup
-    if os.path.exists(db_path):
-        os.remove(db_path)
-    os.rmdir(temp_dir)
+def test_db_path(test_tenant_id, tmp_path):
+    """Create a test database in a per-test folder. pytest removes the folder, including SQLite journal files."""
+    return os.path.join(str(tmp_path), f"{test_tenant_id}.db")
 
 
 @pytest.fixture
@@ -371,12 +365,17 @@ def test_existing_products_still_work(setup_test_db):
 
 
 def test_product_condition_field_has_default(setup_test_db):
-    """Regression: New condition field defaults to 'new'."""
+    """The condition column defaults to NULL (unknown), not 'new'.
+
+    Migration 15 once set 'new' as the default. Migration 17 was added to change that to NULL, because
+    a product's condition is not known unless it is recorded. The schema (app/db_migrations.py) keeps
+    DEFAULT NULL, and changing the default would alter existing tables, so this test follows the schema.
+    """
     tid = setup_test_db
     product_id = add_product(tid, "PROD-COND", "Test Product")
 
     product = get_product(tid, product_id)
-    assert product["condition"] == "new"
+    assert product["condition"] is None
 
 
 def test_existing_debtors_still_work(setup_test_db):

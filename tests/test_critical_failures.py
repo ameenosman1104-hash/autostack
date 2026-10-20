@@ -17,14 +17,8 @@ class CriticalFailures(unittest.TestCase):
         })
         cls.env.start()
 
-        # Reload modules after patching environment
-        import importlib
-        import sys
-        if 'app.main_db' in sys.modules:
-            del sys.modules['app.main_db']
-        if 'app.tenant_db' in sys.modules:
-            del sys.modules['app.tenant_db']
-
+        # The app modules are not reloaded: conftest.py points each test at its own data folder, and
+        # reloading only some modules leaves other modules holding a stale main database path.
         from app import create_app
         from app import tenant_db, main_db
         cls.db = tenant_db

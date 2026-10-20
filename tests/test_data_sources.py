@@ -1,6 +1,7 @@
 """Tests for unified data source management (local, hosted URL, API)."""
 import pytest
 import json
+import re
 import tempfile
 import os
 from pathlib import Path
@@ -50,12 +51,19 @@ def auth_user(client, app):
         tid, err = create_tenant("Test Business", "testuser", "test@example.com", "password123")
         assert not err
 
+        # Log in with the CSRF token from the login form, as a browser would
+        page = client.get("/login").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
         response = client.post(
             "/login",
-            data={"username": "testuser", "password": "password123"},
+            data={"username": "testuser", "password": "password123", "csrf_token": token},
             follow_redirects=True
         )
         assert response.status_code == 200
+        # The app's own AJAX calls send the page's CSRF token in this header; the test client does the same.
+        meta = re.search(r'name="csrf-token" content="([^"]+)"', response.get_data(as_text=True))
+        assert meta, "logged-in page should expose a CSRF token"
+        client.environ_base["HTTP_X_CSRFTOKEN"] = meta.group(1)
 
     return tid
 

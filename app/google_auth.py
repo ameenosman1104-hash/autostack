@@ -14,14 +14,17 @@ bp = Blueprint("google_auth", __name__)
 def configured():
     return all(current_app.config.get(k) for k in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"))
 
+def ensure_identity_table(conn):
+    # Additive identity mapping; existing account rows/passwords remain untouched.
+    conn.execute("CREATE TABLE IF NOT EXISTS google_identities (subject TEXT PRIMARY KEY, tenant_id INTEGER NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE, created_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+    conn.commit()
+
 def init_google(app):
     for key in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"):
         app.config[key] = os.environ.get(key, "")
-    # Additive identity mapping; existing account rows/passwords remain untouched.
     conn = get_conn()
     try:
-        conn.execute("CREATE TABLE IF NOT EXISTS google_identities (subject TEXT PRIMARY KEY, tenant_id INTEGER NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE, created_at TEXT DEFAULT CURRENT_TIMESTAMP)")
-        conn.commit()
+        ensure_identity_table(conn)
     finally:
         conn.close()
     from authlib.integrations.flask_client import OAuth

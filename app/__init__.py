@@ -8,14 +8,31 @@ login_manager.login_message = "Please log in to access this page."
 login_manager.login_message_category = "warning"
 
 
+def _env_flag(name, default=False):
+    """Read a true/false environment setting. Anything other than a known value stops startup."""
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    value = raw.strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"{name} must be one of: 1, 0, true, false, yes, no, on, off (got {raw!r})")
+
+
 def create_app():
     app = Flask(__name__)
     from .session_key import load_session_key
     app.secret_key = load_session_key()
-    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+    # Set SESSION_COOKIE_SECURE=1 on any HTTPS deployment. Browsers will not send a secure cookie over
+    # plain HTTP, so local HTTP development must leave it off.
+    secure_cookies = _env_flag("SESSION_COOKIE_SECURE")
+    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                      SESSION_COOKIE_SECURE=secure_cookies, REMEMBER_COOKIE_SECURE=secure_cookies)
 
     from flask_wtf.csrf import CSRFProtect
-    CSRFProtect(app)
+    csrf = CSRFProtect(app)
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
     login_manager.init_app(app)
 
@@ -76,6 +93,12 @@ def create_app():
     app.register_blueprint(local_file_sync_bp)
     app.register_blueprint(data_sources_bp)
     app.register_blueprint(ai_insights_bp)
+
+    # Device upload endpoints authenticate only with the X-Pairing-Token header and never read the
+    # session cookie, so a cross-site request cannot act on a browser login through them. These two
+    # views are the only exemptions. Browser endpoints (including pairing) stay protected by CSRF.
+    csrf.exempt(app.view_functions["local_file_sync_api.upload_snapshot"])
+    csrf.exempt(app.view_functions["data_sources_api.upload_snapshot"])
 
     # Expose enumerate to Jinja2 templates
     app.jinja_env.globals['enumerate'] = enumerate

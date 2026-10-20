@@ -4,18 +4,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.tenant_db import add_customer, get_customer, search_customers
 from app.db_migrations import migrate_tenant_db
 
-results = type('R', (), {'passed': 0, 'failed': 0, 'errors': []})()
-
-def test(name, fn):
-    try:
-        fn()
-        results.passed += 1
-        print(f"[OK] {name}")
-    except Exception as e:
-        results.failed += 1
-        results.errors.append((name, str(e)))
-        print(f"[FAIL] {name}: {e}")
-
 class DB:
     def __init__(self, p=""): self.t=tempfile.mkdtemp(p); self.o=None
     def setup(self, tid):
@@ -97,17 +85,20 @@ def t6():
         # DB returns all fields, but routes filter in JSON response
     finally: d.cleanup()
 
-print("="*60)
-print("Route-Level Tenant Isolation Tests")
-print("="*60 + "\n")
-test("JSON fields present", t1)
-test("Get isolation", t2)
-test("Search name isolation", t3)
-test("Search phone isolation", t4)
-test("Search vehicle isolation", t5)
-test("Database fields available", t6)
-print(f"\n{'='*60}\nResults: {results.passed} passed, {results.failed} failed\n{'='*60}")
-if results.errors:
-    print("\nFailed:")
-    for n,e in results.errors: print(f"  - {n}: {e}")
-sys.exit(0 if results.failed==0 else 1)
+def test_json_fields_present():
+    t1()
+
+def test_get_isolation():
+    t2()
+
+def test_search_name_isolation():
+    t3()
+
+def test_search_phone_isolation():
+    t4()
+
+def test_search_vehicle_isolation():
+    t5()
+
+def test_database_fields_available():
+    t6()

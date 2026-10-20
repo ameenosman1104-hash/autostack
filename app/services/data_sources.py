@@ -234,11 +234,14 @@ def lookup_tenant_by_token(pairing_token):
 
 
 def disconnect_source(tid, source_id):
-    """Revoke/disconnect a data source."""
+    """Revoke/disconnect a data source. Its device token stops resolving as well."""
     from ..tenant_db import get_conn
+    from ..main_db import get_conn as get_main_conn
 
     conn = get_conn(tid)
     try:
+        row = conn.execute("SELECT pairing_token_hash FROM data_source_connections WHERE id = ?",
+                           (source_id,)).fetchone()
         conn.execute("""
             UPDATE data_source_connections
             SET status = 'revoked', updated_at = datetime('now')
@@ -246,10 +249,19 @@ def disconnect_source(tid, source_id):
         """, (source_id,))
         conn.commit()
         conn.close()
-        return True
     except:
         conn.close()
         return False
+
+    if row and row[0]:
+        main_conn = get_main_conn()
+        try:
+            main_conn.execute("DELETE FROM local_file_pairing_tokens WHERE token_hash = ? AND tenant_id = ?",
+                              (row[0], tid))
+            main_conn.commit()
+        finally:
+            main_conn.close()
+    return True
 
 
 def update_sync_status(tid, source_id, status, error=None):

@@ -12,7 +12,7 @@ import pytest
 from tests.test_supplier_invoices_phase1 import app, client, auth_headers
 from tests.test_supplier_invoices_phase2 import document, output, PDF
 from app.tenant_db import get_conn
-from app.db_migrations import migrate_tenant_db
+from app.db_migrations import migrate_tenant_db, LATEST_SCHEMA_VERSION
 
 
 @pytest.fixture
@@ -259,7 +259,7 @@ def test_migration_23_preserves_existing_extraction_and_is_repeatable(client,inv
     conn.commit();conn.close()
     for _ in range(2):
         conn=get_conn(10)
-        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]==25
+        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]==LATEST_SCHEMA_VERSION
         conn.close()
     assert snapshot()==before
 

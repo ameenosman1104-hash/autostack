@@ -16,11 +16,7 @@ class ExcelLiveSyncTests(unittest.TestCase):
         })
         cls.env.start()
 
-        import sys
-        for mod in list(sys.modules.keys()):
-            if mod.startswith('app'):
-                del sys.modules[mod]
-
+        # The app modules are not reloaded: conftest.py points each test at its own data folder.
         from app import create_app
         from app import tenant_db, main_db
         cls.db = tenant_db
