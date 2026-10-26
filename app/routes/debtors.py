@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from ..tenant_db import (get_all_debtors, get_debtor, get_debtor_by_name,
                           add_debtor, update_debtor, delete_debtor,
-                          delete_all_debtors, delete_debtors_by_ids,
+                          delete_all_debtors, delete_debtors_by_ids, DebtorDeletionBlocked, shop_business_today,
                           next_reminder, save_setting, get_all_settings, get_setting,
                           add_payment, get_payment_history, get_debtor_payment_summary,
                           add_reminder_sent, get_reminder_history, pause_reminders, resume_reminders,
@@ -82,6 +82,7 @@ def index(filter="active"):
             d["reminder_tooltip"] = f"Default: {default_reminder_days} days from purchase"
 
     return render_template("debtors.html", debtors=rows, filter=filter,
+                           shop_today=shop_business_today(tid),
                            total_owed=total_owed, due_count=due_count,
                            overdue_count=overdue_count,
                            partially_paid_count=partially_paid_count,
@@ -155,8 +156,11 @@ def mark_paid(did):
 @debtors_bp.route("/<int:did>/delete", methods=["POST"])
 @login_required
 def delete(did):
-    delete_debtor(current_user.tenant_id, did)
-    flash("Debtor deleted.", "success")
+    try:
+        delete_debtor(current_user.tenant_id, did)
+        flash("Debtor deleted.", "success")
+    except DebtorDeletionBlocked as exc:
+        flash(str(exc), "warning")
     return redirect(url_for("debtors.index"))
 
 
@@ -816,8 +820,11 @@ def sync_from_file():
 @debtors_bp.route("/delete-all", methods=["POST"])
 @login_required
 def bulk_delete_all():
-    delete_all_debtors(current_user.tenant_id)
-    return jsonify(ok=True, msg="All debtors deleted.")
+    deleted, kept = delete_all_debtors(current_user.tenant_id)
+    msg = f"{deleted} debtor(s) deleted."
+    if kept:
+        msg += (f" {kept} debtor(s) with recorded payments were kept, so payment history is not lost.")
+    return jsonify(ok=True, msg=msg)
 
 
 @debtors_bp.route("/delete-selected", methods=["POST"])
@@ -827,7 +834,10 @@ def bulk_delete_selected():
     ids  = [int(i) for i in data.get("ids", []) if str(i).isdigit()]
     if not ids:
         return jsonify(ok=False, msg="No debtors selected.")
-    count = delete_debtors_by_ids(current_user.tenant_id, ids)
+    try:
+        count = delete_debtors_by_ids(current_user.tenant_id, ids)
+    except DebtorDeletionBlocked as exc:
+        return jsonify(ok=False, msg=str(exc))
     return jsonify(ok=True, msg=f"{count} debtor(s) deleted.")
 
 

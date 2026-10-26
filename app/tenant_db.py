@@ -445,30 +445,73 @@ def set_default_reminder_mode(tid, did):
         return None
 
 
+def shop_business_today(tid):
+    """Today's business date in the shop's timezone, for pre-filling forms."""
+    conn = get_conn(tid)
+    try:
+        return shop_time.today_business_date(conn)
+    finally:
+        conn.close()
+
+
+class DebtorDeletionBlocked(ValueError):
+    """A debtor with payment history cannot be deleted: deleting it would also delete those payments."""
+
+
+_PAID_HISTORY_MESSAGE = ("This debtor has recorded payments, so it cannot be deleted without losing payment history. "
+                         "Mark the debt as paid or pause its reminders instead.")
+
+
 def delete_debtor(tid, did):
     conn = get_conn(tid)
-    conn.execute("DELETE FROM debtors WHERE id=?", (did,))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute("SELECT 1 FROM payment_history WHERE debtor_id=? LIMIT 1", (did,)).fetchone():
+            raise DebtorDeletionBlocked(_PAID_HISTORY_MESSAGE)
+        conn.execute("DELETE FROM debtors WHERE id=?", (did,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def delete_all_debtors(tid):
+    """Delete every debtor that has no payment history. Returns (deleted, kept), where kept had payments."""
     conn = get_conn(tid)
-    conn.execute("DELETE FROM debtors")
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        kept = conn.execute("""SELECT COUNT(*) FROM debtors WHERE id IN
+                               (SELECT debtor_id FROM payment_history)""").fetchone()[0]
+        cur = conn.execute("DELETE FROM debtors WHERE id NOT IN (SELECT debtor_id FROM payment_history)")
+        conn.commit()
+        return cur.rowcount, kept
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def delete_debtors_by_ids(tid, ids):
+    """Delete the selected debtors, or none at all if any of them has payment history."""
     if not ids:
         return 0
     conn = get_conn(tid)
-    placeholders = ",".join("?" * len(ids))
-    cur = conn.execute(f"DELETE FROM debtors WHERE id IN ({placeholders})", ids)
-    count = cur.rowcount
-    conn.commit()
-    conn.close()
-    return count
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        placeholders = ",".join("?" * len(ids))
+        if conn.execute(f"SELECT 1 FROM payment_history WHERE debtor_id IN ({placeholders}) LIMIT 1", ids).fetchone():
+            raise DebtorDeletionBlocked(_PAID_HISTORY_MESSAGE + " Remove those debtors from the selection and try again.")
+        cur = conn.execute(f"DELETE FROM debtors WHERE id IN ({placeholders})", ids)
+        conn.commit()
+        return cur.rowcount
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def next_reminder(debtor, tid=None):

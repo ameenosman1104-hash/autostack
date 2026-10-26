@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LATEST_SCHEMA_VERSION = 30
+LATEST_SCHEMA_VERSION = 31
 MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -249,6 +249,114 @@ TECHNICIAN_STATEMENTS = (
         updated_at TEXT DEFAULT (datetime('now'))
     )""",
     "CREATE INDEX IF NOT EXISTS idx_technicians_active ON technicians(is_active, name)",
+)
+
+
+# Migration 31: Daily Cash-Up records. Money is stored as integer cents. A closed day is permanent: its cash-up,
+# its movements and its source lines cannot be changed or deleted, and nothing new can be written to that date.
+CASHUP_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS cash_ups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_date TEXT NOT NULL UNIQUE
+            CHECK (business_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+        opening_float_cents INTEGER NOT NULL DEFAULT 0 CHECK (opening_float_cents >= 0),
+        counted_cash_cents INTEGER CHECK (counted_cash_cents IS NULL OR counted_cash_cents >= 0),
+        cash_sales_cents INTEGER, card_sales_cents INTEGER, eft_sales_cents INTEGER,
+        credit_sales_cents INTEGER, total_sales_cents INTEGER,
+        cash_receipts_cents INTEGER, card_receipts_cents INTEGER, eft_receipts_cents INTEGER,
+        other_receipts_cents INTEGER,
+        cash_added_cents INTEGER, cash_removed_cents INTEGER, expenses_cents INTEGER, paid_out_cents INTEGER,
+        expected_cash_cents INTEGER, variance_cents INTEGER,
+        opened_by TEXT NOT NULL DEFAULT '',
+        opened_at_utc TEXT NOT NULL,
+        closed_by TEXT,
+        closed_at_utc TEXT,
+        notes TEXT NOT NULL DEFAULT '',
+        CHECK (status = 'closed' OR (closed_at_utc IS NULL AND counted_cash_cents IS NULL)),
+        CHECK (status = 'open' OR (closed_at_utc IS NOT NULL AND counted_cash_cents IS NOT NULL
+                                   AND expected_cash_cents IS NOT NULL
+                                   AND variance_cents = counted_cash_cents - expected_cash_cents))
+    )""",
+    """CREATE TABLE IF NOT EXISTS cash_movements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_date TEXT NOT NULL
+            CHECK (business_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+        kind TEXT NOT NULL CHECK (kind IN ('cash_added', 'cash_removed', 'expense', 'paid_out')),
+        amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+        reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+        actor TEXT NOT NULL CHECK (length(trim(actor)) > 0),
+        recorded_at_utc TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS cash_up_lines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cash_up_id INTEGER NOT NULL REFERENCES cash_ups(id),
+        business_date TEXT NOT NULL,
+        source_type TEXT NOT NULL CHECK (source_type IN ('invoice', 'payment')),
+        source_id INTEGER NOT NULL,
+        category TEXT NOT NULL CHECK (category IN (
+            'cash_sale', 'card_sale', 'eft_sale', 'credit_sale',
+            'cash_receipt', 'card_receipt', 'eft_receipt', 'other_receipt')),
+        amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+        -- 1 when the source's business date is an earlier, closed day: a late transaction counted in this cash-up.
+        is_late INTEGER NOT NULL DEFAULT 0 CHECK (is_late IN (0, 1)),
+        UNIQUE (source_type, source_id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_cash_movements_date ON cash_movements(business_date)",
+    "CREATE INDEX IF NOT EXISTS idx_cash_up_lines_date ON cash_up_lines(business_date)",
+    "CREATE TRIGGER IF NOT EXISTS cash_ups_closed_no_update BEFORE UPDATE ON cash_ups WHEN OLD.status = 'closed' "
+    "BEGIN SELECT RAISE(ABORT, 'a closed cash-up cannot be changed'); END",
+    "CREATE TRIGGER IF NOT EXISTS cash_ups_closed_no_delete BEFORE DELETE ON cash_ups WHEN OLD.status = 'closed' "
+    "BEGIN SELECT RAISE(ABORT, 'a closed cash-up cannot be deleted'); END",
+    "CREATE TRIGGER IF NOT EXISTS cash_up_lines_no_update BEFORE UPDATE ON cash_up_lines "
+    "BEGIN SELECT RAISE(ABORT, 'cash-up source lines are permanent'); END",
+    "CREATE TRIGGER IF NOT EXISTS cash_up_lines_no_delete BEFORE DELETE ON cash_up_lines "
+    "BEGIN SELECT RAISE(ABORT, 'cash-up source lines are permanent'); END",
+    "CREATE TRIGGER IF NOT EXISTS cash_up_lines_only_while_open BEFORE INSERT ON cash_up_lines "
+    "WHEN NOT EXISTS (SELECT 1 FROM cash_ups WHERE id = NEW.cash_up_id AND status = 'open') "
+    "BEGIN SELECT RAISE(ABORT, 'source lines can only be added while the cash-up is open'); END",
+    "CREATE TRIGGER IF NOT EXISTS cash_movements_no_update BEFORE UPDATE ON cash_movements "
+    "BEGIN SELECT RAISE(ABORT, 'cash movements are permanent'); END",
+    "CREATE TRIGGER IF NOT EXISTS cash_movements_no_delete BEFORE DELETE ON cash_movements "
+    "BEGIN SELECT RAISE(ABORT, 'cash movements are permanent'); END",
+    "CREATE TRIGGER IF NOT EXISTS cash_movements_only_while_open BEFORE INSERT ON cash_movements "
+    "WHEN NOT EXISTS (SELECT 1 FROM cash_ups WHERE business_date = NEW.business_date AND status = 'open') "
+    "BEGIN SELECT RAISE(ABORT, 'cash movements need an open cash-up for that business date'); END",
+    # Late-line rules. A line is late only when its source is dated to a closed day, and it is recorded in a
+    # different, open cash-up. Its business date is kept as it was; it is never moved onto the cash-up's date.
+    "CREATE TRIGGER IF NOT EXISTS cash_up_lines_late_flag BEFORE INSERT ON cash_up_lines "
+    "WHEN NEW.is_late <> (CASE WHEN NEW.business_date = (SELECT business_date FROM cash_ups WHERE id = NEW.cash_up_id) "
+    "THEN 0 ELSE 1 END) "
+    "BEGIN SELECT RAISE(ABORT, 'the late flag does not match the business date'); END",
+    "CREATE TRIGGER IF NOT EXISTS cash_up_lines_late_needs_closed_day BEFORE INSERT ON cash_up_lines "
+    "WHEN NEW.is_late = 1 AND NOT EXISTS (SELECT 1 FROM cash_ups WHERE business_date = NEW.business_date AND status = 'closed') "
+    "BEGIN SELECT RAISE(ABORT, 'a late line must come from a closed business date'); END",
+    # Counted money is permanent. A sale or payment that appears in any cash-up cannot be changed or removed, so an
+    # open or closed cash-up can never drift from its sources. Sources that are not yet counted stay editable.
+    "CREATE TRIGGER IF NOT EXISTS invoices_counted_no_update BEFORE UPDATE ON invoices "
+    "WHEN EXISTS (SELECT 1 FROM cash_up_lines WHERE source_type = 'invoice' AND source_id = OLD.id) "
+    "BEGIN SELECT RAISE(ABORT, 'this sale is in a cash-up and cannot be changed'); END",
+    "CREATE TRIGGER IF NOT EXISTS invoices_counted_no_delete BEFORE DELETE ON invoices "
+    "WHEN EXISTS (SELECT 1 FROM cash_up_lines WHERE source_type = 'invoice' AND source_id = OLD.id) "
+    "BEGIN SELECT RAISE(ABORT, 'this sale is in a cash-up and cannot be deleted'); END",
+    "CREATE TRIGGER IF NOT EXISTS payment_history_counted_no_update BEFORE UPDATE ON payment_history "
+    "WHEN EXISTS (SELECT 1 FROM cash_up_lines WHERE source_type = 'payment' AND source_id = OLD.id) "
+    "BEGIN SELECT RAISE(ABORT, 'this payment is in a cash-up and cannot be changed'); END",
+    "CREATE TRIGGER IF NOT EXISTS payment_history_counted_no_delete BEFORE DELETE ON payment_history "
+    "WHEN EXISTS (SELECT 1 FROM cash_up_lines WHERE source_type = 'payment' AND source_id = OLD.id) "
+    "BEGIN SELECT RAISE(ABORT, 'this payment is in a cash-up and cannot be deleted'); END",
+    # Late transactions: sales and payments dated to a closed day that no cash-up has counted yet. Read-only.
+    "CREATE VIEW IF NOT EXISTS cash_up_late_sources AS "
+    "SELECT 'invoice' AS source_type, i.id AS source_id, i.business_date AS business_date, "
+    "i.total AS amount, i.payment_method AS method, i.recorded_at_utc AS recorded_at_utc "
+    "FROM invoices i WHERE i.status = 'completed' AND i.business_date IS NOT NULL "
+    "AND EXISTS (SELECT 1 FROM cash_ups c WHERE c.business_date = i.business_date AND c.status = 'closed') "
+    "AND NOT EXISTS (SELECT 1 FROM cash_up_lines l WHERE l.source_type = 'invoice' AND l.source_id = i.id) "
+    "UNION ALL "
+    "SELECT 'payment', p.id, p.business_date, p.amount_paid, p.payment_method, p.recorded_at_utc "
+    "FROM payment_history p WHERE p.business_date IS NOT NULL "
+    "AND EXISTS (SELECT 1 FROM cash_ups c WHERE c.business_date = p.business_date AND c.status = 'closed') "
+    "AND NOT EXISTS (SELECT 1 FROM cash_up_lines l WHERE l.source_type = 'payment' AND l.source_id = p.id)",
 )
 
 
@@ -1065,6 +1173,16 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 30 failed: {e}")
+
+        # Migration 31: Daily Cash-Up records (new tables and guards only; existing rows are not touched).
+        if get_schema_version(conn) < 31:
+            try:
+                for statement in CASHUP_STATEMENTS:
+                    conn.execute(statement)
+                mark_migration_applied(conn, 31, "Create Daily Cash-Up records and closed-day guards")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 31 failed: {e}")
 
         if conn.execute("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("Foreign key violations; migration rolled back")

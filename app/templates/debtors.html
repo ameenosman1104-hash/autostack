@@ -505,7 +505,8 @@ window.showPaymentQuickRecord = function(did, name, amountOwed) {
   document.getElementById('qpName').textContent = name;
   document.getElementById('qpRemaining').textContent = parseFloat(amountOwed).toFixed(2);
   document.getElementById('qpAmount').value = '';
-  document.getElementById('qpDate').valueAsDate = new Date();
+  // The shop's business date, not the device's: a device set to another timezone must not date the payment wrongly.
+  document.getElementById('qpDate').value = '{{ shop_today }}';
   // One key per opening of this form, so a double tap sends the same payment twice and the server records it once.
   const paymentKey = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 

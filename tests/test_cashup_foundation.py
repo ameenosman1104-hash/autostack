@@ -157,7 +157,7 @@ def test_a_key_is_scoped_to_its_own_tenant(shop):
 
 def test_migration_30_keeps_history_as_it_was(tmp_path, monkeypatch):
     from app.db_migrations import migrate_tenant_db, LATEST_SCHEMA_VERSION
-    assert LATEST_SCHEMA_VERSION == 30
+    assert LATEST_SCHEMA_VERSION >= 30
     monkeypatch.setenv("AUTOSTACK_DATA_DIR", str(tmp_path))
     path = tmp_path / "tenants" / "77.db"
     path.parent.mkdir(parents=True)
@@ -175,7 +175,7 @@ def test_migration_30_keeps_history_as_it_was(tmp_path, monkeypatch):
     migrate_tenant_db(77, str(path))  # migration 30 runs again on the existing data
 
     conn = sqlite3.connect(path)
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 30
+    assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = 30").fetchone()[0] == 1
     old_payment = conn.execute("SELECT amount_paid, payment_date, business_date, recorded_at_utc, idempotency_key "
                                "FROM payment_history").fetchone()
     old_invoice = conn.execute("SELECT sale_date, total, business_date, recorded_at_utc FROM invoices").fetchone()
