@@ -2,6 +2,8 @@
 import sqlite3, os
 from datetime import datetime, date, timedelta
 
+from .services import shop_time
+
 
 def _db_path(tenant_id):
     try:
@@ -758,14 +760,26 @@ def auto_create_po_if_needed(tid, triggered_products=None):
 
 # ── Payment History & Collections ────────────────────────────────────────────
 
-def add_payment(tid, debtor_id, amount_paid, payment_date=None, payment_method="cash", notes="", recorded_by=""):
+def add_payment(tid, debtor_id, amount_paid, payment_date=None, payment_method="cash", notes="", recorded_by="",
+                idempotency_key=None):
+    """Record a payment against a debtor.
+
+    With an idempotency_key, a repeat submission (for example a double tap) changes nothing and returns True,
+    because that payment is already recorded. The check runs before the balance check, so a repeat after the
+    debt is cleared is not reported as an overpayment.
+    """
     from .validation import payment_amount
     amount_paid = payment_amount(amount_paid)
-    payment_date = payment_date or date.today().isoformat()
-    date.fromisoformat(payment_date)
+    key = str(idempotency_key or "").strip() or None
     conn = get_conn(tid)
     try:
         conn.execute("BEGIN IMMEDIATE")
+        if key and conn.execute("SELECT 1 FROM payment_history WHERE idempotency_key=?", (key,)).fetchone():
+            conn.rollback()
+            return True
+        payment_date = payment_date or shop_time.today_business_date(conn)
+        date.fromisoformat(payment_date)
+        recorded_at_utc = shop_time.utc_timestamp()
         row = conn.execute("SELECT * FROM debtors WHERE id=?", (debtor_id,)).fetchone()
         if not row:
             raise ValueError("Debtor not found")
@@ -774,8 +788,10 @@ def add_payment(tid, debtor_id, amount_paid, payment_date=None, payment_method="
             raise ValueError("Payment exceeds the outstanding balance")
         total_paid = round(float(debtor.get("total_paid_to_date") or 0) + amount_paid, 2)
         remaining = round(float(debtor["amount_owed"]) - total_paid, 2)
-        conn.execute("INSERT INTO payment_history (debtor_id,amount_paid,payment_date,payment_method,notes,recorded_by) VALUES (?,?,?,?,?,?)",
-                     (debtor_id,amount_paid,payment_date,payment_method,notes,recorded_by))
+        conn.execute("""INSERT INTO payment_history (debtor_id,amount_paid,payment_date,payment_method,notes,recorded_by,
+                        business_date,recorded_at_utc,idempotency_key) VALUES (?,?,?,?,?,?,?,?,?)""",
+                     (debtor_id,amount_paid,payment_date,payment_method,notes,recorded_by,
+                      payment_date,recorded_at_utc,key))
         conn.execute("UPDATE debtors SET total_paid_to_date=?,last_payment_date=?,status=?,is_paid=? WHERE id=?",
                      (total_paid,payment_date,"PAID" if remaining <= 0 else "PARTIALLY_PAID",int(remaining <= 0),debtor_id))
         conn.commit()
@@ -1539,8 +1555,9 @@ def complete_sale(tid, idempotency_key, items,
             customer = None
 
         # ── 4. Validate sale_date ──
+        recorded_at_utc = shop_time.utc_timestamp()
         if sale_date is None:
-            sale_date = date.today().isoformat()
+            sale_date = shop_time.today_business_date(conn)
         else:
             try:
                 date.fromisoformat(sale_date)
@@ -1697,13 +1714,14 @@ def complete_sale(tid, idempotency_key, items,
                (invoice_number, idempotency_key, customer_id, debtor_id,
                 sale_date, status, subtotal, discount, tax, total,
                 payment_method, payment_status, notes, created_by,
-                created_at, updated_at)
+                created_at, updated_at, business_date, recorded_at_utc)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, datetime('now'), datetime('now'))""",
+                       ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?)""",
             (invoice_number, idempotency_key, customer_id, None,
              sale_date, 'completed', float(subtotal_decimal), float(discount_decimal),
              float(tax_decimal), float(total_decimal),
-             payment_method, payment_status, notes, created_by)
+             payment_method, payment_status, notes, created_by,
+             sale_date, recorded_at_utc)
         ).lastrowid
 
         # ── 12. Create invoice items ──

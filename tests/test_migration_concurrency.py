@@ -90,8 +90,8 @@ def saved_files(path):
 
 def assert_current(path):
     with sqlite3.connect(path) as conn:
-        assert migrations.get_schema_version(conn) == 29
-        assert conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall() == [(v,) for v in range(1,30)]
+        assert migrations.get_schema_version(conn) == 30
+        assert conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall() == [(v,) for v in range(1,31)]
         assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
 

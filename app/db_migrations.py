@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LATEST_SCHEMA_VERSION = 29
+LATEST_SCHEMA_VERSION = 30
 MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -1043,6 +1043,28 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 29 failed: {e}")
+
+        # Migration 30: time and idempotency for money records. Additive columns only. Existing rows keep NULL
+        # here: their timestamps are not guessed or rewritten.
+        if get_schema_version(conn) < 30:
+            try:
+                def add_missing(table, column, definition):
+                    columns = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                    if column not in columns:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                add_missing("invoices", "business_date", "TEXT")
+                add_missing("invoices", "recorded_at_utc", "TEXT")
+                add_missing("payment_history", "business_date", "TEXT")
+                add_missing("payment_history", "recorded_at_utc", "TEXT")
+                add_missing("payment_history", "idempotency_key", "TEXT")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_business_date ON invoices(business_date)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_payment_history_business_date ON payment_history(business_date)")
+                conn.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_history_idempotency
+                                ON payment_history(idempotency_key) WHERE idempotency_key IS NOT NULL""")
+                mark_migration_applied(conn, 30, "Add business date, UTC record time and payment idempotency")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 30 failed: {e}")
 
         if conn.execute("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("Foreign key violations; migration rolled back")

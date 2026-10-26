@@ -332,7 +332,7 @@ def test_migration_27_adds_complaint_and_is_repeatable(tmp_path, monkeypatch):
     migrate_tenant_db(30, str(path))
     import sqlite3
     conn = sqlite3.connect(path)
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 29
+    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 30
     conn.execute("DELETE FROM schema_migrations WHERE version>=27")
     conn.commit()
     conn.close()

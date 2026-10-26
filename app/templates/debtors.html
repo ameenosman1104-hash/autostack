@@ -506,6 +506,8 @@ window.showPaymentQuickRecord = function(did, name, amountOwed) {
   document.getElementById('qpRemaining').textContent = parseFloat(amountOwed).toFixed(2);
   document.getElementById('qpAmount').value = '';
   document.getElementById('qpDate').valueAsDate = new Date();
+  // One key per opening of this form, so a double tap sends the same payment twice and the server records it once.
+  const paymentKey = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 
   const form = document.getElementById('quickPaymentForm');
   form.onsubmit = function(e) {
@@ -523,6 +525,7 @@ window.showPaymentQuickRecord = function(did, name, amountOwed) {
     data.append('amount', amount);
     data.append('payment_date', date);
     data.append('payment_method', method);
+    data.append('idempotency_key', paymentKey);
 
     fetch(`/debtors/${did}/record-payment`, {
       method: 'POST',

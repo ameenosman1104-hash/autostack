@@ -167,9 +167,11 @@ def record_payment(did):
     try:
         from ..validation import payment_amount
         amount = payment_amount(request.form.get("amount", 0))
-        payment_date = request.form.get("payment_date", date.today().isoformat())
+        # No date sent means today's business date in the shop's timezone (chosen by add_payment).
+        payment_date = request.form.get("payment_date") or None
         payment_method = request.form.get("payment_method", "cash")
         notes = request.form.get("notes", "").strip()
+        idempotency_key = request.form.get("idempotency_key", "").strip()[:100]
 
         if amount <= 0:
             flash("Payment amount must be greater than 0.", "danger")
@@ -182,7 +184,8 @@ def record_payment(did):
             payment_date=payment_date,
             payment_method=payment_method,
             notes=notes,
-            recorded_by=current_user.username
+            recorded_by=current_user.username,
+            idempotency_key=idempotency_key or None
         )
         flash(f"Payment of R {amount:.2f} recorded successfully.", "success")
     except Exception as e:

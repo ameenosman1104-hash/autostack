@@ -273,7 +273,7 @@ def test_migration_28_adds_the_history_table_and_keeps_data(tmp_path, monkeypatc
     conn.close()
     migrate_tenant_db(40, str(path))
     conn = sqlite3.connect(path)
-    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 29
+    assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == LATEST_SCHEMA_VERSION == 30
     assert conn.execute("SELECT COUNT(*) FROM customers WHERE name='Keep me'").fetchone()[0] == 1
     assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     conn.close()
