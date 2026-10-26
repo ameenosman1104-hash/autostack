@@ -540,6 +540,10 @@
                 <input type="text" id="productSearch" placeholder="Search by brand, size, code...">
             </div>
             <div class="products-grid" id="productsGrid"></div>
+            <div class="search-panel" style="margin-top: 12px;">
+                <input type="text" id="serviceSearch" placeholder="Services: wheel alignment, balancing, fitment...">
+            </div>
+            <div class="products-grid" id="servicesGrid"></div>
         </div>
 
         <div class="sidebar">
@@ -654,6 +658,7 @@
             `).join("");
         }
 
+        // Basket lines are keyed by type, so a product and a service with the same id never collide.
         function addToBasket(productId, name, price, stock) {
             console.log('addToBasket called - productId:', productId, 'name:', name, 'stock:', stock);
 
@@ -662,13 +667,14 @@
                 return;
             }
 
-            if (basket.has(productId)) {
-                const item = basket.get(productId);
+            const key = 'p:' + productId;
+            if (basket.has(key)) {
+                const item = basket.get(key);
                 if (item.quantity < stock) {
                     item.quantity++;
                 }
             } else {
-                basket.set(productId, { name, price, quantity: 1, productId });
+                basket.set(key, { key, name, price, quantity: 1, productId, kind: 'product', stock });
             }
 
             console.log('After add, basket.size:', basket.size);
@@ -676,25 +682,62 @@
             updateTotal();
         }
 
-        function removeFromBasket(productId) {
-            basket.delete(productId);
+        // Services are not physical stock, so they have no stock limit and never change stock levels.
+        function addServiceToBasket(serviceId, name, price) {
+            const key = 's:' + serviceId;
+            if (basket.has(key)) {
+                basket.get(key).quantity++;
+            } else {
+                basket.set(key, { key, name, price, quantity: 1, productId: serviceId, kind: 'service', stock: Infinity });
+            }
             renderBasket();
             updateTotal();
         }
 
-        function changeQty(productId, delta) {
-            const item = basket.get(productId);
+        function removeFromBasket(key) {
+            basket.delete(key);
+            renderBasket();
+            updateTotal();
+        }
+
+        function changeQty(key, delta) {
+            const item = basket.get(key);
             if (!item) return;
 
             const newQty = item.quantity + delta;
             if (newQty <= 0) {
-                removeFromBasket(productId);
+                removeFromBasket(key);
             } else if (newQty <= item.stock) {
                 item.quantity = newQty;
                 renderBasket();
                 updateTotal();
             }
         }
+
+        async function loadServices() {
+            const res = await fetch("/pos/services");
+            window.posServices = res.ok ? await res.json() : [];
+            renderServices();
+        }
+
+        function renderServices() {
+            const term = (document.getElementById("serviceSearch").value || "").trim().toLowerCase();
+            const grid = document.getElementById("servicesGrid");
+            grid.innerHTML = "";
+            (window.posServices || []).forEach((s) => {
+                if (term && !s.name.toLowerCase().includes(term)) return;
+                const card = document.createElement("div");
+                card.className = "product-card";
+                card.onclick = () => addServiceToBasket(s.id, s.name, Number(s.default_price));
+                const name = document.createElement("div"); name.className = "product-name"; name.textContent = s.name;
+                const kind = document.createElement("div"); kind.className = "product-stock"; kind.textContent = "Service";
+                const price = document.createElement("div"); price.className = "product-price"; price.textContent = "R" + Number(s.default_price).toFixed(2);
+                card.append(name, kind, price);
+                grid.appendChild(card);
+            });
+        }
+        document.getElementById("serviceSearch").addEventListener("input", renderServices);
+        loadServices();
 
         function renderBasket() {
             const container = document.getElementById("basketItems");
@@ -711,11 +754,11 @@
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
                         <div style="display: flex; align-items: center; gap: 4px;">
-                            <button type="button" onclick="changeQty(${item.productId}, -1)" style="width: 24px; height: 24px; padding: 0; border: 1px solid #ddd; background: #f5f5f5; cursor: pointer; border-radius: 3px; font-size: 12px;">−</button>
+                            <button type="button" onclick="changeQty('${item.key}', -1)" style="width: 24px; height: 24px; padding: 0; border: 1px solid #ddd; background: #f5f5f5; cursor: pointer; border-radius: 3px; font-size: 12px;">−</button>
                             <span style="width: 30px; text-align: center; font-weight: 500;">${item.quantity}</span>
-                            <button type="button" onclick="changeQty(${item.productId}, 1)" style="width: 24px; height: 24px; padding: 0; border: 1px solid #ddd; background: #f5f5f5; cursor: pointer; border-radius: 3px; font-size: 12px;">+</button>
+                            <button type="button" onclick="changeQty('${item.key}', 1)" style="width: 24px; height: 24px; padding: 0; border: 1px solid #ddd; background: #f5f5f5; cursor: pointer; border-radius: 3px; font-size: 12px;">+</button>
                         </div>
-                        <button type="button" class="basket-item-remove" onclick="removeFromBasket(${item.productId})" style="background: #f8f8f8; color: #c0392b; border: 1px solid #ddd; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; font-weight: 500;">Remove</button>
+                        <button type="button" class="basket-item-remove" onclick="removeFromBasket('${item.key}')" style="background: #f8f8f8; color: #c0392b; border: 1px solid #ddd; padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 12px; font-weight: 500;">Remove</button>
                     </div>
                 </div>
             `).join("");
@@ -847,7 +890,7 @@
                 }
 
                 const items = Array.from(basket.values()).map(item => ({
-                    type: "product",
+                    type: item.kind,
                     id: item.productId,
                     quantity: item.quantity
                 }));
@@ -990,6 +1033,13 @@
                     document.getElementById('newCustomerEmail').value = '';
                     document.getElementById('newCustomerRegistration').value = '';
                     showStatus(`Customer '${data.customer.name}' created and selected`, 'success');
+                } else if (data.existing_customer) {
+                    // The number already belongs to a customer: offer to select them rather than create a duplicate.
+                    const c = data.existing_customer;
+                    if (confirm(`${c.name} already has this phone number (${c.phone}). Select them instead?`)) {
+                        selectCustomer(c.id, c.name, c.phone, '');
+                        document.getElementById('newCustomerModal').style.display = 'none';
+                    }
                 } else {
                     alert(`Error: ${data.error}`);
                 }

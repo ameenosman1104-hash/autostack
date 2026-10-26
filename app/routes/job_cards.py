@@ -12,7 +12,9 @@ from ..services import job_cards as jc
 from ..services import job_conversion as jconv
 from ..services import quotation_output as qo
 from ..services import quotations as engine
-from ..tenant_db import get_setting
+from ..services import technicians as tech
+from ..services.customer_rules import CustomerError, refuse_duplicate_phone
+from ..tenant_db import get_conn, get_setting
 
 job_cards_bp = Blueprint("job_cards", __name__)
 logger = logging.getLogger(__name__)
@@ -44,7 +46,10 @@ def _error(message, status=400):
 
 @job_cards_bp.errorhandler(jc.JobCardError)
 def _job_error(exc):
-    return _error(str(exc))
+    body = {"success": False, "error": str(exc)}
+    if getattr(exc, "existing", None):
+        body["existing_customer"] = exc.existing
+    return jsonify(body), 400
 
 
 @job_cards_bp.route("/")
@@ -114,7 +119,8 @@ def view(jid):
     return render_template("job_card_view.html", job=detail, wa_url=wa_url, wa_error=wa_error,
                            statuses=jc.TRANSITIONS.get(detail["header"]["status"], set()),
                            can_cancel=_can_cancel(), can_convert=_can_convert(),
-                           is_admin=current_user.is_admin, history=history)
+                           is_admin=current_user.is_admin, history=history,
+                           technicians=tech.list_technicians(current_user.tenant_id, active_only=True))
 
 
 @job_cards_bp.route("/<int:jid>/status", methods=["POST"])
@@ -130,7 +136,8 @@ def change_status(jid):
 @login_required
 def change_technician(jid):
     data = request.get_json(silent=True) or {}
-    result = jc.set_technician(current_user.tenant_id, jid, data.get("technician", ""), _actor())
+    result = jc.set_technician(current_user.tenant_id, jid, data.get("technician", ""), _actor(),
+                               technician_id=data.get("technician_id") or None)
     return jsonify({"success": True, **result})
 
 
@@ -144,7 +151,16 @@ def api_customers():
 @login_required
 def api_create_customer():
     data = request.get_json(silent=True) or {}
-    return jsonify(engine.create_customer(current_user.tenant_id, data.get("name"), data.get("phone", ""),
+    phone = str(data.get("phone") or "").strip()
+    if phone:
+        conn = get_conn(current_user.tenant_id)
+        try:
+            refuse_duplicate_phone(conn, phone)
+        except CustomerError as exc:
+            return jsonify({"success": False, "error": str(exc), "existing_customer": exc.existing}), 409
+        finally:
+            conn.close()
+    return jsonify(engine.create_customer(current_user.tenant_id, data.get("name"), phone,
                                           data.get("email", ""))), 201
 
 
@@ -242,3 +258,45 @@ def convert(jid):
         payment_confirmed=bool(data.get("payment_confirmed")),
         confirm_price_changes=bool(data.get("confirm_price_changes")))
     return jsonify({"success": True, **result}), (200 if result.get("duplicate") else 201)
+
+
+# ── Technicians ─────────────────────────────────────────────────────────────
+
+@job_cards_bp.route("/technicians")
+@login_required
+def technicians_index():
+    return render_template("technicians.html", rows=tech.list_technicians(current_user.tenant_id))
+
+
+@job_cards_bp.route("/technicians/<int:technician_id>")
+@login_required
+def technician_detail(technician_id):
+    detail = tech.technician_history(current_user.tenant_id, technician_id)
+    if not detail:
+        flash("Technician not found.", "warning")
+        return redirect(url_for("job_cards.technicians_index"))
+    return render_template("technician_detail.html", detail=detail)
+
+
+@job_cards_bp.route("/api/technicians")
+@login_required
+def api_technicians():
+    active_only = request.args.get("active") == "1"
+    return jsonify(tech.list_technicians(current_user.tenant_id, active_only=active_only))
+
+
+@job_cards_bp.route("/api/technicians", methods=["POST"])
+@login_required
+def api_create_technician():
+    data = request.get_json(silent=True) or {}
+    record = tech.create_technician(current_user.tenant_id, data.get("name"), data.get("phone", ""), _actor())
+    return jsonify(record), 201
+
+
+@job_cards_bp.route("/api/technicians/<int:technician_id>", methods=["POST"])
+@login_required
+def api_update_technician(technician_id):
+    data = request.get_json(silent=True) or {}
+    record = tech.update_technician(current_user.tenant_id, technician_id, data.get("name"),
+                                    data.get("phone", ""), data.get("is_active", True) is True)
+    return jsonify(record)

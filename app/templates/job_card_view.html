@@ -109,7 +109,12 @@
     <div class="row g-2 align-items-end">
       <div class="col-12 col-md-5">
         <label class="form-label small" for="techInput">Technician</label>
-        <div class="d-flex gap-2"><input id="techInput" class="form-control" maxlength="100" value="{{ h.technician }}"><button class="btn btn-outline-secondary" id="saveTech" type="button">Save</button></div>
+        <div class="d-flex gap-2"><select id="techInput" class="form-select" aria-label="Technician">
+          <option value="" {{ '' if h.technician_id else 'selected' }}>Not assigned</option>
+          {% for t in technicians %}<option value="{{ t.id }}" {{ 'selected' if t.id == h.technician_id }}>{{ t.name }}</option>{% endfor %}
+          {% if h.technician_id and h.technician_id not in technicians|map(attribute='id')|list %}<option value="{{ h.technician_id }}" selected>{{ h.technician }} (inactive)</option>{% endif %}
+        </select><button class="btn btn-outline-secondary" id="saveTech" type="button">Save</button></div>
+        <small class="text-muted"><a href="{{ url_for('job_cards.technicians_index') }}">Manage technicians</a></small>
       </div>
     </div>
     <div class="d-flex flex-wrap gap-2 mt-3">
@@ -168,7 +173,7 @@
   });
   const saveTech = document.getElementById('saveTech');
   if (saveTech) saveTech.addEventListener('click', async function () {
-    const response = await fetch('{{ url_for("job_cards.index") }}{{ h.id }}/technician', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({technician: document.getElementById('techInput').value})});
+    const response = await fetch('{{ url_for("job_cards.index") }}{{ h.id }}/technician', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({technician_id: document.getElementById('techInput').value || null})});
     const result = await response.json().catch(() => ({}));
     if (response.ok) { location.reload(); } else { alert(result.error || 'The technician could not be saved.'); }
   });

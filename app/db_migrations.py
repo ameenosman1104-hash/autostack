@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LATEST_SCHEMA_VERSION = 28
+LATEST_SCHEMA_VERSION = 29
 MIGRATION_BUSY_TIMEOUT_SECONDS = 30.0
 
 
@@ -237,6 +237,18 @@ JOB_PRICE_APPROVAL_STATEMENTS = (
         invoice_id INTEGER REFERENCES invoices(id)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_job_price_approvals_job ON job_card_price_approvals(job_card_id)",
+)
+
+TECHNICIAN_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS technicians (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+        phone TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_technicians_active ON technicians(is_active, name)",
 )
 
 
@@ -1016,6 +1028,21 @@ def migrate_tenant_db(tenant_id, db_path):
             except Exception as e:
                 conn.rollback()
                 raise RuntimeError(f"Migration 28 failed: {e}")
+
+        # Migration 29: technicians, and an optional link from each job card. Existing job cards keep their
+        # free-text technician name and get NULL technician_id, so nothing already stored is rewritten.
+        if get_schema_version(conn) < 29:
+            try:
+                for statement in TECHNICIAN_STATEMENTS:
+                    conn.execute(statement)
+                columns = {r[1] for r in conn.execute("PRAGMA table_info(job_cards)").fetchall()}
+                if "technician_id" not in columns:
+                    conn.execute("ALTER TABLE job_cards ADD COLUMN technician_id INTEGER REFERENCES technicians(id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_job_cards_technician ON job_cards(technician_id, status)")
+                mark_migration_applied(conn, 29, "Create technicians and link job cards to them")
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Migration 29 failed: {e}")
 
         if conn.execute("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("Foreign key violations; migration rolled back")

@@ -10,33 +10,54 @@
 
   <div class="card mb-3"><div class="card-body">
     <h6 class="text-uppercase text-muted">Customer and vehicle</h6>
-    <div class="row g-2">
-      <div class="col-12 col-md-5 position-relative">
-        <label class="form-label small" for="customerSearch">Find customer</label>
-        <input id="customerSearch" class="form-control" placeholder="Name or phone" autocomplete="off">
-        <div id="customerResults" class="list-group position-absolute w-100" style="z-index:20"></div>
-      </div>
-      <div class="col-12 col-md-7">
-        <label class="form-label small" for="customerName">Selected customer</label>
-        <div class="d-flex gap-2">
-          <input id="customerName" class="form-control" placeholder="Name" maxlength="200">
-          <input id="customerPhone" class="form-control" placeholder="Phone" maxlength="50">
+    {% if not editing %}
+    <div class="btn-group mb-3" role="group" aria-label="How to choose the customer">
+      <input type="radio" class="btn-check" name="customerMode" id="modeExisting" value="existing" checked>
+      <label class="btn btn-outline-primary" for="modeExisting">Select existing customer</label>
+      <input type="radio" class="btn-check" name="customerMode" id="modeNew" value="new">
+      <label class="btn btn-outline-primary" for="modeNew">Add new customer</label>
+    </div>
+    {% endif %}
+
+    <div id="existingPanel">
+      <div class="row g-2">
+        <div class="col-12 col-md-5 position-relative">
+          <label class="form-label small" for="customerSearch">Search customers</label>
+          <input id="customerSearch" class="form-control" placeholder="Name or phone" autocomplete="off">
+          <div id="customerResults" class="list-group position-absolute w-100" style="z-index:20"></div>
         </div>
-        <input type="hidden" id="customerId">
-        <small class="text-muted">Pick an existing customer or type a new name and phone to create one.</small>
-      </div>
-      <div class="col-12 col-md-5">
-        <label class="form-label small" for="vehicleSelect">Vehicle</label>
-        <select id="vehicleSelect" class="form-select"><option value="">Choose a vehicle…</option></select>
-      </div>
-      <div class="col-12 col-md-7">
-        <label class="form-label small" for="regInput">Add vehicle</label>
-        <div class="row g-2">
-          <div class="col-6 col-md-4"><input id="regInput" class="form-control" placeholder="Registration" maxlength="20"></div>
-          <div class="col-6 col-md-4"><input id="makeInput" class="form-control" placeholder="Make" maxlength="60"></div>
-          <div class="col-6 col-md-2"><input id="modelInput" class="form-control" placeholder="Model" maxlength="60"></div>
-          <div class="col-6 col-md-2"><button type="button" class="btn btn-outline-secondary w-100" id="addVehicle">Add</button></div>
+        <div class="col-12 col-md-7">
+          <label class="form-label small">Selected customer</label>
+          <div class="d-flex gap-2">
+            <input id="customerName" class="form-control" placeholder="No customer selected" readonly>
+            <input id="customerPhone" class="form-control" placeholder="Phone" readonly>
+          </div>
+          <input type="hidden" id="customerId">
         </div>
+        <div class="col-12 col-md-5">
+          <label class="form-label small" for="vehicleSelect">Vehicle</label>
+          <select id="vehicleSelect" class="form-select"><option value="">Choose a vehicle…</option></select>
+        </div>
+        <div class="col-12 col-md-7">
+          <label class="form-label small" for="regInput">Add vehicle for this customer</label>
+          <div class="row g-2">
+            <div class="col-6 col-md-4"><input id="regInput" class="form-control" placeholder="Registration" maxlength="20"></div>
+            <div class="col-6 col-md-4"><input id="makeInput" class="form-control" placeholder="Make" maxlength="60"></div>
+            <div class="col-6 col-md-2"><input id="modelInput" class="form-control" placeholder="Model" maxlength="60"></div>
+            <div class="col-6 col-md-2"><button type="button" class="btn btn-outline-secondary w-100" id="addVehicle">Add</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="newPanel" class="d-none">
+      <div class="row g-2">
+        <div class="col-12 col-md-4"><label class="form-label small" for="newCustomerName">Customer name</label><input id="newCustomerName" class="form-control" maxlength="200" autocomplete="off"></div>
+        <div class="col-12 col-md-4"><label class="form-label small" for="newCustomerPhone">Phone number</label><input id="newCustomerPhone" class="form-control" maxlength="50" inputmode="tel" autocomplete="off"></div>
+        <div class="col-12"><small class="text-muted">The customer is created when you create the job card. A phone number that already belongs to a customer cannot be used again.</small></div>
+        <div class="col-6 col-md-3"><label class="form-label small" for="newRegistration">Registration</label><input id="newRegistration" class="form-control" maxlength="20"></div>
+        <div class="col-6 col-md-3"><label class="form-label small" for="newMake">Make</label><input id="newMake" class="form-control" maxlength="60"></div>
+        <div class="col-6 col-md-3"><label class="form-label small" for="newModel">Model</label><input id="newModel" class="form-control" maxlength="60"></div>
       </div>
     </div>
   </div></div>
@@ -44,8 +65,15 @@
   <div class="card mb-3"><div class="card-body">
     <h6 class="text-uppercase text-muted">Workshop</h6>
     <div class="row g-2">
-      <div class="col-6 col-md-3"><label class="form-label small" for="mileageIn">Mileage in (km)</label><input id="mileageIn" type="number" min="0" max="2000000" inputmode="numeric" class="form-control"></div>
-      <div class="col-6 col-md-3"><label class="form-label small" for="technician">Technician</label><input id="technician" class="form-control" maxlength="100" placeholder="Name"></div>
+      <div class="col-6 col-md-3"><label class="form-label small" for="mileageIn">Mileage in (km, optional)</label><input id="mileageIn" type="number" min="0" max="2000000" inputmode="numeric" class="form-control"></div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small" for="technicianSelect">Technician</label>
+        <select id="technicianSelect" class="form-select"><option value="">Not assigned</option></select>
+        <div class="d-flex gap-1 mt-1">
+          <input id="techName" class="form-control form-control-sm" placeholder="New technician name" maxlength="100" aria-label="New technician name">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="addTechnician">Add</button>
+        </div>
+      </div>
       <div class="col-12 col-md-3"><label class="form-label small" for="promisedDate">Promised date</label><input id="promisedDate" type="date" class="form-control"></div>
     </div>
     <div class="row g-2 mt-1">
@@ -92,6 +120,7 @@ const qs = (id) => document.getElementById(id);
 const money = (v) => ((Math.round((Number(v) || 0) + Number.EPSILON) * 100) / 100).toFixed(2);
 const bail = (message) => { qs('formError').textContent = message; qs('formError').classList.remove('d-none'); window.scrollTo(0, 0); };
 const clearError = () => qs('formError').classList.add('d-none');
+const customerMode = () => (document.querySelector('input[name="customerMode"]:checked') || {value: 'existing'}).value;
 
 function lineTotal(it) { return (Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * (1 - (Number(it.discount_pct) || 0) / 100); }
 function addItem(seed) { items.push(Object.assign({item_type: 'service', description: '', detail: '', quantity: 1, unit_price: 0, discount_pct: 0}, seed)); render(); }
@@ -156,6 +185,14 @@ function field(it, key, min, step, readonly, max) {
 
 async function getJSON(url) { const r = await fetch(url); return r.json(); }
 
+// Customer: one way at a time. Switching clears the other way's entries and any old warning.
+function setCustomerMode(mode) {
+  clearError();
+  qs('existingPanel').classList.toggle('d-none', mode !== 'existing');
+  qs('newPanel').classList.toggle('d-none', mode !== 'new');
+}
+document.querySelectorAll('input[name="customerMode"]').forEach((radio) => radio.addEventListener('change', () => setCustomerMode(customerMode())));
+
 async function searchCustomers(term) {
   const box = qs('customerResults'); box.innerHTML = '';
   if (term.trim().length < 2) return;
@@ -166,7 +203,21 @@ async function searchCustomers(term) {
     b.onclick = () => selectCustomer(c); box.appendChild(b);
   });
 }
+// After a duplicate phone number, offer the customer who already has it instead of creating a second one.
+function offerExisting(c) {
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'btn btn-sm btn-outline-primary ms-2';
+  button.textContent = 'Select ' + c.name + ' instead';
+  button.onclick = () => {
+    const existingRadio = document.getElementById('modeExisting');
+    if (existingRadio) { existingRadio.checked = true; setCustomerMode('existing'); }
+    selectCustomer({id: c.id, name: c.name, phone: c.phone});
+  };
+  qs('formError').appendChild(button);
+}
+
 async function selectCustomer(c) {
+  clearError();
   qs('customerId').value = c.id; qs('customerName').value = c.name; qs('customerPhone').value = c.phone || '';
   qs('customerResults').innerHTML = ''; qs('customerSearch').value = '';
   const vehicles = await getJSON('{{ url_for("job_cards.api_vehicles") }}?customer_id=' + c.id);
@@ -176,7 +227,7 @@ async function selectCustomer(c) {
 async function addVehicle() {
   clearError();
   const cid = qs('customerId').value;
-  if (!cid) { bail('Choose or create the customer before adding a vehicle.'); return; }
+  if (!cid) { bail('Search for and select an existing customer before adding a vehicle to them.'); return; }
   const response = await fetch('{{ url_for("job_cards.api_save_vehicle") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({customer_id: Number(cid), registration: qs('regInput').value, make: qs('makeInput').value, model: qs('modelInput').value})});
   const result = await response.json().catch(() => ({}));
@@ -185,6 +236,30 @@ async function addVehicle() {
   qs('vehicleSelect').appendChild(o); qs('vehicleSelect').value = result.id;
   qs('regInput').value = ''; qs('makeInput').value = ''; qs('modelInput').value = '';
 }
+
+// Technicians: active ones are offered; a job keeps its current technician even if now inactive.
+async function loadTechnicians(selectedId, selectedName) {
+  const rows = await getJSON('{{ url_for("job_cards.api_technicians") }}?active=1');
+  const select = qs('technicianSelect');
+  select.innerHTML = '<option value="">Not assigned</option>';
+  rows.forEach((t) => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; select.appendChild(o); });
+  if (selectedId && !rows.some((t) => t.id === selectedId)) {
+    const o = document.createElement('option'); o.value = selectedId; o.textContent = (selectedName || 'Technician') + ' (inactive)'; select.appendChild(o);
+  }
+  select.value = selectedId ? String(selectedId) : '';
+}
+async function addTechnician() {
+  clearError();
+  const name = qs('techName').value.trim();
+  if (!name) { bail('Enter the new technician\'s name.'); return; }
+  const response = await fetch('{{ url_for("job_cards.api_create_technician") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name})});
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) { bail(result.error || 'The technician could not be added.'); return; }
+  const o = document.createElement('option'); o.value = result.id; o.textContent = result.name; qs('technicianSelect').appendChild(o);
+  qs('technicianSelect').value = result.id; qs('techName').value = '';
+}
+
 async function searchProducts(term) {
   const box = qs('productResults'); box.innerHTML = '';
   if (term.trim().length < 2) return;
@@ -206,34 +281,55 @@ async function loadServices() {
 qs('customerSearch').oninput = (e) => searchCustomers(e.target.value);
 qs('productSearch').oninput = (e) => searchProducts(e.target.value);
 qs('addVehicle').onclick = addVehicle;
+qs('addTechnician').onclick = addTechnician;
+['newCustomerName', 'newCustomerPhone', 'newRegistration', 'newMake', 'newModel', 'customerSearch'].forEach((id) => qs(id).addEventListener('input', clearError));
 
 if (existing) {
   const h = existing.header;
   qs('customerId').value = h.customer_id; qs('customerName').value = h.customer_name; qs('customerPhone').value = h.customer_phone;
-  qs('mileageIn').value = h.mileage_in ?? ''; qs('technician').value = h.technician; qs('promisedDate').value = h.promised_date || '';
+  qs('mileageIn').value = h.mileage_in ?? ''; qs('promisedDate').value = h.promised_date || '';
   qs('complaint').value = h.customer_complaint || ''; qs('workPerformed').value = h.work_performed; qs('notes').value = h.notes;
+  loadTechnicians(h.technician_id, h.technician);
   existing.items.forEach((i) => items.push({item_type: i.item_type, product_id: i.product_id, service_id: i.service_id, description: i.description, detail: i.detail, quantity: i.quantity, unit_price: i.unit_price, discount_pct: i.discount_pct}));
   getJSON('{{ url_for("job_cards.api_vehicles") }}?customer_id=' + h.customer_id).then((vehicles) => {
     const select = qs('vehicleSelect'); vehicles.forEach((v) => { const o = document.createElement('option'); o.value = v.id; o.textContent = v.registration; select.appendChild(o); });
     select.value = h.vehicle_id;
   });
+} else {
+  loadTechnicians(null, null);
 }
 
 qs('saveBtn').onclick = async () => {
   clearError();
+  const mode = editing ? 'existing' : customerMode();
   const payload = {
-    customer_id: qs('customerId').value ? Number(qs('customerId').value) : null,
-    vehicle_id: qs('vehicleSelect').value ? Number(qs('vehicleSelect').value) : null,
-    mileage_in: qs('mileageIn').value, technician: qs('technician').value, promised_date: qs('promisedDate').value,
+    vehicle_id: null, customer_id: null, new_customer: null, new_vehicle: null,
+    technician_id: qs('technicianSelect').value ? Number(qs('technicianSelect').value) : null,
+    mileage_in: qs('mileageIn').value, promised_date: qs('promisedDate').value,
     customer_complaint: qs('complaint').value, work_performed: qs('workPerformed').value, notes: qs('notes').value,
     items: items.map((it) => ({item_type: it.item_type, product_id: it.product_id, service_id: it.service_id, quantity: it.quantity, unit_price: it.unit_price, discount_pct: it.discount_pct})),
   };
-  if (!payload.customer_id) { bail('Choose a customer first.'); return; }
-  if (!payload.vehicle_id) { bail('Choose a vehicle first.'); return; }
+  if (mode === 'existing') {
+    payload.customer_id = qs('customerId').value ? Number(qs('customerId').value) : null;
+    payload.vehicle_id = qs('vehicleSelect').value ? Number(qs('vehicleSelect').value) : null;
+    if (!payload.customer_id) { bail('Search for and select a customer, or choose "Add new customer".'); return; }
+    if (!payload.vehicle_id) { bail('Choose a vehicle for this customer.'); return; }
+  } else {
+    const name = qs('newCustomerName').value.trim(), phone = qs('newCustomerPhone').value.trim(), reg = qs('newRegistration').value.trim();
+    if (!name) { bail('Enter the new customer\'s name.'); return; }
+    if (!phone) { bail('Enter the new customer\'s phone number.'); return; }
+    if (!reg) { bail('Enter the vehicle registration for the new customer.'); return; }
+    payload.new_customer = {name: name, phone: phone};
+    payload.new_vehicle = {registration: reg, make: qs('newMake').value, model: qs('newModel').value};
+  }
   const url = editing ? '{{ url_for("job_cards.index") }}' + existing.header.id + '/save' : '{{ url_for("job_cards.save_new") }}';
   const response = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
   const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result.success) { bail(result.error || 'Could not save the job card.'); return; }
+  if (!response.ok || !result.success) {
+    bail(result.error || 'Could not save the job card.');
+    if (result.existing_customer) offerExisting(result.existing_customer);
+    return;
+  }
   window.location.href = result.url;
 };
 loadServices(); render();

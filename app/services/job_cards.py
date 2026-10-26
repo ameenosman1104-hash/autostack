@@ -8,6 +8,7 @@ import re
 from datetime import date
 
 from ..tenant_db import get_conn
+from .customer_rules import CustomerError, refuse_duplicate_phone, validate_new_customer
 from .quotations import MAX_QUANTITY, money, pricing_policy
 
 STATUSES = ("open", "in_progress", "ready", "completed", "cancelled")
@@ -249,7 +250,60 @@ def _totals(items):
 
 # ── Job cards ────────────────────────────────────────────────────────────────
 
-def _header_fields(conn, data, customer_id, vehicle_id):
+def _technician(conn, data, current_technician_id=None):
+    """Return (technician_id, name). An active technician must be chosen; a job keeps its current one even if inactive.
+
+    Without a technician_id the free-text name is kept, so older clients and existing jobs still work.
+    """
+    raw_id = data.get("technician_id")
+    if raw_id in (None, ""):
+        return None, _text(data.get("technician"), "technician")
+    technician_id = _int(raw_id, 0)
+    if technician_id == current_technician_id:
+        row = conn.execute("SELECT name FROM technicians WHERE id=?", (technician_id,)).fetchone()
+    else:
+        row = conn.execute("SELECT name FROM technicians WHERE id=? AND is_active=1", (technician_id,)).fetchone()
+    if not row:
+        raise JobCardError("Choose an active technician")
+    return technician_id, row["name"][:100]
+
+
+def _resolve_customer_and_vehicle(conn, data):
+    """Use an existing customer and vehicle, or create a new customer and vehicle in this same transaction.
+
+    Exactly one way must be used. A new customer is refused if their phone number already exists.
+    """
+    existing = data.get("customer_id") not in (None, "")
+    new_customer = data.get("new_customer") or None
+    if existing and new_customer:
+        raise JobCardError("Choose an existing customer or add a new one, not both")
+    if not existing and not new_customer:
+        raise JobCardError("Choose an existing customer or add a new customer")
+    if not new_customer:
+        return _int(data.get("customer_id"), 0), _int(data.get("vehicle_id"), 0)
+
+    if data.get("vehicle_id") not in (None, "") or not data.get("new_vehicle"):
+        raise JobCardError("Choose an existing vehicle or add a new one for the new customer, not both")
+    try:
+        name, phone = validate_new_customer(new_customer.get("name"), new_customer.get("phone"))
+        refuse_duplicate_phone(conn, phone)
+    except CustomerError as exc:
+        error = JobCardError(str(exc))
+        error.existing = exc.existing
+        raise error
+    new_vehicle = data["new_vehicle"]
+    reg = normalise_registration(new_vehicle.get("registration", ""))
+    make, model = _text(new_vehicle.get("make"), "make"), _text(new_vehicle.get("model"), "model")
+    if conn.execute("SELECT 1 FROM vehicles WHERE registration=?", (reg,)).fetchone():
+        raise JobCardError("This registration is already recorded for another customer")
+    cur = conn.execute("INSERT INTO customers (name, phone, email) VALUES (?,?,?)", (name[:200], phone[:50], ""))
+    customer_id = cur.lastrowid
+    cur = conn.execute("INSERT INTO vehicles (customer_id, registration, make, model) VALUES (?,?,?,?)",
+                       (customer_id, reg, make, model))
+    return customer_id, cur.lastrowid
+
+
+def _header_fields(conn, data, customer_id, vehicle_id, current_technician_id=None):
     """Validate the vehicle belongs to the customer, and copy the customer's contact details."""
     customer = conn.execute("SELECT name, phone, email FROM customers WHERE id=?", (customer_id,)).fetchone()
     if not customer:
@@ -261,12 +315,14 @@ def _header_fields(conn, data, customer_id, vehicle_id):
         raise JobCardError("That vehicle belongs to a different customer")
     mileage_in = _whole_number(data.get("mileage_in"), "Mileage in", 0, MAX_MILEAGE)
     promised = _iso_date(data.get("promised_date"), "Promised date")
+    technician_id, technician = _technician(conn, data, current_technician_id)
     return {
         "customer_name": (customer["name"] or "")[:200],
         "customer_phone": (customer["phone"] or "")[:50],
         "customer_email": (customer["email"] or "")[:200],
         "mileage_in": mileage_in,
-        "technician": _text(data.get("technician"), "technician"),
+        "technician_id": technician_id,
+        "technician": technician,
         "promised_date": promised,
         "work_performed": _text(data.get("work_performed"), "work_performed"),
         "customer_complaint": _text(data.get("customer_complaint"), "customer_complaint"),
@@ -276,12 +332,11 @@ def _header_fields(conn, data, customer_id, vehicle_id):
 
 def create_job(tid, data, actor, is_admin):
     policy = pricing_policy(tid, is_admin)
-    customer_id = _int(data.get("customer_id"), 0)
-    vehicle_id = _int(data.get("vehicle_id"), 0)
     quotation_id = data.get("quotation_id") or None
     conn = get_conn(tid)
     try:
         conn.execute("BEGIN IMMEDIATE")
+        customer_id, vehicle_id = _resolve_customer_and_vehicle(conn, data)
         header = _header_fields(conn, data, customer_id, vehicle_id)
         if quotation_id is not None:
             quotation_id = _int(quotation_id, 0)
@@ -300,12 +355,13 @@ def create_job(tid, data, actor, is_admin):
         number = _next_job_number(conn)
         cur = conn.execute("""INSERT INTO job_cards (job_number, status, customer_id, vehicle_id, customer_name,
                               customer_phone, customer_email, mileage_in, technician, quotation_id, promised_date,
-                              work_performed, notes, subtotal, discount_total, total, created_by, customer_complaint)
-                              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                              work_performed, notes, subtotal, discount_total, total, created_by, customer_complaint,
+                              technician_id)
+                              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                            (number, "open", customer_id, vehicle_id, header["customer_name"], header["customer_phone"],
                             header["customer_email"], header["mileage_in"], header["technician"], quotation_id,
                             header["promised_date"], header["work_performed"], header["notes"], subtotal,
-                            discount_total, total, actor or "", header["customer_complaint"]))
+                            discount_total, total, actor or "", header["customer_complaint"], header["technician_id"]))
         job_id = cur.lastrowid
         _insert_items(conn, job_id, items)
         _event(conn, job_id, "created", actor, number)
@@ -323,19 +379,22 @@ def update_job(tid, job_id, data, actor, is_admin):
     conn = get_conn(tid)
     try:
         conn.execute("BEGIN IMMEDIATE")
-        current = conn.execute("SELECT status, customer_id, vehicle_id FROM job_cards WHERE id=?", (int(job_id),)).fetchone()
+        current = conn.execute("SELECT status, customer_id, vehicle_id, technician_id FROM job_cards WHERE id=?",
+                               (int(job_id),)).fetchone()
         if not current:
             raise JobCardError("Job card not found")
         if current["status"] not in EDITABLE_STATUSES:
             raise JobCardError(f"A {current['status'].replace('_', ' ')} job card cannot be edited")
-        header = _header_fields(conn, data, current["customer_id"], current["vehicle_id"])
+        header = _header_fields(conn, data, current["customer_id"], current["vehicle_id"], current["technician_id"])
         items = _load_items(conn, data.get("items"), policy)
         subtotal, discount_total, total = _totals(items)
         shortages = stock_shortages(conn, items)
-        conn.execute("""UPDATE job_cards SET mileage_in=?, technician=?, promised_date=?, work_performed=?, notes=?,
-                        customer_complaint=?, subtotal=?, discount_total=?, total=?, updated_at=datetime('now') WHERE id=?""",
-                     (header["mileage_in"], header["technician"], header["promised_date"], header["work_performed"],
-                      header["notes"], header["customer_complaint"], subtotal, discount_total, total, int(job_id)))
+        conn.execute("""UPDATE job_cards SET mileage_in=?, technician=?, technician_id=?, promised_date=?, work_performed=?,
+                        notes=?, customer_complaint=?, subtotal=?, discount_total=?, total=?, updated_at=datetime('now')
+                        WHERE id=?""",
+                     (header["mileage_in"], header["technician"], header["technician_id"], header["promised_date"],
+                      header["work_performed"], header["notes"], header["customer_complaint"], subtotal, discount_total,
+                      total, int(job_id)))
         conn.execute("DELETE FROM job_card_items WHERE job_card_id=?", (int(job_id),))
         _insert_items(conn, int(job_id), items)
         _event(conn, int(job_id), "updated", actor)
@@ -385,20 +444,22 @@ def set_status(tid, job_id, new_status, actor, can_cancel=False, mileage_out=Non
         conn.close()
 
 
-def set_technician(tid, job_id, technician, actor):
-    name = _text(technician, "technician")
+def set_technician(tid, job_id, technician, actor, technician_id=None):
     conn = get_conn(tid)
     try:
         conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute("SELECT status FROM job_cards WHERE id=?", (int(job_id),)).fetchone()
+        row = conn.execute("SELECT status, technician_id FROM job_cards WHERE id=?", (int(job_id),)).fetchone()
         if not row:
             raise JobCardError("Job card not found")
         if row["status"] not in ("open", "in_progress", "ready"):
             raise JobCardError("The technician can only be changed before collection")
-        conn.execute("UPDATE job_cards SET technician=?, updated_at=datetime('now') WHERE id=?", (name, int(job_id)))
+        chosen_id, name = _technician(conn, {"technician_id": technician_id, "technician": technician},
+                                      row["technician_id"])
+        conn.execute("UPDATE job_cards SET technician=?, technician_id=?, updated_at=datetime('now') WHERE id=?",
+                     (name, chosen_id, int(job_id)))
         _event(conn, int(job_id), "technician", actor, name)
         conn.commit()
-        return {"id": int(job_id), "technician": name}
+        return {"id": int(job_id), "technician": name, "technician_id": chosen_id}
     except Exception:
         conn.rollback()
         raise

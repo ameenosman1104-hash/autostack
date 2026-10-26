@@ -203,7 +203,7 @@ def test_new_form_renders_with_customer_vehicle_and_items(staff, client):
     seed(staff)
     html = client.get("/jobs/new").get_data(as_text=True)
     assert "Create job card" in html and 'id="vehicleSelect"' in html and 'id="serviceSelect"' in html
-    assert 'id="technician"' in html and 'id="mileageIn"' in html and 'id="workPerformed"' in html
+    assert 'id="technicianSelect"' in html and 'id="mileageIn"' in html and 'id="workPerformed"' in html
     assert 'id="itemCards"' in html and 'd-md-none' in html and 'd-none d-md-block' in html
 
 

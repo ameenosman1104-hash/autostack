@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+{% set t = detail.technician %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h4 class="mb-0">{{ t.name }} <span class="badge text-bg-{{ 'success' if t.is_active else 'secondary' }} align-middle">{{ 'Active' if t.is_active else 'Inactive' }}</span></h4>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('job_cards.technicians_index') }}">All technicians</a>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-md-4"><div class="card"><div class="card-body">
+      <div class="text-muted small">Completed jobs</div><div class="fs-3 fw-semibold">{{ t.completed_jobs }}</div>
+    </div></div></div>
+    <div class="col-12 col-md-4"><div class="card"><div class="card-body">
+      <div class="text-muted small">Assigned jobs (all statuses)</div><div class="fs-3 fw-semibold">{{ t.assigned_jobs }}</div>
+    </div></div></div>
+  </div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Details</h6>
+    <div id="techError" class="alert alert-danger d-none" role="alert"></div>
+    <div class="row g-2">
+      <div class="col-12 col-md-4"><label class="form-label small" for="editName">Name</label><input id="editName" class="form-control" value="{{ t.name }}" maxlength="100"></div>
+      <div class="col-12 col-md-4"><label class="form-label small" for="editPhone">Phone</label><input id="editPhone" class="form-control" value="{{ t.phone or '' }}" maxlength="50"></div>
+      <div class="col-12 col-md-2 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="editActive" {{ 'checked' if t.is_active }}><label class="form-check-label" for="editActive">Active</label></div></div>
+      <div class="col-12 col-md-2 d-grid align-items-end"><button class="btn btn-primary" id="saveBtn" type="button">Save</button></div>
+    </div>
+  </div></div>
+
+  <h6 class="text-uppercase text-muted">Job history</h6>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Job</th><th>Customer</th><th>Vehicle</th><th>Date</th><th>Status</th><th>Completed</th><th>Services performed</th></tr></thead>
+      <tbody>
+        {% for j in detail.jobs %}
+        <tr>
+          <td><a href="{{ url_for('job_cards.view', jid=j.id) }}">{{ j.job_number }}</a></td>
+          <td>{{ j.customer_name }}</td>
+          <td>{{ j.registration }}</td>
+          <td>{{ (j.opened_at or '')[:10] }}</td>
+          <td>{{ j.status|replace('_', ' ')|capitalize }}</td>
+          <td>{{ (j.completed_at or '—')[:10] }}</td>
+          <td class="small">{{ j.services|join(', ') if j.services else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-muted text-center py-4">No job cards for this technician yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+document.getElementById('saveBtn').onclick = async () => {
+  const box = document.getElementById('techError'); box.classList.add('d-none');
+  const response = await fetch('{{ url_for("job_cards.api_update_technician", technician_id=t.id) }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: document.getElementById('editName').value, phone: document.getElementById('editPhone').value,
+                          is_active: document.getElementById('editActive').checked})});
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) { box.textContent = result.error || 'The technician could not be saved.'; box.classList.remove('d-none'); return; }
+  window.location.reload();
+};
+</script>
+{% endblock %}

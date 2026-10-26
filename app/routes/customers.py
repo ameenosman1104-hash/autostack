@@ -13,8 +13,9 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from datetime import date
 from ..services import workshop_history as wh
+from ..services.customer_rules import CustomerError, refuse_duplicate_phone
 from ..tenant_db import (
-    add_customer, get_customer, get_all_customers, update_customer, search_customers,
+    add_customer, get_conn, get_customer, get_all_customers, update_customer, search_customers,
     get_debtor_by_customer_id, get_debtors_by_customer_id, customer_total_outstanding,
     outstanding_balance, list_invoices_by_customer,
 )
@@ -68,6 +69,16 @@ def add():
             flash("Customer name is required.", "danger")
             return render_template("customer_form.html", mode="add")
 
+        conn = get_conn(tid)
+        try:
+            refuse_duplicate_phone(conn, phone)
+        except CustomerError as exc:
+            # Open the customer who already has this number instead of creating a second record.
+            flash(f"This phone number already belongs to {exc.existing['name']}. Opened their record instead.", "warning")
+            return redirect(url_for("customers.detail", cid=exc.existing["id"]))
+        finally:
+            conn.close()
+
         try:
             customer_id = add_customer(
                 tid,
@@ -107,6 +118,16 @@ def edit(cid):
         if not name:
             flash("Customer name is required.", "danger")
             return render_template("customer_form.html", mode="edit", customer=customer)
+
+        conn = get_conn(tid)
+        try:
+            refuse_duplicate_phone(conn, phone, exclude_id=cid)
+        except CustomerError as exc:
+            flash(f"This phone number already belongs to {exc.existing['name']} (customer {exc.existing['id']}). "
+                  "Use a different number, or open that customer instead.", "danger")
+            return render_template("customer_form.html", mode="edit", customer=customer)
+        finally:
+            conn.close()
 
         try:
             update_customer(
@@ -249,6 +270,14 @@ def add_json():
             "success": False,
             "error": "Invalid email format"
         }), 400
+
+    conn = get_conn(tid)
+    try:
+        refuse_duplicate_phone(conn, phone)
+    except CustomerError as exc:
+        return jsonify({"success": False, "error": str(exc), "existing_customer": exc.existing}), 409
+    finally:
+        conn.close()
 
     try:
         customer_id = add_customer(
