@@ -154,6 +154,23 @@ def test_csrf_protects_the_inclusion_route(client, shop):
     assert _rows(shop["tid"], "SELECT id FROM cash_up_lines WHERE source_id=?", (late["invoice_id"],)) == []
 
 
+def test_a_payment_cannot_be_backdated_through_the_form(client, shop):
+    """A receipt is recorded on today's business date only; a backdated date is refused and nothing is written."""
+    _login(client, shop["admin"])
+    token = _token(client)
+    client.environ_base["HTTP_X_CSRFTOKEN"] = token
+    response = client.post(f"/debtors/{shop['debtor']}/record-payment",
+                           data={"csrf_token": token, "amount": "100", "payment_method": "cash",
+                                 "payment_date": PREVIOUS}, follow_redirects=True)
+    assert "business date (" in response.get_data(as_text=True)
+    assert _rows(shop["tid"], "SELECT id FROM payment_history") == []
+    response = client.post(f"/debtors/{shop['debtor']}/record-payment",
+                           data={"csrf_token": token, "amount": "100", "payment_method": "cash",
+                                 "payment_date": TODAY})
+    assert response.status_code == 302
+    assert _rows(shop["tid"], "SELECT business_date FROM payment_history")[0]["business_date"] == TODAY
+
+
 def test_cash_up_operations_do_not_alter_sales_stock_or_debtor_balances(client, shop):
     _close_previous_day(shop)
     late = _sale(shop, "untouched-late", "cash", PREVIOUS)

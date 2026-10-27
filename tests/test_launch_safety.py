@@ -281,7 +281,8 @@ class LaunchSafety(unittest.TestCase):
 
     def test_authenticated_payment_post_with_csrf(self):
         token=self.login()
-        response=self.client.post(f"/debtors/{self.did}/record-payment",data={"csrf_token":token,"amount":"250","payment_date":"2026-09-11"})
+        from app.services import shop_time
+        response=self.client.post(f"/debtors/{self.did}/record-payment",data={"csrf_token":token,"amount":"250","payment_date":shop_time.business_date_for()})
         self.assertEqual(response.status_code,302)
         self.assertEqual(self.db.outstanding_balance(self.db.get_debtor(self.tid,self.did)),750)
 

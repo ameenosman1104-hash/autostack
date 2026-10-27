@@ -171,8 +171,14 @@ def record_payment(did):
     try:
         from ..validation import payment_amount
         amount = payment_amount(request.form.get("amount", 0))
-        # No date sent means today's business date in the shop's timezone (chosen by add_payment).
-        payment_date = request.form.get("payment_date") or None
+        # A payment is always dated to today's business date in the shop's timezone. A date sent by the browser
+        # must match it, so a receipt cannot be backdated into an earlier day's cash-up.
+        today = shop_business_today(current_user.tenant_id)
+        sent_date = (request.form.get("payment_date") or "").strip()
+        if sent_date and sent_date != today:
+            flash(f"Payments are recorded on today's business date ({today}). Record it today.", "danger")
+            return redirect(url_for("debtors.detail", did=did))
+        payment_date = today
         payment_method = request.form.get("payment_method", "cash")
         notes = request.form.get("notes", "").strip()
         idempotency_key = request.form.get("idempotency_key", "").strip()[:100]
