@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h4 class="mb-0">Daily Cash-Up</h4>
+      <div class="text-muted small">Business date <strong>{{ today }}</strong> (shop time, Africa/Johannesburg)</div>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+      <span class="badge fs-6 text-bg-{{ 'success' if status and status.status == 'closed' else ('warning' if status else 'secondary') }}">
+        {{ 'Closed' if status and status.status == 'closed' else ('Open' if status else 'Not opened') }}
+      </span>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('cashup.history') }}">History ({{ history_count }})</a>
+    </div>
+  </div>
+
+  {% if not status %}
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Open today's cash-up</h6>
+    <form method="POST" action="{{ url_for('cashup.open_day') }}" class="row g-2 align-items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-12 col-md-4">
+        <label class="form-label small" for="openingFloat">Opening float (R)</label>
+        <input id="openingFloat" name="opening_float" class="form-control" inputmode="decimal" placeholder="0.00" required>
+      </div>
+      <div class="col-12 col-md-3 d-grid"><button class="btn btn-primary">Open cash-up</button></div>
+    </form>
+  </div></div>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-md-6 col-xl-4"><div class="card h-100"><div class="card-body">
+      <h6 class="text-uppercase text-muted">Sales</h6>
+      <div class="d-flex justify-content-between"><span>Cash</span><span>{{ figures.cash_sales_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>Card</span><span>{{ figures.card_sales_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>EFT</span><span>{{ figures.eft_sales_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>Credit (not cash)</span><span>{{ figures.credit_sales_cents|rand }}</span></div>
+      <hr class="my-2">
+      <div class="d-flex justify-content-between fw-semibold"><span>Total sales</span><span>{{ figures.total_sales_cents|rand }}</span></div>
+      {% if figures.late_transactions %}
+      <div class="small text-muted mt-2">Includes {{ figures.late_sales_cents|rand }} of late sales from earlier days.</div>
+      {% endif %}
+    </div></div></div>
+
+    <div class="col-12 col-md-6 col-xl-4"><div class="card h-100"><div class="card-body">
+      <h6 class="text-uppercase text-muted">Debtor receipts</h6>
+      <div class="d-flex justify-content-between"><span>Cash</span><span>{{ figures.cash_receipts_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>Card</span><span>{{ figures.card_receipts_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>EFT</span><span>{{ figures.eft_receipts_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>Check / other</span><span>{{ figures.other_receipts_cents|rand }}</span></div>
+      <div class="small text-muted mt-2">Only cash receipts add to physical cash.</div>
+    </div></div></div>
+
+    <div class="col-12 col-md-6 col-xl-4"><div class="card h-100"><div class="card-body">
+      <h6 class="text-uppercase text-muted">Cash in the till</h6>
+      <div class="d-flex justify-content-between"><span>Opening float</span><span>{{ figures.opening_float_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>Cash sales + cash receipts</span><span>{{ (figures.cash_sales_cents + figures.cash_receipts_cents)|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>Cash added</span><span>{{ figures.cash_added_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>Expenses and paid-outs</span><span>−{{ (figures.expenses_cents + figures.paid_out_cents)|rand }}</span></div>
+      <div class="d-flex justify-content-between"><span>Cash removed</span><span>−{{ figures.cash_removed_cents|rand }}</span></div>
+      <hr class="my-2">
+      <div class="d-flex justify-content-between fw-semibold"><span>Expected closing cash</span><span>{{ figures.expected_cash_cents|rand }}</span></div>
+      {% if figures.counted_cash_cents is not none %}
+      <div class="d-flex justify-content-between"><span>Counted cash</span><span>{{ figures.counted_cash_cents|rand }}</span></div>
+      <div class="d-flex justify-content-between fw-semibold"><span>{{ 'Surplus' if figures.variance_cents > 0 else ('Shortage' if figures.variance_cents < 0 else 'Balanced') }}</span><span>{{ figures.variance_cents|rand }}</span></div>
+      {% endif %}
+    </div></div></div>
+  </div>
+
+  {% if status and status.status == 'open' %}
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-lg-6"><div class="card h-100"><div class="card-body">
+      <h6 class="text-uppercase text-muted">Cash movements</h6>
+      <form method="POST" action="{{ url_for('cashup.add_movement') }}" class="row g-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-6"><select name="kind" class="form-select" aria-label="Movement type" required>
+          <option value="cash_added">Cash added to till</option>
+          <option value="cash_removed">Cash removed from till</option>
+          <option value="expense">Cash expense</option>
+          <option value="paid_out">Cash paid out</option>
+        </select></div>
+        <div class="col-6"><input name="amount" class="form-control" inputmode="decimal" placeholder="Amount (R)" required aria-label="Amount"></div>
+        <div class="col-12"><input name="reason" class="form-control" maxlength="200" placeholder="Reason (required)" required aria-label="Reason"></div>
+        <div class="col-12 d-grid"><button class="btn btn-outline-primary">Record movement</button></div>
+      </form>
+      {% if movements %}
+      <div class="table-responsive mt-3"><table class="table table-sm align-middle">
+        <thead><tr><th>Type</th><th class="text-end">Amount</th><th>Reason</th><th>By</th><th>When (UTC)</th></tr></thead>
+        <tbody>{% for m in movements %}<tr>
+          <td>{{ m.kind|replace('_', ' ')|capitalize }}</td><td class="text-end">{{ m.amount_cents|rand }}</td>
+          <td>{{ m.reason }}</td><td>{{ m.actor }}</td><td class="small">{{ m.recorded_at_utc }}</td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+      {% endif %}
+    </div></div></div>
+
+    <div class="col-12 col-lg-6"><div class="card h-100"><div class="card-body">
+      <h6 class="text-uppercase text-muted">Late transactions from earlier closed days</h6>
+      <p class="small text-muted mb-2">These keep their original business date. Counting one here adds it to today's cash-up once, and never changes the earlier day.</p>
+      {% if late %}
+      <div class="table-responsive"><table class="table table-sm align-middle">
+        <thead><tr><th>Original date</th><th>Reference</th><th>Type</th><th>Method</th><th class="text-end">Amount</th><th>Cash effect</th><th></th></tr></thead>
+        <tbody>{% for r in late %}<tr>
+          <td>{{ r.business_date }}</td><td>{{ r.reference }}</td><td>{{ r.kind }}</td><td>{{ r.method }}</td>
+          <td class="text-end">{{ r.amount_cents|rand }}</td><td class="small">{{ r.cash_effect }}</td>
+          <td><form method="POST" action="{{ url_for('cashup.include_late') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="source_type" value="{{ 'invoice' if r.source_type == 'invoice' else 'payment' }}">
+            <input type="hidden" name="source_id" value="{{ r.source_id }}">
+            <button class="btn btn-sm btn-outline-primary">Count today</button>
+          </form></td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}
+      <div class="text-muted small">No late transactions are waiting to be counted.</div>
+      {% endif %}
+    </div></div></div>
+  </div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Count and close the day</h6>
+    <div class="row g-3">
+      <div class="col-12 col-md-6">
+        <form method="POST" action="{{ url_for('cashup.close_day') }}" id="closeForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="form-label small" for="countedCash">Actual cash counted (R)</label>
+          <input id="countedCash" name="counted_cash" class="form-control mb-2" inputmode="decimal" placeholder="0.00" required>
+          <div class="mb-2 small">Expected closing cash: <strong>{{ figures.expected_cash_cents|rand }}</strong></div>
+          <div class="mb-2 small" id="variancePreview" data-expected="{{ figures.expected_cash_cents }}">Enter the counted cash to see the variance.</div>
+          <label class="form-label small" for="varianceExplanation">Explanation (required for any shortage or surplus)</label>
+          <textarea id="varianceExplanation" name="variance_explanation" class="form-control mb-2" rows="2" maxlength="500"></textarea>
+          <label class="form-label small" for="closeNotes">Notes (optional)</label>
+          <input id="closeNotes" name="notes" class="form-control mb-2" maxlength="500">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="confirm" value="yes" id="confirmClose" required>
+            <label class="form-check-label" for="confirmClose">I have reviewed these figures. Closing is permanent.</label>
+          </div>
+          <button class="btn btn-danger w-100" id="closeBtn" type="submit">Close today's cash-up</button>
+        </form>
+      </div>
+      <div class="col-12 col-md-6 small text-muted">
+        <p class="mb-1">Once closed, the day's totals are stored and cannot be edited. Sales and payments that arrive later keep their original date and appear in the late section of a later cash-up.</p>
+      </div>
+    </div>
+  </div></div>
+  {% elif status and status.status == 'closed' %}
+  <div class="alert alert-success" role="status">Today's cash-up is closed. The stored figures below cannot be edited.
+    <a href="{{ url_for('cashup.detail', business_date=today) }}">View the closed record</a>.</div>
+  {% endif %}
+</div>
+
+<script>
+// Display only: the server recalculates and checks every amount when the form is submitted.
+// Amounts are compared in integer cents, parsed from the text, never from a binary float.
+(function () {
+  function toCents(text) {
+    var t = String(text || '').trim();
+    if (!/^\d{1,9}(\.\d{1,2})?$/.test(t)) return null;
+    var parts = t.split('.');
+    return parseInt(parts[0], 10) * 100 + parseInt(((parts[1] || '') + '00').slice(0, 2), 10);
+  }
+  var counted = document.getElementById('countedCash');
+  var preview = document.getElementById('variancePreview');
+  if (!counted || !preview) return;
+  var expected = parseInt(preview.getAttribute('data-expected'), 10);
+  counted.addEventListener('input', function () {
+    var cents = toCents(counted.value);
+    if (cents === null) { preview.textContent = 'Enter the counted cash as a number, for example 1250.50.'; return; }
+    var variance = cents - expected;
+    var label = variance === 0 ? 'Balanced' : (variance > 0 ? 'Surplus' : 'Shortage');
+    var abs = Math.abs(variance);
+    preview.textContent = label + ': R ' + Math.floor(abs / 100).toLocaleString('en-ZA') + '.' + String(abs % 100).padStart(2, '0');
+  });
+  document.getElementById('closeForm').addEventListener('submit', function (e) {
+    var btn = document.getElementById('closeBtn');
+    if (btn.dataset.sent) { e.preventDefault(); return; }
+    btn.dataset.sent = '1'; btn.disabled = true; btn.textContent = 'Closing…';
+  });
+})();
+</script>
+{% endblock %}

@@ -253,7 +253,38 @@ def add_movement(tid, business_date, kind, amount_cents, reason, actor):
         conn.close()
 
 
-def close_day(tid, business_date, counted_cash_cents, actor, notes=""):
+def _verify_snapshot(conn, cash_up_id, business_date, figures):
+    """Refuse to close unless every source for the day is recorded, and the recorded lines add up to the totals.
+
+    Runs inside the closing transaction, so no other write can land between the check and the close.
+    """
+    own_invoices = conn.execute("""SELECT COUNT(*) FROM invoices WHERE status='completed'
+                                   AND (business_date = ? OR (business_date IS NULL AND sale_date = ?))""",
+                                (business_date, business_date)).fetchone()[0]
+    own_payments = conn.execute("""SELECT COUNT(*) FROM payment_history
+                                   WHERE business_date = ? OR (business_date IS NULL AND payment_date = ?)""",
+                                (business_date, business_date)).fetchone()[0]
+    lines_invoices = conn.execute("""SELECT COUNT(*) FROM cash_up_lines WHERE cash_up_id = ? AND is_late = 0
+                                     AND source_type = 'invoice'""", (cash_up_id,)).fetchone()[0]
+    lines_payments = conn.execute("""SELECT COUNT(*) FROM cash_up_lines WHERE cash_up_id = ? AND is_late = 0
+                                     AND source_type = 'payment'""", (cash_up_id,)).fetchone()[0]
+    if own_invoices != lines_invoices or own_payments != lines_payments:
+        raise CashUpError("The day's transactions are incomplete in the cash-up, so it was not closed. Try again.")
+    recorded = {row["category"]: int(row["total"]) for row in conn.execute(
+        "SELECT category, SUM(amount_cents) AS total FROM cash_up_lines WHERE cash_up_id = ? GROUP BY category",
+        (cash_up_id,)).fetchall()}
+    checks = {
+        "cash_sale": figures["cash_sales_cents"], "card_sale": figures["card_sales_cents"],
+        "eft_sale": figures["eft_sales_cents"], "credit_sale": figures["credit_sales_cents"],
+        "cash_receipt": figures["cash_receipts_cents"], "card_receipt": figures["card_receipts_cents"],
+        "eft_receipt": figures["eft_receipts_cents"], "other_receipt": figures["other_receipts_cents"],
+    }
+    for category, expected in checks.items():
+        if recorded.get(category, 0) != expected:
+            raise CashUpError("The recorded transactions do not match the totals, so the cash-up was not closed.")
+
+
+def close_day(tid, business_date, counted_cash_cents, actor, notes="", variance_explanation=""):
     """Close an open business date. Every source for the date is recorded as a line and counted exactly once."""
     business_date = _check_date(business_date)
     if not (0 <= int(counted_cash_cents) <= MAX_CENTS):
@@ -278,8 +309,14 @@ def close_day(tid, business_date, counted_cash_cents, actor, notes=""):
                             VALUES (?, ?, 'payment', ?, ?, ?)""",
                          (cu["id"], business_date, r["id"], r["category"], r["cents"]))
         figures = _figures(conn, business_date, sales, receipts)
+        _verify_snapshot(conn, cu["id"], business_date, figures)
         expected = figures["expected_cash_cents"]
         variance = int(counted_cash_cents) - expected
+        explanation = str(variance_explanation or "").strip()
+        if variance != 0 and len(explanation) < 3:
+            raise CashUpError("Explain the shortage or surplus before closing")
+        if variance != 0:
+            notes = f"Variance explanation: {explanation}" + (f"; {str(notes).strip()}" if str(notes or "").strip() else "")
         conn.execute("""UPDATE cash_ups SET status='closed', counted_cash_cents=?, expected_cash_cents=?, variance_cents=?,
                         cash_sales_cents=?, card_sales_cents=?, eft_sales_cents=?, credit_sales_cents=?, total_sales_cents=?,
                         cash_receipts_cents=?, card_receipts_cents=?, eft_receipts_cents=?, other_receipts_cents=?,
@@ -373,5 +410,69 @@ def include_late(tid, open_date, source_type, source_id, actor):
         if "UNIQUE constraint failed" in str(exc):
             raise CashUpError("This transaction is already counted in a cash-up")
         raise CashUpError(f"The late transaction could not be counted: {exc}")
+    finally:
+        conn.close()
+
+
+def format_rand(cents):
+    """South African rand from integer cents, for display. Never goes through a float."""
+    cents = int(cents)
+    sign = "-" if cents < 0 else ""
+    whole, part = divmod(abs(cents), 100)
+    return f"{sign}R {whole:,}.{part:02d}"
+
+
+def cash_up_status(tid, business_date):
+    """Open, closed or not_opened for a date, and the stored row if there is one. Read-only."""
+    business_date = _check_date(business_date)
+    conn = get_conn(tid)
+    try:
+        cu = _cash_up_row(conn, business_date)
+        return dict(cu) if cu else None
+    finally:
+        conn.close()
+
+
+def movements(tid, business_date):
+    business_date = _check_date(business_date)
+    conn = get_conn(tid)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, kind, amount_cents, reason, actor, recorded_at_utc FROM cash_movements "
+            "WHERE business_date = ? ORDER BY id", (business_date,)).fetchall()]
+    finally:
+        conn.close()
+
+
+def history(tid):
+    """Closed cash-ups, newest first, exactly as stored."""
+    conn = get_conn(tid)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM cash_ups WHERE status = 'closed' ORDER BY business_date DESC").fetchall()]
+    finally:
+        conn.close()
+
+
+def late_transactions(tid):
+    """Late transactions not yet counted, with a reference and whether each one moves physical cash."""
+    rows = list_late(tid)
+    conn = get_conn(tid)
+    try:
+        for r in rows:
+            r["amount_cents"] = to_cents(r["amount"])
+            if r["source_type"] == "invoice":
+                inv = conn.execute("SELECT invoice_number FROM invoices WHERE id=?", (r["source_id"],)).fetchone()
+                r["reference"] = inv["invoice_number"] if inv else f"Sale #{r['source_id']}"
+                r["kind"] = "Sale"
+                r["counts_as_cash"] = r["method"] == "cash"
+            else:
+                pay = conn.execute("""SELECT d.name FROM payment_history p JOIN debtors d ON d.id = p.debtor_id
+                                      WHERE p.id=?""", (r["source_id"],)).fetchone()
+                r["reference"] = f"Payment #{r['source_id']}" + (f" from {pay['name']}" if pay else "")
+                r["kind"] = "Debtor receipt"
+                r["counts_as_cash"] = r["method"] == "cash"
+            r["cash_effect"] = "Physical cash" if r["counts_as_cash"] else "Sales only" if r["kind"] == "Sale" else "Not cash"
+        return rows
     finally:
         conn.close()

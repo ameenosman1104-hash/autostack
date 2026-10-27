@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h4 class="mb-0">Cash-up history</h4>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('cashup.dashboard') }}">Today's cash-up</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead><tr>
+        <th>Business date</th><th class="text-end">Expected cash</th><th class="text-end">Counted cash</th>
+        <th class="text-end">Variance</th><th>Closed by</th><th>Closed (UTC)</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="fw-semibold">{{ r.business_date }}</td>
+          <td class="text-end">{{ r.expected_cash_cents|rand }}</td>
+          <td class="text-end">{{ r.counted_cash_cents|rand }}</td>
+          <td class="text-end {{ 'text-danger' if r.variance_cents < 0 else ('text-success' if r.variance_cents > 0 else '') }}">{{ r.variance_cents|rand }}</td>
+          <td>{{ r.closed_by }}</td>
+          <td class="small">{{ r.closed_at_utc }}</td>
+          <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('cashup.detail', business_date=r.business_date) }}">View</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-muted text-center py-4">No closed cash-ups yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

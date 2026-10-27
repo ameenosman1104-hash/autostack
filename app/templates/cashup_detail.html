@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  @media print {
+    .no-print, .navbar, .sidebar, .btn { display: none !important; }
+    .main-content { margin: 0 !important; height: auto !important; overflow: visible !important; }
+    body, html { height: auto !important; overflow: visible !important; }
+    .card { box-shadow: none !important; border: 1px solid #999 !important; }
+  }
+</style>
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 no-print">
+    <h4 class="mb-0">Cash-up for {{ cash_up.business_date }}</h4>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('cashup.history') }}">History</a>
+      <button class="btn btn-sm btn-outline-primary" onclick="window.print()">Print</button>
+    </div>
+  </div>
+  <p class="text-muted small">Closed by {{ cash_up.closed_by }} at {{ cash_up.closed_at_utc }} (UTC). Opened by {{ cash_up.opened_by }}. This record is final and cannot be edited.</p>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Totals</h6>
+    <table class="table table-sm mb-0">
+      <tbody>
+        <tr><td>Cash sales</td><td class="text-end">{{ figures.cash_sales_cents|rand }}</td></tr>
+        <tr><td>Card sales</td><td class="text-end">{{ figures.card_sales_cents|rand }}</td></tr>
+        <tr><td>EFT sales</td><td class="text-end">{{ figures.eft_sales_cents|rand }}</td></tr>
+        <tr><td>Credit sales (not cash)</td><td class="text-end">{{ figures.credit_sales_cents|rand }}</td></tr>
+        <tr class="fw-semibold"><td>Total sales</td><td class="text-end">{{ figures.total_sales_cents|rand }}</td></tr>
+        <tr><td>Cash debtor receipts</td><td class="text-end">{{ figures.cash_receipts_cents|rand }}</td></tr>
+        <tr><td>Card debtor receipts</td><td class="text-end">{{ figures.card_receipts_cents|rand }}</td></tr>
+        <tr><td>EFT debtor receipts</td><td class="text-end">{{ figures.eft_receipts_cents|rand }}</td></tr>
+        <tr><td>Check / other receipts (not cash)</td><td class="text-end">{{ figures.other_receipts_cents|rand }}</td></tr>
+        <tr><td>Opening float</td><td class="text-end">{{ figures.opening_float_cents|rand }}</td></tr>
+        <tr><td>Cash added</td><td class="text-end">{{ figures.cash_added_cents|rand }}</td></tr>
+        <tr><td>Cash removed</td><td class="text-end">−{{ figures.cash_removed_cents|rand }}</td></tr>
+        <tr><td>Expenses</td><td class="text-end">−{{ figures.expenses_cents|rand }}</td></tr>
+        <tr><td>Paid out</td><td class="text-end">−{{ figures.paid_out_cents|rand }}</td></tr>
+        <tr class="fw-semibold"><td>Expected closing cash</td><td class="text-end">{{ figures.expected_cash_cents|rand }}</td></tr>
+        <tr><td>Counted cash</td><td class="text-end">{{ cash_up.counted_cash_cents|rand }}</td></tr>
+        <tr class="fw-semibold"><td>Variance (counted − expected)</td><td class="text-end">{{ cash_up.variance_cents|rand }}</td></tr>
+      </tbody>
+    </table>
+    {% if cash_up.notes %}<div class="small mt-2"><strong>Notes:</strong> {{ cash_up.notes }}</div>{% endif %}
+  </div></div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="text-uppercase text-muted">Cash movements</h6>
+    {% if movements %}
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Type</th><th class="text-end">Amount</th><th>Reason</th><th>By</th><th>When (UTC)</th></tr></thead>
+      <tbody>{% for m in movements %}<tr>
+        <td>{{ m.kind|replace('_', ' ')|capitalize }}</td><td class="text-end">{{ m.amount_cents|rand }}</td>
+        <td>{{ m.reason }}</td><td>{{ m.actor }}</td><td class="small">{{ m.recorded_at_utc }}</td>
+      </tr>{% endfor %}</tbody>
+    </table>
+    {% else %}<div class="text-muted small">No cash movements on this day.</div>{% endif %}
+  </div></div>
+</div>
+{% endblock %}

@@ -110,7 +110,7 @@ def test_full_day_cash_up_with_every_source(shop, late_evening):
 def test_shortage_and_surplus(shop, late_evening):
     _sell(shop, "v-cash", "cash", "cash")
     cu.open_day(shop["tid"], DAY, 0, "manager")
-    short = cu.close_day(shop["tid"], DAY, 9_950, "manager")
+    short = cu.close_day(shop["tid"], DAY, 9_950, "manager", variance_explanation="Till short by fifty cents")
     assert short["expected_cash_cents"] == 10_000 and short["variance_cents"] == -50
     assert cu.day_summary(shop["tid"], DAY)["variance_cents"] == -50
 
@@ -118,7 +118,7 @@ def test_shortage_and_surplus(shop, late_evening):
 def test_surplus_is_positive(shop, late_evening):
     _sell(shop, "p-cash", "cash", "cash")
     cu.open_day(shop["tid"], DAY, 0, "manager")
-    assert cu.close_day(shop["tid"], DAY, 10_025, "manager")["variance_cents"] == 25
+    assert cu.close_day(shop["tid"], DAY, 10_025, "manager", variance_explanation="Coin counted twice")["variance_cents"] == 25
 
 
 def test_credit_sales_are_sales_not_cash(shop, late_evening):

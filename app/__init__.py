@@ -73,6 +73,7 @@ def create_app():
     from .routes.job_cards import job_cards_bp
     from .routes.workshop_history import workshop_bp
     from .routes.service_catalogue import service_catalogue_bp
+    from .routes.cashup import cashup_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp,       url_prefix="/admin")
@@ -92,6 +93,7 @@ def create_app():
     app.register_blueprint(job_cards_bp, url_prefix="/jobs")
     app.register_blueprint(workshop_bp, url_prefix="/vehicles")
     app.register_blueprint(service_catalogue_bp)
+    app.register_blueprint(cashup_bp)
     app.register_blueprint(local_file_sync_bp)
     app.register_blueprint(data_sources_bp)
     app.register_blueprint(ai_insights_bp)

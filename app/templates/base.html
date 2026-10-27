@@ -403,6 +403,13 @@
           <i class="bi bi-people me-2"></i>Debtors
         </a>
       </li>
+      {% if can_manage_cashup %}
+      <li class="nav-item">
+        <a class="nav-link {% if request.endpoint and 'cashup' in request.endpoint %}active{% endif %}" href="{{ url_for('cashup.dashboard') }}">
+          <i class="bi bi-cash-stack me-2"></i>Cash-Up
+        </a>
+      </li>
+      {% endif %}
       <li class="nav-item">
         <a class="nav-link {% if request.endpoint and 'reports' in request.endpoint %}active{% endif %}" href="{{ url_for('reports.index') }}">
           <i class="bi bi-bar-chart-line me-2"></i>Reports
